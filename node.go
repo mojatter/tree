@@ -176,6 +176,8 @@ func (n Array) Value() Value {
 	return Nil
 }
 
+// toIndex converts a key to an array index and checks if it's valid.
+// Supports both int and string representations of indices.
 func (n Array) toIndex(key interface{}) (int, bool) {
 	switch tk := key.(type) {
 	case int:
@@ -299,6 +301,8 @@ func (n Map) Value() Value {
 	return Nil
 }
 
+// toKey converts a key to a string and checks if it exists in the map.
+// Supports both int and string keys.
 func (n Map) toKey(key interface{}) (string, bool) {
 	switch tk := key.(type) {
 	case int:

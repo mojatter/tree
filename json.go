@@ -112,6 +112,8 @@ func (n NilValue) MarshalJSON() ([]byte, error) {
 	return []byte("null"), nil
 }
 
+// jsonMap recursively decodes a JSON object into a Map.
+// Handles nested objects and arrays during JSON parsing.
 func jsonMap(dec *json.Decoder, m *Map) error {
 	t, err := dec.Token()
 	if err != nil {
@@ -156,6 +158,8 @@ func jsonMap(dec *json.Decoder, m *Map) error {
 	return jsonMap(dec, m)
 }
 
+// jsonArray recursively decodes a JSON array.
+// Handles nested objects and arrays during JSON parsing.
 func jsonArray(dec *json.Decoder, a Array) (Array, error) {
 	t, err := dec.Token()
 	if err != nil {
@@ -182,6 +186,8 @@ func jsonArray(dec *json.Decoder, a Array) (Array, error) {
 	return jsonArray(dec, append(a, jsonValue(t)))
 }
 
+// jsonValue converts a JSON token to a Node value.
+// Handles primitive types: string, bool, float64, and nil.
 func jsonValue(t json.Token) Node {
 	if t == nil {
 		return Nil

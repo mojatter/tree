@@ -39,7 +39,7 @@ func ToValue(v interface{}) Node {
 	return StringValue(fmt.Sprintf("%#v", v))
 }
 
-// ToArrayValues calss ToValues for each provided vs and returns them as an Array.
+// ToArrayValues calls ToValue for each provided vs and returns them as an Array.
 func ToArrayValues(vs ...interface{}) Array {
 	a := make(Array, len(vs))
 	for i, v := range vs {
@@ -48,7 +48,7 @@ func ToArrayValues(vs ...interface{}) Array {
 	return a
 }
 
-// ToNodeValues calss ToValues for each provided vs and returns them as []Node.
+// ToNodeValues calls ToValue for each provided vs and returns them as []Node.
 func ToNodeValues(vs ...interface{}) []Node {
 	ns := make([]Node, len(vs))
 	for i, v := range vs {
@@ -87,6 +87,8 @@ func ToNode(v interface{}) Node {
 	return ToValue(v)
 }
 
+// ToAny converts a Node back to a native Go interface{} value.
+// This is the reverse operation of ToNode.
 func ToAny(n Node) interface{} {
 	if n == nil {
 		return nil
@@ -136,6 +138,8 @@ func Walk(n Node, fn WalkFunc) error {
 	return walk(n, []interface{}{}, fn)
 }
 
+// walk is a recursive helper function that traverses the node tree.
+// It maintains the path of keys from root to current node.
 func walk(n Node, lastKeys []interface{}, fn WalkFunc) error {
 	if n == nil {
 		return nil
@@ -166,6 +170,8 @@ var regexpPool = sync.Pool{
 	},
 }
 
+// pooledRegexp retrieves a compiled regexp from the pool or creates a new one.
+// Uses sync.Pool for efficient regexp reuse to avoid recompilation.
 func pooledRegexp(expr string) (*regexp.Regexp, error) {
 	cache := regexpPool.Get().(map[string]*regexp.Regexp)
 	defer regexpPool.Put(cache)
@@ -181,6 +187,8 @@ func pooledRegexp(expr string) (*regexp.Regexp, error) {
 	return re, nil
 }
 
+// regexpMatchString matches a string against a regular expression pattern.
+// Uses pooled regexp compilation for better performance.
 func regexpMatchString(expr, value string) (bool, error) {
 	re, err := pooledRegexp(expr)
 	if err != nil {
@@ -199,6 +207,8 @@ func CloneDeep(n Node) Node {
 	return clone(n, true)
 }
 
+// clone creates a copy of the node with optional deep cloning.
+// If deep is true, recursively clones all child nodes.
 func clone(n Node, deep bool) Node {
 	switch n.Type() {
 	case TypeArray:
