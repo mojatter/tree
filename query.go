@@ -654,6 +654,8 @@ type token struct {
 	children []*token
 }
 
+// toValue converts a token to a Node value based on its type and content.
+// Handles quoted strings, booleans, numbers, and defaults to string values.
 func (t *token) toValue() Node {
 	if !t.quoted {
 		if t.value == "" {
@@ -672,6 +674,8 @@ func (t *token) toValue() Node {
 	return StringValue(t.value)
 }
 
+// indexOfCmd finds the index of a child token with the specified command.
+// Returns -1 if not found.
 func (t *token) indexOfCmd(cmd string) int {
 	for i, c := range t.children {
 		if c.cmd == cmd {
@@ -683,6 +687,8 @@ func (t *token) indexOfCmd(cmd string) int {
 
 var tokenRegexp = regexp.MustCompile(`"([^"]*)"|(and|or|==|<=|>=|!=|~=|\.\.|[\.\[\]\(\)\|<>:]|[a-z]+\(\))|(\w+)`)
 
+// tokenizeQuery parses a query expression string into a token tree.
+// Uses regular expressions to identify different token types.
 func tokenizeQuery(expr string) (*token, error) {
 	current := &token{}
 	ms := tokenRegexp.FindAllStringSubmatch(expr, -1)
@@ -730,6 +736,8 @@ func tokenizeQuery(expr string) (*token, error) {
 	return current, nil
 }
 
+// tokenToQuery converts a token tree into a Query object.
+// Recursively processes tokens based on their command type.
 func tokenToQuery(t *token, expr string) (Query, error) {
 	child := len(t.children)
 	switch t.cmd {
@@ -792,6 +800,8 @@ func tokenToQuery(t *token, expr string) (Query, error) {
 	return fq, nil
 }
 
+// tokensToArrayRangeQuery creates an ArrayRangeQuery from tokens.
+// Handles array slice notation like [from:to].
 func tokensToArrayRangeQuery(ts []*token, i int, expr string) (Query, error) {
 	from := -1
 	to := -1
@@ -812,6 +822,8 @@ func tokensToArrayRangeQuery(ts []*token, i int, expr string) (Query, error) {
 	return ArrayRangeQuery{from, to}, nil
 }
 
+// tokensToSelector converts tokens into a Selector for filtering operations.
+// Handles logical operators (and/or) and comparison operators.
 func tokensToSelector(ts []*token, expr string) (Selector, error) {
 	andOr := ""
 	var groups [][]*token
@@ -907,6 +919,8 @@ func (h *arrayHolder) Set(key interface{}, v Node) error                 { retur
 
 var _ EditorNode = (*arrayHolder)(nil)
 
+// holdArray wraps Array nodes with arrayHolder for edit operations.
+// Recursively processes nested structures.
 func holdArray(pn *Node) *Node {
 	n := *pn
 	if a := n.Array(); a != nil {
@@ -929,6 +943,8 @@ func holdArray(pn *Node) *Node {
 	return pn
 }
 
+// unholdArray unwraps arrayHolder nodes back to regular Array nodes.
+// Recursively processes nested structures.
 func unholdArray(pn *Node) {
 	n := *pn
 	if a := n.Array(); a != nil {
@@ -983,6 +999,8 @@ func Edit(pn *Node, expr string) error {
 	return editQuery(pn, q, op, v)
 }
 
+// editQuery applies an edit operation to a node using the specified query.
+// Supports FilterQuery and EditorQuery types.
 func editQuery(pn *Node, q Query, op string, v Node) error {
 	switch tq := q.(type) {
 	case FilterQuery:
@@ -993,6 +1011,8 @@ func editQuery(pn *Node, q Query, op string, v Node) error {
 	return fmt.Errorf("syntax error: unsupported edit query: %s", q)
 }
 
+// execForEdit executes a FilterQuery for edit operations.
+// Handles multi-step queries for complex edit paths.
 func execForEdit(pn *Node, fq FilterQuery, op string, v Node) error {
 	l := len(fq)
 	if l == 0 {
@@ -1017,6 +1037,8 @@ func execForEdit(pn *Node, fq FilterQuery, op string, v Node) error {
 	return nil
 }
 
+// execEdit executes an EditorQuery with the specified operation.
+// Supports set (=), append (+=), and delete (^?) operations.
 func execEdit(pn *Node, eq EditorQuery, op string, v Node) error {
 	switch op {
 	case "=":

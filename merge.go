@@ -1,5 +1,6 @@
 package tree
 
+// MergeOption represents different merge strategies for combining nodes.
 type MergeOption int
 
 var (
@@ -56,34 +57,42 @@ var (
 	MergeOptionSlurp MergeOption = 0b100000
 )
 
+// isOverrideMap checks if the merge option includes map override behavior.
 func (o MergeOption) isOverrideMap() bool {
 	return o&MergeOptionOverrideMap == MergeOptionOverrideMap
 }
 
+// isOverrideArray checks if the merge option includes array override behavior.
 func (o MergeOption) isOverrideArray() bool {
 	return o&MergeOptionOverrideArray == MergeOptionOverrideArray
 }
 
+// isOverrideValue checks if the merge option includes any override behavior.
 func (o MergeOption) isOverrideValue() bool {
 	return o.isOverrideMap() || o.isOverrideArray()
 }
 
+// isReplaceMap checks if the merge option includes map replacement behavior.
 func (o MergeOption) isReplaceMap() bool {
 	return o&MergeOptionReplaceMap == MergeOptionReplaceMap
 }
 
+// isReplaceArray checks if the merge option includes array replacement behavior.
 func (o MergeOption) isReplaceArray() bool {
 	return o&MergeOptionReplaceArray == MergeOptionReplaceArray
 }
 
+// isReplaceValue checks if the merge option includes any replacement behavior.
 func (o MergeOption) isReplaceValue() bool {
 	return o.isReplaceMap() || o.isReplaceArray()
 }
 
+// isAppend checks if the merge option includes array append behavior.
 func (o MergeOption) isAppend() bool {
 	return o&MergeOptionAppend == MergeOptionAppend
 }
 
+// isSlurp checks if the merge option includes slurp behavior (convert to array).
 func (o MergeOption) isSlurp() bool {
 	return o&MergeOptionSlurp == MergeOptionSlurp
 }
@@ -115,6 +124,8 @@ func Merge(a, b Node, opts MergeOption) Node {
 	return mergeNoMatchType(a, b, opts)
 }
 
+// mergeNoMatchType handles merging when node types don't match.
+// Returns the appropriate node based on merge options.
 func mergeNoMatchType(a Node, b Node, opts MergeOption) Node {
 	if opts.isOverrideValue() || opts.isReplaceValue() {
 		return b
@@ -122,6 +133,8 @@ func mergeNoMatchType(a Node, b Node, opts MergeOption) Node {
 	return a
 }
 
+// mergeArray merges two arrays according to the specified merge options.
+// Supports append, override, replace, and slurp behaviors.
 func mergeArray(a, b Array, opts MergeOption) Array {
 	if opts.isAppend() || opts.isSlurp() {
 		return append(a, b...)
@@ -145,6 +158,8 @@ func mergeArray(a, b Array, opts MergeOption) Array {
 	return a
 }
 
+// mergeMap merges two maps according to the specified merge options.
+// Supports override, replace, and recursive merging of nested structures.
 func mergeMap(a, b Map, opts MergeOption) Map {
 	if opts.isSlurp() || opts.isOverrideMap() {
 		for k, v := range b {
