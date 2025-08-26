@@ -9,7 +9,7 @@ import (
 	yamlv3 "gopkg.in/yaml.v3"
 )
 
-func ExampleV3YAMLUnmarshal() {
+func Example_v3YAMLUnmarshal() {
 	data := []byte(`---
 Colors:
 - Crimson
@@ -30,7 +30,7 @@ Name: Reds
 	// map[Colors:[Crimson Red Ruby Maroon] ID:1 Name:Reds]
 }
 
-func ExampleYAMLV3Marshal() {
+func Example_yamlV3Marshal() {
 	group := tree.Map{
 		"ID":     tree.ToValue(1),
 		"Name":   tree.ToValue("Reds"),
@@ -52,7 +52,7 @@ func ExampleYAMLV3Marshal() {
 	// Name: Reds
 }
 
-func ExampleGoYAMLUnmarshal() {
+func Example_goYAMLUnmarshal() {
 	data := []byte(`---
 Colors:
 - Crimson
@@ -73,7 +73,7 @@ Name: Reds
 	// map[Colors:[Crimson Red Ruby Maroon] ID:1 Name:Reds]
 }
 
-func ExampleGoYAMLMarshal() {
+func Example_goYAMLMarshal() {
 	group := tree.Map{
 		"ID":     tree.ToValue(1),
 		"Name":   tree.ToValue("Reds"),

@@ -9,7 +9,7 @@ import (
 	jsoniter "github.com/json-iterator/go"
 )
 
-func ExampleGoJSONUnmarshal() {
+func Example_goJSONUnmarshal() {
 	data := []byte(`[
   {"Name": "Platypus", "Order": "Monotremata"},
   {"Name": "Quoll",    "Order": "Dasyuromorphia"}
@@ -26,7 +26,7 @@ func ExampleGoJSONUnmarshal() {
 	// [map[Name:Platypus Order:Monotremata] map[Name:Quoll Order:Dasyuromorphia]]
 }
 
-func ExampleGoJSONUnmarshal_combined() {
+func Example_goJSONUnmarshal_combined() {
 	data := []byte(`[
   {"Name": "Platypus", "Order": "Monotremata"},
   {"Name": "Quoll",    "Order": "Dasyuromorphia"}
@@ -46,7 +46,7 @@ func ExampleGoJSONUnmarshal_combined() {
 	// [{Name:Platypus Order:Monotremata} {Name:Quoll Order:Dasyuromorphia}]
 }
 
-func ExampleGoJSONMarshal() {
+func Example_goJSONMarshal() {
 	group := tree.Map{
 		"ID":     tree.ToValue(1),
 		"Name":   tree.ToValue("Reds"),
@@ -62,7 +62,7 @@ func ExampleGoJSONMarshal() {
 	// {"Colors":["Crimson","Red","Ruby","Maroon"],"ID":1,"Name":"Reds"}
 }
 
-func ExampleJSONIteratorUnmarshal() {
+func Example_jsonIteratorUnmarshal() {
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
 	data := []byte(`[
@@ -81,7 +81,7 @@ func ExampleJSONIteratorUnmarshal() {
 	// [map[Name:Platypus Order:Monotremata] map[Name:Quoll Order:Dasyuromorphia]]
 }
 
-func ExampleJSONIteratorUnmarshal_combined() {
+func Example_jsonIteratorUnmarshal_combined() {
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
 	data := []byte(`[
@@ -103,7 +103,7 @@ func ExampleJSONIteratorUnmarshal_combined() {
 	// [{Name:Platypus Order:Monotremata} {Name:Quoll Order:Dasyuromorphia}]
 }
 
-func ExampleJSONIteratorMarshal() {
+func Example_jsonIteratorMarshal() {
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
 	group := tree.Map{
