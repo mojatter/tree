@@ -26,7 +26,7 @@ func (q *evenIndexQuery) String() string {
 	return "even-index-query"
 }
 
-func ExampleCustomQuery() {
+func Example_customQuery() {
 	group := tree.Array{
 		tree.Map{
 			"ID":     tree.ToValue(1),
@@ -79,7 +79,7 @@ func (s *primaryColorSelector) String() string {
 	return "odd-index-selector"
 }
 
-func ExampleCustomSelector() {
+func Example_customSelector() {
 	group := tree.Array{
 		tree.Map{
 			"ID":     tree.ToValue(1),
@@ -101,7 +101,7 @@ func ExampleCustomSelector() {
 	q := tree.FilterQuery{
 		tree.SelectQuery{},
 		tree.MapQuery("Colors"),
-		tree.SelectQuery{&primaryColorSelector{}},
+		tree.SelectQuery{Selector: &primaryColorSelector{}},
 	}
 
 	rs, err := q.Exec(group)
