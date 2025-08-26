@@ -97,18 +97,6 @@ func Test_Query(t *testing.T) {
 				Map{"key1": ToValue(3), "key2": ToValue("c")},
 			},
 			want: []Node{ToValue(1), ToValue(2), ToValue(3)},
-		}, {
-			q:    CountQuery{},
-			n:    Map{"key1": ToValue(1), "key2": ToValue("a")},
-			want: []Node{ToValue(2)},
-		}, {
-			q:    KeysQuery{},
-			n:    Map{"key1": ToValue(1), "key2": ToValue("a")},
-			want: []Node{ToArrayValues("key1", "key2")},
-		}, {
-			q:    KeysQuery{},
-			n:    ToArrayValues(1, 2, 3),
-			want: []Node{ToArrayValues(0, 1, 2)},
 		},
 	}
 	for i, test := range tests {

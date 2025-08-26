@@ -5,18 +5,33 @@
 
 Tree is a simple structure for dealing with dynamic or unknown JSON/YAML in Go.
 
+## Table of Contents
+
+- [Features](#features)
+- [Road to 1.0](#road-to-10)
+- [Syntax](#syntax)
+- [Marshal and Unmarshal](#marshal-and-unmarshal)
+- [Get](#get)
+- [Find](#find)
+  - [Query](#query)
+  - [Built-in Methods](#built-in-methods)
+- [Edit](#edit)
+- [tq](#tq)
+- [Third-party library licenses](#third-party-library-licenses)
+
 ## Features
 
 - Parses json/yaml of unknown structure to get to nodes with fluent interface.
 - Syntax similar to Go standard and map and slice.
-- Find function can be specified the [Query](#query) expression.
+- Find function can be specified the [Query](#query) expression with [built-in methods](#built-in-methods).
 - Edit function can be specified the [Edit](#edit) expression.
 - Bundled 'tq' that is a portable command-line JSON/YAML processor.
 
 ## Road to 1.0
 
 - Placeholders in query.
-- Merging nodes.
+- Support single quotation in query.
+- Merge support in tq.
 
 ## Syntax
 
@@ -93,7 +108,7 @@ func ExampleUnmarshalJSON() {
 
 ### Using other parsers
 
-Tree may works on other parsers those has compatible with "encoding/json" or "gopkg.in/yaml.v2". See [examples](examples) directory.
+Tree may work on other parsers that are compatible with "encoding/json" or "gopkg.in/yaml.v2". See [examples](examples) directory.
 
 ### Alternate json.RawMessage
 
@@ -190,6 +205,8 @@ func ExampleFind() {
 
 ### Query
 
+For more details on built-in methods, see the [Built-in Methods](#built-in-methods) section.
+
 | Query | Description | Results |
 | - | - | - |
 | .store.book[0] | The first book | {"category": "reference", "author": "Nigel Rees", "title": "Sayings of the Century", "price": 8.95, "tags": [...]} |
@@ -200,11 +217,17 @@ func ExampleFind() {
 | ..author | All authors |  "Nigel Rees", "Evelyn Waugh", "Herman Melville", "J. R. R. Tolkien" |
 | ..author \| [0] | The first author | "Nigel Rees" |
 | .store.book[.tags[.name == "genre" and .value == "fiction"]].title | All titles of books tagged "fiction" | "Sword of Honour", "Moby Dick" |
-| .store.book[(.category == "fiction" or .category == "reference") and .price < 10].title | All titles of books these are categoried into "fiction", "reference" and price < 10 | "Sayings of the Century", "Moby Dick" |
+| .store.book[(.category == "fiction" or .category == "reference") and .price < 10].title | All titles of books that are categorized as "fiction" or "reference" and price < 10 | "Sayings of the Century", "Moby Dick" |
 | .store.book[.title ~= "^S"].title | Titles beginning with "S" | "Sayings of the Century", "Sword of Honour" |
 | .store.book.count() | Count books | 4 |
-| .store.book[0].keys() | Sorted keys of the first book | ["author", "category", "price", "title"] |
-| .store.book[0].values() | Values of the first book | ["Nigel Rees", "reference", 8.95, "Sayings of the Century"] |
+| .store.book[0].keys() | Sorted keys of the first book | ["author", "category", "price", "tags", "title"] |
+| .store.book[0].values() | Values of the first book | ["Nigel Rees", "reference", 8.95, [tag objects], "Sayings of the Century"] |
+| .store.book.last().has("isbn") | Check if last book has ISBN | true |
+| .store.book[.author.contains("Tolkien")] | Check if any author contains "Tolkien" | [{"author": "J. R. R. Tolkien", ...}] |
+| .store.book[0].category.type() | Get type of category field | "string" |
+| .store.book[0].empty() | Check if first book is empty | false |
+| .store.book.first().title | Get title of first book | "Sayings of the Century" |
+| .store.book.last().author | Get author of last book | "J. R. R. Tolkien" |
 
 #### Illustrative Object
 
@@ -267,6 +290,48 @@ func ExampleFind() {
 }
 ```
 
+### Built-in Methods
+
+Tree provides several built-in methods for data manipulation and querying:
+
+#### Aggregate Methods
+- **`count()`** - Returns the count of elements in arrays or maps
+- **`keys()`** - Returns the keys of arrays (as indices) or maps
+- **`values()`** - Returns the values of arrays or maps as an array
+
+#### Condition Methods
+- **`empty()`** - Checks if the node is empty (empty arrays, maps, null values, or empty strings)
+- **`has(key)`** - Checks if the node has the specified key (works with arrays and maps)
+- **`contains(value)`** - Checks if the node contains the specified value (arrays, maps, or substring in strings)
+
+#### Data Type Methods
+- **`type()`** - Returns the type name of the node ("array", "object", "string", "number", "boolean", "null")
+
+#### Array Methods
+- **`first()`** - Returns the first element of an array
+- **`last()`** - Returns the last element of an array
+
+#### Examples
+
+```go
+// Count elements
+node.Find(".store.book.count()")  // Returns: 4
+
+// Check if key exists
+node.Find(".store.book[0].has(\"title\")")  // Returns: true
+
+// Check if contains value in string
+node.Find(".store.book[0].author.contains(\"Nigel\")")  // Returns: true
+
+// Get type
+node.Find(".store.book[0].price.type()")  // Returns: "number"
+
+// Array operations
+node.Find(".store.book.first().title")  // Returns: "Sayings of the Century"
+node.Find(".store.book.last().title")   // Returns: "The Lord of the Rings"
+```
+
+
 ## Edit
 
 ```go
@@ -322,7 +387,14 @@ brew install jarxorg/tree/tq
 Download binary
 
 ```sh
+# For macOS (Darwin)
 VERSION=0.8.2 GOOS=Darwin GOARCH=arm64; curl -fsSL "https://github.com/jarxorg/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
+
+# For Linux x64
+VERSION=0.8.2 GOOS=Linux GOARCH=amd64; curl -fsSL "https://github.com/jarxorg/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
+
+# For Windows x64
+VERSION=0.8.2; curl -fsSL "https://github.com/jarxorg/tree/releases/download/v${VERSION}/tree_${VERSION}_windows_amd64.zip" -o tq.zip && unzip tq.zip tq.exe
 ```
 
 ### Usage
@@ -367,6 +439,10 @@ Examples:
       "blue"
     ]
   }
+
+  # Using built-in methods
+  % echo '{"books": [{"author": "Tolkien"}, {"author": "Hemingway"}]}' | tq '.books[.author.contains("Tol")]'
+  [{"author": "Tolkien"}]
 
 ```
 

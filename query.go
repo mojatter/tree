@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"encoding/csv"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -228,70 +229,6 @@ func (q SlurpQuery) Exec(n Node) ([]Node, error) {
 
 func (q SlurpQuery) String() string {
 	return " | "
-}
-
-type CountQuery struct{}
-
-func (q CountQuery) Exec(n Node) ([]Node, error) {
-	switch n.Type() {
-	case TypeArray:
-		return ToNodeValues(len(n.Array())), nil
-	case TypeMap:
-		return ToNodeValues(len(n.Map())), nil
-	}
-	return ToNodeValues(0), nil
-}
-
-func (q CountQuery) String() string {
-	return "count()"
-}
-
-type KeysQuery struct{}
-
-func (q KeysQuery) Exec(n Node) ([]Node, error) {
-	switch n.Type() {
-	case TypeArray:
-		a := n.Array()
-		keys := make(Array, len(a))
-		for i := 0; i < len(a); i++ {
-			keys[i] = NumberValue(i)
-		}
-		return []Node{keys}, nil
-	case TypeMap:
-		strKeys := n.Map().Keys()
-		keys := make(Array, len(strKeys))
-		for i := range strKeys {
-			keys[i] = StringValue(strKeys[i])
-		}
-		return []Node{keys}, nil
-	}
-	return nil, nil
-}
-
-func (q KeysQuery) String() string {
-	return "keys()"
-}
-
-type ValuesQuery struct{}
-
-func (q ValuesQuery) Exec(n Node) ([]Node, error) {
-	switch n.Type() {
-	case TypeArray:
-		return []Node{n.Array()}, nil
-	case TypeMap:
-		m := n.Map()
-		keys := m.Keys()
-		values := make(Array, len(keys))
-		for i, key := range keys {
-			values[i] = m[key]
-		}
-		return []Node{values}, nil
-	}
-	return nil, nil
-}
-
-func (q ValuesQuery) String() string {
-	return "values()"
 }
 
 // FilterQuery consists of multiple queries that filter the nodes in order.
@@ -648,6 +585,8 @@ func ParseQuery(expr string) (Query, error) {
 
 type token struct {
 	cmd      string
+	method   string
+	argsStr  string
 	quoted   bool
 	value    string
 	parent   *token
@@ -685,7 +624,19 @@ func (t *token) indexOfCmd(cmd string) int {
 	return -1
 }
 
-var tokenRegexp = regexp.MustCompile(`"([^"]*)"|(and|or|==|<=|>=|!=|~=|\.\.|[\.\[\]\(\)\|<>:]|[a-z]+\(\))|(\w+)`)
+func (t *token) Args() ([]string, error) {
+	if t.argsStr == "" {
+		return nil, nil
+	}
+	r := csv.NewReader(strings.NewReader(t.argsStr))
+	args, err := r.Read()
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse args: %w", err)
+	}
+	return args, nil
+}
+
+var tokenRegexp = regexp.MustCompile(`"([^"]*)"|(and|or|==|<=|>=|!=|~=|\.\.|[\.\[\]\(\)\|<>:]|([a-z]+)\(([^\)]*)\))|(\w+)`)
 
 // tokenizeQuery parses a query expression string into a token tree.
 // Uses regular expressions to identify different token types.
@@ -695,7 +646,9 @@ func tokenizeQuery(expr string) (*token, error) {
 	for _, m := range ms {
 		quoted := m[1]
 		cmd := m[2]
-		word := m[3]
+		method := m[3]
+		argsStr := m[4]
+		word := m[5]
 		// NOTE: detect node name
 		if quoted != "" || word != "" {
 			value := quoted
@@ -716,7 +669,7 @@ func tokenizeQuery(expr string) (*token, error) {
 			continue
 		}
 		// NOTE: detect keywords
-		t := &token{cmd: cmd, parent: current}
+		t := &token{cmd: cmd, method: method, argsStr: argsStr, parent: current}
 		switch cmd {
 		case "]", ")":
 			if (cmd == "]" && current.cmd != "[") || (cmd == ")" && current.cmd != "(") {
@@ -739,6 +692,13 @@ func tokenizeQuery(expr string) (*token, error) {
 // tokenToQuery converts a token tree into a Query object.
 // Recursively processes tokens based on their command type.
 func tokenToQuery(t *token, expr string) (Query, error) {
+	if t.method != "" {
+		args, err := t.Args()
+		if err != nil {
+			return nil, err
+		}
+		return NewMethodQuery(t.method, args...)
+	}
 	child := len(t.children)
 	switch t.cmd {
 	case "":
@@ -757,12 +717,6 @@ func tokenToQuery(t *token, expr string) (Query, error) {
 			return WalkQuery(t.value), nil
 		}
 		return NopQuery{}, nil
-	case "count()":
-		return CountQuery{}, nil
-	case "keys()":
-		return KeysQuery{}, nil
-	case "values()":
-		return ValuesQuery{}, nil
 	case "[":
 		if child == 0 {
 			return SelectQuery{}, nil
