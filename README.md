@@ -30,7 +30,6 @@ Tree is a simple structure for dealing with dynamic or unknown JSON/YAML in Go.
 ## Road to 1.0
 
 - Placeholders in query.
-- Support single quotation in query.
 - Merge support in tq.
 
 ## Syntax

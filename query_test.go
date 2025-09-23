@@ -210,6 +210,13 @@ func Test_ParseQuery(t *testing.T) {
 				ArrayQuery(0),
 			},
 		}, {
+			expr: `.'store'.'book'[0]`,
+			want: FilterQuery{
+				MapQuery("store"),
+				MapQuery("book"),
+				ArrayQuery(0),
+			},
+		}, {
 			expr: `.store.book[0:1]`,
 			want: FilterQuery{
 				MapQuery("store"),
@@ -578,6 +585,17 @@ func Test_Edit(t *testing.T) {
 		}, {
 			n:    Map{},
 			expr: `.store.pen = [{"color":"red"},{"color":"blue"}]`,
+			want: Map{
+				"store": Map{
+					"pen": Array{
+						Map{"color": StringValue("red")},
+						Map{"color": StringValue("blue")},
+					},
+				},
+			},
+		}, {
+			n:    Map{},
+			expr: `.store.pen = [{'color':'red'},{'color':'blue'}]`,
 			want: Map{
 				"store": Map{
 					"pen": Array{

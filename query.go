@@ -937,7 +937,7 @@ func Edit(pn *Node, expr string) error {
 	var v Node
 	if right != "" {
 		var err error
-		v, err = UnmarshalJSON([]byte(right))
+		v, err = UnmarshalYAML([]byte(right))
 		if err != nil {
 			return err
 		}

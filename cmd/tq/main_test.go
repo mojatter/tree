@@ -76,6 +76,10 @@ func TestRun(t *testing.T) {
 			args:     []string{".store.book[.tags[.name == \"genre\" and .value == \"fiction\"]]|", "testdata/store.json"},
 			want:     mustReadFileString("testdata/book-1-3.json"),
 		}, {
+			caseName: "single quote",
+			args:     []string{".store.book[.tags[.name == 'genre' and .value == 'fiction']]|", "testdata/store.json"},
+			want:     mustReadFileString("testdata/book-1-3.json"),
+		}, {
 			caseName: "expand books",
 			stdin:    "testdata/store.json",
 			args:     []string{"-x", ".store.book"},
