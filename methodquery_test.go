@@ -193,6 +193,68 @@ func Test_MethodQuery(t *testing.T) {
 			q:        &LastQuery{},
 			n:        Array{},
 			want:     []Node{Nil},
+		}, {
+			caseName: "sort array of numbers",
+			q:        &SortQuery{},
+			n:        ToArrayValues(3, 1, 2),
+			want:     []Node{ToArrayValues(1, 2, 3)},
+		}, {
+			caseName: "sort array of strings",
+			q:        &SortQuery{},
+			n:        ToArrayValues("c", "a", "b"),
+			want:     []Node{ToArrayValues("a", "b", "c")},
+		}, {
+			caseName: "sort array of maps by field",
+			q:        &SortQuery{Expr: ".age", Query: MapQuery("age")},
+			n: Array{
+				Map{"name": StringValue("Alice"), "age": NumberValue(30)},
+				Map{"name": StringValue("Bob"), "age": NumberValue(25)},
+				Map{"name": StringValue("Charlie"), "age": NumberValue(35)},
+			},
+			want: []Node{Array{
+				Map{"name": StringValue("Bob"), "age": NumberValue(25)},
+				Map{"name": StringValue("Alice"), "age": NumberValue(30)},
+				Map{"name": StringValue("Charlie"), "age": NumberValue(35)},
+			}},
+		}, {
+			caseName: "sort array of maps by nested field",
+			q: func() Query {
+				q, _ := NewSortQuery(".meta.id")
+				return q
+			}(),
+			n: Array{
+				Map{"name": StringValue("A"), "meta": Map{"id": NumberValue(3)}},
+				Map{"name": StringValue("B"), "meta": Map{"id": NumberValue(1)}},
+				Map{"name": StringValue("C"), "meta": Map{"id": NumberValue(2)}},
+			},
+			want: []Node{Array{
+				Map{"name": StringValue("B"), "meta": Map{"id": NumberValue(1)}},
+				Map{"name": StringValue("C"), "meta": Map{"id": NumberValue(2)}},
+				Map{"name": StringValue("A"), "meta": Map{"id": NumberValue(3)}},
+			}},
+		}, {
+			caseName: "sort non-array",
+			q:        &SortQuery{},
+			n:        StringValue("test"),
+			want:     []Node{StringValue("test")},
+		}, {
+			caseName: "rsort array of numbers",
+			q:        &RSortQuery{},
+			n:        ToArrayValues(1, 3, 2),
+			want:     []Node{ToArrayValues(3, 2, 1)},
+		}, {
+			caseName: "rsort array of maps by field",
+			q:        &RSortQuery{Expr: ".age", Query: MapQuery("age")},
+			n: Array{
+				Map{"name": StringValue("Bob"), "age": NumberValue(25)},
+				Map{"name": StringValue("Alice"), "age": NumberValue(30)},
+				Map{"name": StringValue("Charlie"), "age": NumberValue(35)},
+			},
+			want: []Node{Array{
+				Map{"name": StringValue("Charlie"), "age": NumberValue(35)},
+				Map{"name": StringValue("Alice"), "age": NumberValue(30)},
+				Map{"name": StringValue("Bob"), "age": NumberValue(25)},
+			}},
 		},
 	}
 	for _, tc := range testCases {
@@ -302,6 +364,30 @@ func Test_NewMethodQuery(t *testing.T) {
 			method:   "last",
 			args:     []string{},
 			wantType: "*tree.LastQuery",
+		},
+		{
+			caseName: "sort method no args",
+			method:   "sort",
+			args:     []string{},
+			wantType: "*tree.SortQuery",
+		},
+		{
+			caseName: "sort method with field",
+			method:   "sort",
+			args:     []string{"name"},
+			wantType: "*tree.SortQuery",
+		},
+		{
+			caseName: "rsort method no args",
+			method:   "rsort",
+			args:     []string{},
+			wantType: "*tree.RSortQuery",
+		},
+		{
+			caseName: "rsort method with field",
+			method:   "rsort",
+			args:     []string{"name"},
+			wantType: "*tree.RSortQuery",
 		},
 		{
 			caseName: "unknown method",
