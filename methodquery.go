@@ -2,6 +2,7 @@ package tree
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"sync"
 )
@@ -345,6 +346,140 @@ func (q *LastQuery) String() string {
 	return "last()"
 }
 
+// SortQuery sorts elements in an array.
+// For arrays of objects, it can optionally sort by a query expression.
+type SortQuery struct {
+	Expr  string
+	Query Query
+}
+
+// NewSortQuery creates a new SortQuery instance.
+// Arguments:
+//   - args[0] (optional): the query expression to sort by.
+func NewSortQuery(args ...string) (Query, error) {
+	var expr string
+	var q Query
+	if len(args) > 0 {
+		expr = args[0]
+		var err error
+		if q, err = ParseQuery(expr); err != nil {
+			return nil, err
+		}
+	}
+	return &SortQuery{Expr: expr, Query: q}, nil
+}
+
+// Exec sorts the elements of the node if it's an array.
+// For non-array types, returns the node as is in a slice.
+func (q *SortQuery) Exec(n Node) ([]Node, error) {
+	if n.Type() != TypeArray {
+		return []Node{n}, nil
+	}
+	a := n.Array()
+	if len(a) <= 1 {
+		return []Node{a}, nil
+	}
+
+	sorted := make(Array, len(a))
+	copy(sorted, a)
+
+	sort.SliceStable(sorted, func(i, j int) bool {
+		var vi, vj Value
+		if q.Query != nil {
+			if ri, _ := q.Query.Exec(sorted[i]); len(ri) > 0 {
+				vi = ri[0].Value()
+			} else {
+				vi = Nil
+			}
+			if rj, _ := q.Query.Exec(sorted[j]); len(rj) > 0 {
+				vj = rj[0].Value()
+			} else {
+				vj = Nil
+			}
+		} else {
+			vi = sorted[i].Value()
+			vj = sorted[j].Value()
+		}
+		return vi.Compare(LT, vj)
+	})
+
+	return []Node{sorted}, nil
+}
+
+func (q *SortQuery) String() string {
+	if q.Expr != "" {
+		return fmt.Sprintf("sort(%q)", q.Expr)
+	}
+	return "sort()"
+}
+
+// RSortQuery sorts elements in an array in reverse order.
+// For arrays of objects, it can optionally sort by a query expression.
+type RSortQuery struct {
+	Expr  string
+	Query Query
+}
+
+// NewRSortQuery creates a new RSortQuery instance.
+// Arguments:
+//   - args[0] (optional): the query expression to sort by.
+func NewRSortQuery(args ...string) (Query, error) {
+	var expr string
+	var q Query
+	if len(args) > 0 {
+		expr = args[0]
+		var err error
+		if q, err = ParseQuery(expr); err != nil {
+			return nil, err
+		}
+	}
+	return &RSortQuery{Expr: expr, Query: q}, nil
+}
+
+// Exec sorts the elements of the node in reverse order if it's an array.
+// For non-array types, returns the node as is in a slice.
+func (q *RSortQuery) Exec(n Node) ([]Node, error) {
+	if n.Type() != TypeArray {
+		return []Node{n}, nil
+	}
+	a := n.Array()
+	if len(a) <= 1 {
+		return []Node{a}, nil
+	}
+
+	sorted := make(Array, len(a))
+	copy(sorted, a)
+
+	sort.SliceStable(sorted, func(i, j int) bool {
+		var vi, vj Value
+		if q.Query != nil {
+			if ri, _ := q.Query.Exec(sorted[i]); len(ri) > 0 {
+				vi = ri[0].Value()
+			} else {
+				vi = Nil
+			}
+			if rj, _ := q.Query.Exec(sorted[j]); len(rj) > 0 {
+				vj = rj[0].Value()
+			} else {
+				vj = Nil
+			}
+		} else {
+			vi = sorted[i].Value()
+			vj = sorted[j].Value()
+		}
+		return vi.Compare(GT, vj)
+	})
+
+	return []Node{sorted}, nil
+}
+
+func (q *RSortQuery) String() string {
+	if q.Expr != "" {
+		return fmt.Sprintf("rsort(%q)", q.Expr)
+	}
+	return "rsort()"
+}
+
 // init automatically registers the built-in method queries.
 func init() {
 	RegisterNewMethodQueryFunc("count", NewCountQuery)
@@ -356,4 +491,6 @@ func init() {
 	RegisterNewMethodQueryFunc("contains", NewContainsQuery)
 	RegisterNewMethodQueryFunc("first", NewFirstQuery)
 	RegisterNewMethodQueryFunc("last", NewLastQuery)
+	RegisterNewMethodQueryFunc("sort", NewSortQuery)
+	RegisterNewMethodQueryFunc("rsort", NewRSortQuery)
 }
