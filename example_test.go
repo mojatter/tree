@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/jarxorg/tree"
+	"github.com/mojatter/tree"
 	"gopkg.in/yaml.v2"
 )
 

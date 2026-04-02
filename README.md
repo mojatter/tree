@@ -1,7 +1,7 @@
 # Tree
 
-[![PkgGoDev](https://pkg.go.dev/badge/github.com/jarxorg/tree)](https://pkg.go.dev/github.com/jarxorg/tree)
-[![Report Card](https://goreportcard.com/badge/github.com/jarxorg/tree)](https://goreportcard.com/report/github.com/jarxorg/tree)
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/mojatter/tree)](https://pkg.go.dev/github.com/mojatter/tree)
+[![Report Card](https://goreportcard.com/badge/github.com/mojatter/tree)](https://goreportcard.com/report/github.com/mojatter/tree)
 
 Tree is a simple structure for dealing with dynamic or unknown JSON/YAML in Go.
 
@@ -123,7 +123,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/jarxorg/tree"
+	"github.com/mojatter/tree"
 )
 
 const input = `
@@ -373,27 +373,27 @@ tq is a portable command-line JSON/YAML processor.
 ### Installation
 
 ```sh
-go install github.com/jarxorg/tree/cmd/tq@latest
+go install github.com/mojatter/tree/cmd/tq@latest
 ```
 
 Using Homebrew
 
 ```sh
-brew tap jarxorg/tree
-brew install jarxorg/tree/tq
+brew tap mojatter/tree
+brew install mojatter/tree/tq
 ```
 
 Download binary
 
 ```sh
 # For macOS (Darwin)
-VERSION=0.8.4 GOOS=Darwin GOARCH=arm64; curl -fsSL "https://github.com/jarxorg/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
+VERSION=0.8.4 GOOS=Darwin GOARCH=arm64; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
 
 # For Linux x64
-VERSION=0.8.4 GOOS=Linux GOARCH=amd64; curl -fsSL "https://github.com/jarxorg/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
+VERSION=0.8.4 GOOS=Linux GOARCH=amd64; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
 
 # For Windows x64
-VERSION=0.8.4; curl -fsSL "https://github.com/jarxorg/tree/releases/download/v${VERSION}/tree_${VERSION}_windows_amd64.zip" -o tq.zip && unzip tq.zip tq.exe
+VERSION=0.8.4; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_windows_amd64.zip" -o tq.zip && unzip tq.zip tq.exe
 ```
 
 ### Usage

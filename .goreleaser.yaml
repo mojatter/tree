@@ -29,10 +29,10 @@ archives:
 brews:
   - name: tq
     ids: [ 'tq' ]
-    homepage: https://github.com/jarxorg/tree#tq
+    homepage: https://github.com/mojatter/tree#tq
     description: tq is a portable command-line JSON/YAML processor.
     directory: Formula
     repository:
-      owner: jarxorg
+      owner: mojatter
       name: homebrew-tree
       token: "{{ .Env.TREE_HOMEBREW_TAP_GITHUB_TOKEN }}"

@@ -5,7 +5,7 @@ import (
 	"log"
 
 	goyaml "github.com/goccy/go-yaml"
-	"github.com/jarxorg/tree"
+	"github.com/mojatter/tree"
 	yamlv3 "gopkg.in/yaml.v3"
 )
 

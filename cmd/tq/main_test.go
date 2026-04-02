@@ -5,8 +5,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/jarxorg/io2"
-	"github.com/jarxorg/tree"
+	"github.com/mojatter/io2"
+	"github.com/mojatter/tree"
 )
 
 func TestRun(t *testing.T) {

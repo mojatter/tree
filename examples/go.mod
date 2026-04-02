@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/goccy/go-json v0.9.4
 	github.com/goccy/go-yaml v1.9.5
-	github.com/jarxorg/tree v0.0.0
+	github.com/mojatter/tree v0.0.0
 	github.com/json-iterator/go v1.1.12
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
@@ -21,4 +21,4 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
 
-replace github.com/jarxorg/tree => ../
+replace github.com/mojatter/tree => ../

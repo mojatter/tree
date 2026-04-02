@@ -9,8 +9,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/jarxorg/io2"
-	"github.com/jarxorg/tree"
+	"github.com/mojatter/io2"
+	"github.com/mojatter/tree"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
 	"gopkg.in/yaml.v2"

@@ -574,7 +574,7 @@ var (
 )
 
 // ParseQuery parses the provided expr to a Query.
-// See https://github.com/jarxorg/tree#Query
+// See https://github.com/mojatter/tree#Query
 func ParseQuery(expr string) (Query, error) {
 	token, err := tokenizeQuery(expr)
 	if err != nil {

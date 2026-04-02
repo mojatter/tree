@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/jarxorg/tree"
+	"github.com/mojatter/tree"
 )
 
 type evenIndexQuery struct{}
