@@ -873,3 +873,76 @@ func FuzzEdit(f *testing.F) {
 		_ = Edit(&n, expr)
 	})
 }
+
+const benchStoreJSON = `{
+  "store": {
+    "bicycle": { "color": "red", "price": 19.95 },
+    "book": [
+      { "author": "Nigel Rees", "category": "reference", "price": 8.95, "title": "Sayings of the Century",
+        "tags": [{"name":"genre","value":"reference"},{"name":"era","value":"20th century"},{"name":"theme","value":"quotations"}] },
+      { "author": "Evelyn Waugh", "category": "fiction", "price": 12.99, "title": "Sword of Honour",
+        "tags": [{"name":"genre","value":"fiction"},{"name":"era","value":"20th century"},{"name":"theme","value":"WWII"}] },
+      { "author": "Herman Melville", "category": "fiction", "isbn": "0-553-21311-3", "price": 8.99, "title": "Moby Dick",
+        "tags": [{"name":"genre","value":"fiction"},{"name":"era","value":"19th century"},{"name":"theme","value":"whale hunting"}] },
+      { "author": "J. R. R. Tolkien", "category": "fiction", "isbn": "0-395-19395-8", "price": 22.99, "title": "The Lord of the Rings",
+        "tags": [{"name":"genre","value":"fantasy"},{"name":"era","value":"20th century"},{"name":"theme","value":"good vs evil"}] }
+    ]
+  }
+}`
+
+func mustBenchNode(b *testing.B) Node {
+	b.Helper()
+	n, err := UnmarshalJSON([]byte(benchStoreJSON))
+	if err != nil {
+		b.Fatal(err)
+	}
+	return n
+}
+
+// BenchmarkQueryParse measures the cost of parsing representative
+// query expressions of varying complexity.
+func BenchmarkQueryParse(b *testing.B) {
+	exprs := []struct {
+		caseName string
+		expr     string
+	}{
+		{"simple", ".store.book[0].title"},
+		{"range", ".store.book[1:3]|"},
+		{"selector", `.store.book[.tags[.name == "genre" and .value == "fiction"]]|`},
+		{"method", ".store.book.count()"},
+	}
+	for _, e := range exprs {
+		b.Run(e.caseName, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				if _, err := ParseQuery(e.expr); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkFind measures end-to-end query evaluation (parse + walk)
+// for a small handful of representative query shapes against the
+// embedded sample document.
+func BenchmarkFind(b *testing.B) {
+	n := mustBenchNode(b)
+	exprs := []struct {
+		caseName string
+		expr     string
+	}{
+		{"simple", ".store.book[0].title"},
+		{"range", ".store.book[1:3]|"},
+		{"selector", `.store.book[.tags[.name == "genre" and .value == "fiction"]]|`},
+		{"walk", "..walk"},
+	}
+	for _, e := range exprs {
+		b.Run(e.caseName, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				if _, err := Find(n, e.expr); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}

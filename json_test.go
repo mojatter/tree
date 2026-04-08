@@ -279,3 +279,14 @@ func FuzzUnmarshalJSON(f *testing.F) {
 		_, _ = UnmarshalJSON(data)
 	})
 }
+
+// BenchmarkUnmarshalJSON measures decoding the embedded sample
+// document into a Node tree.
+func BenchmarkUnmarshalJSON(b *testing.B) {
+	data := []byte(benchStoreJSON)
+	for i := 0; i < b.N; i++ {
+		if _, err := UnmarshalJSON(data); err != nil {
+			b.Fatal(err)
+		}
+	}
+}

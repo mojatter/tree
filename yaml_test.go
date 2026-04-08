@@ -296,3 +296,55 @@ func FuzzUnmarshalYAML(f *testing.F) {
 		_, _ = UnmarshalYAML(data)
 	})
 }
+
+const benchStoreYAML = `store:
+  bicycle:
+    color: red
+    price: 19.95
+  book:
+    - author: Nigel Rees
+      category: reference
+      price: 8.95
+      title: Sayings of the Century
+      tags:
+        - {name: genre, value: reference}
+        - {name: era, value: 20th century}
+        - {name: theme, value: quotations}
+    - author: Evelyn Waugh
+      category: fiction
+      price: 12.99
+      title: Sword of Honour
+      tags:
+        - {name: genre, value: fiction}
+        - {name: era, value: 20th century}
+        - {name: theme, value: WWII}
+    - author: Herman Melville
+      category: fiction
+      isbn: 0-553-21311-3
+      price: 8.99
+      title: Moby Dick
+      tags:
+        - {name: genre, value: fiction}
+        - {name: era, value: 19th century}
+        - {name: theme, value: whale hunting}
+    - author: J. R. R. Tolkien
+      category: fiction
+      isbn: 0-395-19395-8
+      price: 22.99
+      title: The Lord of the Rings
+      tags:
+        - {name: genre, value: fantasy}
+        - {name: era, value: 20th century}
+        - {name: theme, value: good vs evil}
+`
+
+// BenchmarkUnmarshalYAML measures decoding the embedded sample
+// document into a Node tree.
+func BenchmarkUnmarshalYAML(b *testing.B) {
+	data := []byte(benchStoreYAML)
+	for i := 0; i < b.N; i++ {
+		if _, err := UnmarshalYAML(data); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
