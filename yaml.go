@@ -48,7 +48,7 @@ func (n *Array) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err := unmarshal(&v); err != nil {
 		return err
 	}
-	ToNode(v).Array().Each(func(key interface{}, v Node) error {
+	_ = ToNode(v).Array().Each(func(key interface{}, v Node) error {
 		*n = append(*n, v)
 		return nil
 	})

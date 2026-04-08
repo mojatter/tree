@@ -327,7 +327,7 @@ func (q WalkQuery) Exec(root Node) ([]Node, error) {
 	key := string(q)
 	var r []Node
 	// NOTE: Walk returns no error.
-	Walk(root, func(n Node, keys []interface{}) error {
+	_ = Walk(root, func(n Node, keys []interface{}) error {
 		if n == nil {
 			return nil
 		}
@@ -344,7 +344,7 @@ func (q WalkQuery) Set(pn *Node, v Node) error {
 	return Walk(*pn, func(n Node, keys []interface{}) error {
 		if n.Has(key) {
 			if en, ok := n.(EditorNode); ok {
-				en.Set(key, v)
+				_ = en.Set(key, v)
 			}
 		}
 		return nil
@@ -357,7 +357,7 @@ func (q WalkQuery) Append(pn *Node, v Node) error {
 		if n.Has(key) {
 			if nv := n.Get(key); nv != nil {
 				if env, ok := nv.(EditorNode); ok {
-					env.Append(v)
+					_ = env.Append(v)
 				}
 			}
 		}
@@ -370,7 +370,7 @@ func (q WalkQuery) Delete(pn *Node) error {
 	return Walk(*pn, func(n Node, keys []interface{}) error {
 		if n.Has(key) {
 			if en, ok := n.(EditorNode); ok {
-				en.Delete(key)
+				_ = en.Delete(key)
 			}
 		}
 		return nil
@@ -530,7 +530,7 @@ func (q SelectQuery) Exec(n Node) ([]Node, error) {
 		}
 		var rs []Node
 		for _, nn := range a {
-			ok, err := q.Selector.Matches(nn)
+			ok, err := q.Matches(nn)
 			if err != nil {
 				return nil, err
 			}
@@ -546,7 +546,7 @@ func (q SelectQuery) Exec(n Node) ([]Node, error) {
 		}
 		var rs []Node
 		for _, nn := range m.Values() {
-			ok, err := q.Selector.Matches(nn)
+			ok, err := q.Matches(nn)
 			if err != nil {
 				return nil, err
 			}
