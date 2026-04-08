@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a defect in tree or tq
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please fill in as much
+        of the form as you can — minimal reproductions help a lot.
+
+  - type: input
+    id: version
+    attributes:
+      label: tree / tq version
+      description: Output of `tq -v`, or the tree module version from `go.mod`.
+      placeholder: "v0.8.4"
+    validations:
+      required: true
+
+  - type: input
+    id: go-version
+    attributes:
+      label: Go version
+      description: Output of `go version`.
+      placeholder: "go version go1.24.4 darwin/arm64"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS / arch
+      placeholder: "macOS 15.0 / arm64"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you see, and what did you expect?
+      placeholder: |
+        I ran `tq '.store.book[0]' file.json` and got ...
+        I expected ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: |
+        A small input file or inline JSON/YAML and the exact command used.
+        Code blocks render best with triple backticks.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output / error
+      description: Paste any relevant error message, stack trace, or unexpected output.
+      render: shell
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Workarounds you tried, related issues, etc.
