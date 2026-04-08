@@ -40,17 +40,6 @@ const (
 	filenameStdin = "-"
 )
 
-type stringList []string
-
-func (l *stringList) String() string {
-	return strings.Join(*l, ",")
-}
-
-func (l *stringList) Set(value string) error {
-	*l = append(*l, value)
-	return nil
-}
-
 type decodeError struct {
 	err error
 }
@@ -97,7 +86,7 @@ func newStdinReader() (io.ReadSeekCloser, error) {
 		return os.Remove(tmp.Name())
 	}
 	if _, err := io.Copy(tmp, os.Stdin); err != nil {
-		r.Close()
+		_ = r.Close()
 		return nil, err
 	}
 	if _, err := r.Seek(0, io.SeekStart); err != nil {
@@ -162,17 +151,17 @@ func (r *runner) initFlagSet(args []string) error {
 	s.StringVarP(&r.outputFormat, "output-format", "o", "", "output format (json or yaml, default json)")
 	s.StringArrayVarP(&r.editExprs, "edit", "e", nil, "edit expression")
 	s.Usage = func() {
-		fmt.Fprintf(r.stderr, "%s\n\nUsage:\n  %s\n\n", desc, usage)
-		fmt.Fprintln(r.stderr, "Flags:")
+		_, _ = fmt.Fprintf(r.stderr, "%s\n\nUsage:\n  %s\n\n", desc, usage)
+		_, _ = fmt.Fprintln(r.stderr, "Flags:")
 		s.PrintDefaults()
-		fmt.Fprintf(r.stderr, "\n%s", examplesText)
+		_, _ = fmt.Fprintf(r.stderr, "\n%s", examplesText)
 	}
 	return s.Parse(args[1:])
 }
 
 func (r *runner) close() {
 	if r.out != nil {
-		r.out.Close()
+		_ = r.out.Close()
 		r.out = nil
 	}
 }
@@ -184,7 +173,7 @@ func (r *runner) run(args []string) error {
 		return err
 	}
 	if r.isVersion {
-		fmt.Fprintln(r.out, tree.VERSION)
+		_, _ = fmt.Fprintln(r.out, tree.VERSION)
 		return nil
 	}
 	if r.isHelp || (r.flagSet.Arg(0) == "" && len(r.editExprs) == 0) {
@@ -229,7 +218,7 @@ func (r *runner) evaluateInputFiles(f *inputFiles) error {
 		}
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 
 	filename := f.filename
 	var inplaceTmp *os.File
@@ -240,8 +229,8 @@ func (r *runner) evaluateInputFiles(f *inputFiles) error {
 		}
 		r.out = inplaceTmp
 		defer func() {
-			inplaceTmp.Close()
-			os.Remove(inplaceTmp.Name())
+			_ = inplaceTmp.Close()
+			_ = os.Remove(inplaceTmp.Name())
 		}()
 	}
 	if err := r.evaluate(in); err != nil {
@@ -254,11 +243,11 @@ func (r *runner) evaluateInputFiles(f *inputFiles) error {
 		if _, err := inplaceTmp.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
-		out, err := os.Create(filename)
+		out, err := os.Create(filename) //nolint:gosec // inplace write to the user-specified input file is intentional
 		if err != nil {
 			return err
 		}
-		defer out.Close()
+		defer func() { _ = out.Close() }()
 		if _, err := io.Copy(out, inplaceTmp); err != nil {
 			return err
 		}
