@@ -122,9 +122,13 @@ func ToAny(n Node) interface{} {
 }
 
 // SkipWalk is used as a return value from WalkFunc to indicate that
-// the node and that children in the call is to be skipped.
+// the node and its children in the call are to be skipped.
 // It is not returned as an error by any function.
-var SkipWalk = errors.New("skip")
+//
+// Like [io/fs.SkipDir] and [io/fs.SkipAll], this is a sentinel control
+// value rather than a failure, so it intentionally does not use the
+// "Err" prefix recommended by ST1012.
+var SkipWalk = errors.New("skip") //nolint:staticcheck // ST1012: sentinel value, see godoc
 
 // WalkFunc is the type of the function called by Walk to visit each nodes.
 //
