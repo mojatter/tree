@@ -142,7 +142,7 @@ func mergeArray(a, b Array, opts MergeOption) Array {
 	if opts.isOverrideArray() {
 		for i, v := range b {
 			if i < len(a) {
-				a.Set(i, Merge(a[i], v, opts))
+				_ = a.Set(i, Merge(a[i], v, opts))
 			} else {
 				a = append(a, v)
 			}
