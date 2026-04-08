@@ -827,3 +827,49 @@ func Test_Edit(t *testing.T) {
 		}
 	}
 }
+
+// FuzzParseQuery exercises the query parser with arbitrary input,
+// ensuring it never panics. It does not assert successful parsing;
+// it only requires that errors are returned cleanly for invalid input.
+func FuzzParseQuery(f *testing.F) {
+	seeds := []string{
+		".",
+		".foo",
+		".foo.bar",
+		".a[0]",
+		".a[0:3]",
+		".a[.name == \"x\"]",
+		"..walk",
+		".a | .b",
+		".a.count()",
+		".a.sort(\".name\")",
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, expr string) {
+		_, _ = ParseQuery(expr)
+	})
+}
+
+// FuzzEdit exercises the Edit expression parser and evaluator with
+// arbitrary input against a fresh empty Map. It only requires that
+// invalid expressions return an error rather than panicking.
+func FuzzEdit(f *testing.F) {
+	seeds := []string{
+		`.a = 1`,
+		`.a = "x"`,
+		`.a += 1`,
+		`.a.b = true`,
+		`.a = [1, 2, 3]`,
+		`.a = {"k": "v"}`,
+		`delete .a`,
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, expr string) {
+		var n Node = Map{}
+		_ = Edit(&n, expr)
+	})
+}
