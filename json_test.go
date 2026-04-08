@@ -259,3 +259,23 @@ func Test_UnmarshalViaJSON(t *testing.T) {
 		t.Errorf("got %#v; want %#v", got, want)
 	}
 }
+
+// FuzzUnmarshalJSON exercises the JSON unmarshaler with arbitrary
+// bytes, ensuring it never panics on malformed input.
+func FuzzUnmarshalJSON(f *testing.F) {
+	seeds := [][]byte{
+		[]byte(`null`),
+		[]byte(`true`),
+		[]byte(`1`),
+		[]byte(`"s"`),
+		[]byte(`[]`),
+		[]byte(`{}`),
+		[]byte(`{"a": [1, 2, {"b": null}]}`),
+	}
+	for _, s := range seeds {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, data []byte) {
+		_, _ = UnmarshalJSON(data)
+	})
+}
