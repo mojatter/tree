@@ -3,7 +3,7 @@ module examples
 go 1.26
 
 require (
-	github.com/goccy/go-json v0.9.4
+	github.com/goccy/go-json v0.10.6
 	github.com/goccy/go-yaml v1.9.5
 	github.com/json-iterator/go v1.1.12
 	github.com/mojatter/tree v0.0.0
