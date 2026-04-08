@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/mojatter/io2"
@@ -187,6 +188,141 @@ func TestRun(t *testing.T) {
 			}
 			if got := buf.String(); got != tc.want {
 				t.Errorf("got %s; want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestNewRunnerDefaults ensures newRunner() wires stderr/out to the
+// process streams. Previously this constructor was uncovered.
+func TestNewRunnerDefaults(t *testing.T) {
+	r := newRunner()
+	if r == nil {
+		t.Fatal("newRunner returned nil")
+	}
+	if r.stderr != os.Stderr {
+		t.Errorf("stderr not os.Stderr")
+	}
+	if r.out == nil {
+		t.Errorf("out is nil")
+	}
+}
+
+// newTestRunner builds a runner that buffers its output/error streams
+// so tests can assert on them without touching real FDs.
+func newTestRunner(buf *bytes.Buffer) *runner {
+	return &runner{
+		stderr: io2.NopWriteCloser(buf),
+		out:    io2.NopWriteCloser(buf),
+	}
+}
+
+// TestRunOutputFile verifies the `-O` flag writes results to a file
+// instead of stdout, covering the os.Create path in (*runner).run.
+func TestRunOutputFile(t *testing.T) {
+	dir := t.TempDir()
+	outPath := filepath.Join(dir, "out.json")
+
+	buf := new(bytes.Buffer)
+	r := newTestRunner(buf)
+	defer r.close()
+
+	if err := r.run([]string{"tq", "-O", outPath, ".store.book[0]", "testdata/store.json"}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	want, err := os.ReadFile("testdata/book-0.json")
+	if err != nil {
+		t.Fatalf("ReadFile want: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
+// TestRunInplace verifies the `-U` flag writes results back to the
+// input file, exercising the evaluateInputFiles inplace branch.
+func TestRunInplace(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "store.json")
+	src, err := os.ReadFile("testdata/store.json")
+	if err != nil {
+		t.Fatalf("ReadFile src: %v", err)
+	}
+	if err := os.WriteFile(target, src, 0o644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	buf := new(bytes.Buffer)
+	r := newTestRunner(buf)
+	defer r.close()
+
+	if err := r.run([]string{"tq", "-U", ".store.book[0]", target}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	got, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("ReadFile target: %v", err)
+	}
+	want, err := os.ReadFile("testdata/book-0.json")
+	if err != nil {
+		t.Fatalf("ReadFile want: %v", err)
+	}
+	if string(got) != string(want) {
+		t.Errorf("got %q\nwant %q", got, want)
+	}
+}
+
+// TestRunRawString covers the `-r` flag path in (*runner).output which
+// prints string values without JSON quoting.
+func TestRunRawString(t *testing.T) {
+	buf := new(bytes.Buffer)
+	r := newTestRunner(buf)
+	defer r.close()
+
+	if err := r.run([]string{"tq", "-r", ".store.book[0].author", "testdata/store.json"}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if got, want := buf.String(), "Nigel Rees\n"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// TestRunErrors covers error paths in (*runner).run where we only care
+// that an error is returned: missing input file, bad -t template, and
+// an -O path whose parent directory does not exist.
+func TestRunErrors(t *testing.T) {
+	missingOut := filepath.Join(t.TempDir(), "nope", "out.json")
+
+	testCases := []struct {
+		caseName string
+		args     []string
+	}{
+		{
+			caseName: "file not found",
+			args:     []string{"tq", ".", "testdata/does-not-exist.json"},
+		},
+		{
+			caseName: "bad template",
+			args:     []string{"tq", "-t", "{{.unclosed", ".", "testdata/store.json"},
+		},
+		{
+			caseName: "output file create error",
+			args:     []string{"tq", "-O", missingOut, ".", "testdata/store.json"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			buf := new(bytes.Buffer)
+			r := newTestRunner(buf)
+			defer r.close()
+
+			if err := r.run(tc.args); err == nil {
+				t.Fatalf("expected error, got nil")
 			}
 		})
 	}
