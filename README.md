@@ -1,7 +1,10 @@
 # Tree
 
+[![Tests](https://github.com/mojatter/tree/actions/workflows/tests.yaml/badge.svg?branch=main)](https://github.com/mojatter/tree/actions/workflows/tests.yaml)
+[![govulncheck](https://github.com/mojatter/tree/actions/workflows/govulncheck.yaml/badge.svg?branch=main)](https://github.com/mojatter/tree/actions/workflows/govulncheck.yaml)
 [![PkgGoDev](https://pkg.go.dev/badge/github.com/mojatter/tree)](https://pkg.go.dev/github.com/mojatter/tree)
 [![Report Card](https://goreportcard.com/badge/github.com/mojatter/tree)](https://goreportcard.com/report/github.com/mojatter/tree)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Tree is a simple structure for dealing with dynamic or unknown JSON/YAML in Go.
 
