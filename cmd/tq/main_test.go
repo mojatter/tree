@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,11 @@ import (
 	"github.com/mojatter/io2"
 	"github.com/mojatter/tree"
 )
+
+// updateGolden rewrites golden files under testdata/ from the current
+// output of each test case. Run `go test -update ./cmd/tq` after
+// intentionally changing tq's output, then review the diff.
+var updateGolden = flag.Bool("update", false, "update golden files in testdata")
 
 func TestRun(t *testing.T) {
 	stdinOrg := os.Stdin
@@ -26,17 +32,21 @@ func TestRun(t *testing.T) {
 		caseName string
 		stdin    string
 		args     []string
-		want     string
-		errstr   string
+		// golden is a path to a testdata file whose contents are the
+		// expected output. Prefer this over want so that golden files
+		// can be refreshed via `go test -update`.
+		golden string
+		want   string
+		errstr string
 	}{
 		{
 			caseName: "show usage",
 			args:     []string{},
-			want:     mustReadFileString("testdata/usage"),
+			golden:   "testdata/usage",
 		}, {
 			caseName: "show help",
 			args:     []string{"-h"},
-			want:     mustReadFileString("testdata/usage"),
+			golden:   "testdata/usage",
 		}, {
 			caseName: "show version",
 			args:     []string{"-v"},
@@ -45,61 +55,61 @@ func TestRun(t *testing.T) {
 			caseName: "first book from stdin",
 			stdin:    "testdata/store.json",
 			args:     []string{".store.book[0]"},
-			want:     mustReadFileString("testdata/book-0.json"),
+			golden:   "testdata/book-0.json",
 		}, {
 			caseName: "first book from stdin yaml",
 			stdin:    "testdata/store.yaml",
 			args:     []string{".store.book[0]"},
-			want:     mustReadFileString("testdata/book-0.yaml"),
+			golden:   "testdata/book-0.yaml",
 		}, {
 			caseName: "first book from stdin with -i yaml",
 			stdin:    "testdata/store.yaml",
 			args:     []string{"-i", "yaml", ".store.book[0]"},
-			want:     mustReadFileString("testdata/book-0.yaml"),
+			golden:   "testdata/book-0.yaml",
 		}, {
 			caseName: "first book from json",
 			args:     []string{".store.book[0]", "testdata/store.json"},
-			want:     mustReadFileString("testdata/book-0.json"),
+			golden:   "testdata/book-0.json",
 		}, {
 			caseName: "first book from json to yaml",
 			args:     []string{"-o", "yaml", ".store.book[0]", "testdata/store.json"},
-			want:     mustReadFileString("testdata/book-0.yaml"),
+			golden:   "testdata/book-0.yaml",
 		}, {
 			caseName: "range[1:3] books",
 			args:     []string{".store.book[1:3]|", "testdata/store.json"},
-			want:     mustReadFileString("testdata/book-1-3.json"),
+			golden:   "testdata/book-1-3.json",
 		}, {
 			caseName: "select books using tags",
 			args:     []string{".store.book[.tags[.name == \"genre\" and .value == \"fiction\"].count() > 0]|", "testdata/store.json"},
-			want:     mustReadFileString("testdata/book-1-3.json"),
+			golden:   "testdata/book-1-3.json",
 		}, {
 			caseName: "select books using tags omit operators",
 			args:     []string{".store.book[.tags[.name == \"genre\" and .value == \"fiction\"]]|", "testdata/store.json"},
-			want:     mustReadFileString("testdata/book-1-3.json"),
+			golden:   "testdata/book-1-3.json",
 		}, {
 			caseName: "single quote",
 			args:     []string{".store.book[.tags[.name == 'genre' and .value == 'fiction']]|", "testdata/store.json"},
-			want:     mustReadFileString("testdata/book-1-3.json"),
+			golden:   "testdata/book-1-3.json",
 		}, {
 			caseName: "expand books",
 			stdin:    "testdata/store.json",
 			args:     []string{"-x", ".store.book"},
-			want:     mustReadFileString("testdata/book-x"),
+			golden:   "testdata/book-x",
 		}, {
 			caseName: "slurp books",
 			stdin:    "testdata/store.json",
 			args:     []string{"-s", ".store.book[]"},
-			want:     mustReadFileString("testdata/book-s"),
+			golden:   "testdata/book-s",
 		}, {
 			caseName: "slurp books",
 			stdin:    "testdata/book-x",
 			args:     []string{"-s", "."},
-			want:     mustReadFileString("testdata/book-s"),
+			golden:   "testdata/book-s",
 		}, {
 			caseName: "expand books",
 			stdin:    "testdata/book-s",
 			args:     []string{"-x", "."},
-			want:     mustReadFileString("testdata/book-x"),
+			golden:   "testdata/book-x",
 		}, {
 			caseName: "template output",
 			stdin:    "testdata/store.json",
@@ -107,17 +117,17 @@ func TestRun(t *testing.T) {
 				"-t", "{{.title}},{{.author}},{{.category}},{{.price}}",
 				".store.book[]",
 			},
-			want: mustReadFileString("testdata/book.csv"),
+			golden: "testdata/book.csv",
 		}, {
 			caseName: "output json with color",
 			stdin:    "testdata/store.json",
 			args:     []string{"-c", "."},
-			want:     mustReadFileString("testdata/store-color.json"),
+			golden:   "testdata/store-color.json",
 		}, {
 			caseName: "output yaml with color",
 			stdin:    "testdata/store.yaml",
 			args:     []string{"-c", "."},
-			want:     mustReadFileString("testdata/store-color.yaml"),
+			golden:   "testdata/store-color.yaml",
 		}, {
 			caseName: "edit",
 			stdin:    "testdata/empty-object.json",
@@ -131,7 +141,7 @@ func TestRun(t *testing.T) {
 				"-e", `.tags += {"name": "era", "value": "20th century"}`,
 				"-e", `.tags += {"name": "theme", "value": "quotations"}`,
 			},
-			want: mustReadFileString("testdata/book-0.json"),
+			golden: "testdata/book-0.json",
 		}, {
 			caseName: "walk null",
 			stdin:    "testdata/null",
@@ -162,7 +172,8 @@ func TestRun(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				defer in.Close()
+				defer func() { _ = in.Close() }()
+
 				os.Stdin = in
 			}
 
@@ -186,7 +197,22 @@ func TestRun(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got := buf.String(); got != tc.want {
+
+			got := buf.String()
+			if tc.golden != "" {
+				if *updateGolden {
+					if err := os.WriteFile(tc.golden, []byte(got), 0o644); err != nil {
+						t.Fatalf("update golden %s: %v", tc.golden, err)
+					}
+					return
+				}
+				want := mustReadFileString(tc.golden)
+				if got != want {
+					t.Errorf("golden %s mismatch\ngot:  %q\nwant: %q", tc.golden, got, want)
+				}
+				return
+			}
+			if got != tc.want {
 				t.Errorf("got %s; want %s", got, tc.want)
 			}
 		})
