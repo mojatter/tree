@@ -20,6 +20,7 @@ Tree is a simple structure for dealing with dynamic or unknown JSON/YAML in Go.
   - [Built-in Methods](#built-in-methods)
 - [Edit](#edit)
 - [tq](#tq)
+- [Contributing](#contributing)
 - [Third-party library licenses](#third-party-library-licenses)
 
 ## Features
@@ -230,6 +231,8 @@ For more details on built-in methods, see the [Built-in Methods](#built-in-metho
 | .store.book[0].empty() | Check if first book is empty | false |
 | .store.book.first().title | Get title of first book | "Sayings of the Century" |
 | .store.book.last().author | Get author of last book | "J. R. R. Tolkien" |
+| .store.book.sort(".price").first().title | Cheapest book | "Sayings of the Century" |
+| .store.book.rsort(".price").first().title | Most expensive book | "The Lord of the Rings" |
 
 #### Illustrative Object
 
@@ -312,6 +315,8 @@ Tree provides several built-in methods for data manipulation and querying:
 #### Array Methods
 - **`first()`** - Returns the first element of an array
 - **`last()`** - Returns the last element of an array
+- **`sort([expr])`** - Returns the array sorted in ascending order. With an optional query expression, sorts by the value that expression resolves to on each element.
+- **`rsort([expr])`** - Same as `sort()` but in descending order.
 
 #### Examples
 
@@ -331,6 +336,10 @@ node.Find(".store.book[0].price.type()")  // Returns: "number"
 // Array operations
 node.Find(".store.book.first().title")  // Returns: "Sayings of the Century"
 node.Find(".store.book.last().title")   // Returns: "The Lord of the Rings"
+
+// Sort by a sub-expression
+node.Find(".store.book.sort(\".price\")")   // Books ordered by ascending price
+node.Find(".store.book.rsort(\".price\")")  // Books ordered by descending price
 ```
 
 
@@ -390,13 +399,13 @@ Download binary
 
 ```sh
 # For macOS (Darwin)
-VERSION=0.8.4 GOOS=Darwin GOARCH=arm64; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
+VERSION=0.9.0 GOOS=Darwin GOARCH=arm64; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
 
 # For Linux x64
-VERSION=0.8.4 GOOS=Linux GOARCH=amd64; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
+VERSION=0.9.0 GOOS=Linux GOARCH=amd64; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
 
 # For Windows x64
-VERSION=0.8.4; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_windows_amd64.zip" -o tq.zip && unzip tq.zip tq.exe
+VERSION=0.9.0; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_windows_amd64.zip" -o tq.zip && unzip tq.zip tq.exe
 ```
 
 ### Usage
@@ -457,6 +466,13 @@ Examples:
 | tq '.store.book[:2].price' | jq '.store.book[:2][] \| .price' |
 | tq '.store.book[.category == "fiction" and .price < 10].title' | jq '.store.book[] \| select(.category == "fiction" and .price < 10) \| .title' |
 
+
+## Contributing
+
+Bug reports, feature requests, and pull requests are welcome. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the local development workflow,
+the `make` targets that wrap the test/lint/fuzz/bench commands, and
+the project's code conventions.
 
 ## Third-party library licenses
 
