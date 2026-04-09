@@ -29,7 +29,7 @@ func MarshalYAML(n Node) ([]byte, error) {
 
 // DecodeYAML decodes YAML as a node using the provided decoder.
 func DecodeYAML(dec *yaml.Decoder) (Node, error) {
-	var v interface{}
+	var v any
 	if err := dec.Decode(&v); err != nil {
 		return nil, err
 	}
@@ -38,7 +38,7 @@ func DecodeYAML(dec *yaml.Decoder) (Node, error) {
 
 // UnmarshalYAML returns the YAML encoding of the specified node.
 func UnmarshalYAML(data []byte) (Node, error) {
-	var v interface{}
+	var v any
 	if err := yaml.Unmarshal(data, &v); err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func UnmarshalYAML(data []byte) (Node, error) {
 
 // UnmarshalYAML is an implementation of yaml.Unmarshaler (yaml.v3).
 func (n *Map) UnmarshalYAML(value *yaml.Node) error {
-	var v interface{}
+	var v any
 	if err := value.Decode(&v); err != nil {
 		return err
 	}
@@ -62,11 +62,11 @@ func (n *Map) UnmarshalYAML(value *yaml.Node) error {
 
 // UnmarshalYAML is an implementation of yaml.Unmarshaler (yaml.v3).
 func (n *Array) UnmarshalYAML(value *yaml.Node) error {
-	var v interface{}
+	var v any
 	if err := value.Decode(&v); err != nil {
 		return err
 	}
-	_ = ToNode(v).Array().Each(func(key interface{}, v Node) error {
+	_ = ToNode(v).Array().Each(func(key any, v Node) error {
 		*n = append(*n, v)
 		return nil
 	})
@@ -74,12 +74,12 @@ func (n *Array) UnmarshalYAML(value *yaml.Node) error {
 }
 
 // MarshalYAML is an implementation of yaml.Marshaler.
-func (n NilValue) MarshalYAML() (interface{}, error) {
+func (n NilValue) MarshalYAML() (any, error) {
 	return nil, nil
 }
 
 // MarshalViaYAML returns the node encoding of v via "gopkg.in/yaml.v3".
-func MarshalViaYAML(v interface{}) (Node, error) {
+func MarshalViaYAML(v any) (Node, error) {
 	if v == nil {
 		return Nil, nil
 	}
@@ -94,7 +94,7 @@ func MarshalViaYAML(v interface{}) (Node, error) {
 }
 
 // UnmarshalViaYAML stores the node in the value pointed to by v via "gopkg.in/yaml.v3".
-func UnmarshalViaYAML(n Node, v interface{}) error {
+func UnmarshalViaYAML(n Node, v any) error {
 	data, err := MarshalYAML(n)
 	if err != nil {
 		return err

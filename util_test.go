@@ -7,7 +7,7 @@ import (
 
 func Test_ToValue(t *testing.T) {
 	tests := []struct {
-		v    interface{}
+		v    any
 		want Node
 	}{
 		{
@@ -58,7 +58,7 @@ func Test_ToValue(t *testing.T) {
 
 func Test_ToNode(t *testing.T) {
 	tests := []struct {
-		v    interface{}
+		v    any
 		want Node
 	}{
 		{
@@ -68,10 +68,10 @@ func Test_ToNode(t *testing.T) {
 			v:    StringValue("a"),
 			want: StringValue("a"),
 		}, {
-			v:    map[string]interface{}{"a": 1, "b": true},
+			v:    map[string]any{"a": 1, "b": true},
 			want: Map{"a": NumberValue(1), "b": BoolValue(true)},
 		}, {
-			v:    []interface{}{"a", true, 1},
+			v:    []any{"a", true, 1},
 			want: Array{StringValue("a"), BoolValue(true), NumberValue(1)},
 		},
 	}
@@ -92,42 +92,42 @@ func Test_Walk(t *testing.T) {
 
 	tests := []struct {
 		n    Node
-		keys []interface{}
+		keys []any
 		skip bool
 	}{
 		{
 			n:    root,
-			keys: []interface{}{},
+			keys: []any{},
 		}, {
 			n:    root.Get(0),
-			keys: []interface{}{0},
+			keys: []any{0},
 		}, {
 			n:    root.Get(0).Get("ID"),
-			keys: []interface{}{0, "ID"},
+			keys: []any{0, "ID"},
 		}, {
 			n:    root.Get(1),
-			keys: []interface{}{1},
+			keys: []any{1},
 			skip: true,
 		}, {
 			n:    root.Get(2),
-			keys: []interface{}{2},
+			keys: []any{2},
 		}, {
 			n:    root.Get(2).Get("ID"),
-			keys: []interface{}{2, "ID"},
+			keys: []any{2, "ID"},
 		}, {
 			n:    root.Get(2).Get("Sub"),
-			keys: []interface{}{2, "Sub"},
+			keys: []any{2, "Sub"},
 		}, {
 			n:    root.Get(2).Get("Sub").Get(0),
-			keys: []interface{}{2, "Sub", 0},
+			keys: []any{2, "Sub", 0},
 		}, {
 			n:    root.Get(2).Get("Sub").Get(0).Get("ID"),
-			keys: []interface{}{2, "Sub", 0, "ID"},
+			keys: []any{2, "Sub", 0, "ID"},
 		},
 	}
 
 	i := 0
-	err := Walk(root, func(n Node, keys []interface{}) error {
+	err := Walk(root, func(n Node, keys []any) error {
 		if i >= len(tests) {
 			t.Fatalf("fn is called too many times %d", i)
 			return nil
