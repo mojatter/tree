@@ -399,13 +399,13 @@ Download binary
 
 ```sh
 # For macOS (Darwin)
-VERSION=0.9.0 GOOS=Darwin GOARCH=arm64; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
+VERSION=0.10.0 GOOS=Darwin GOARCH=arm64; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
 
 # For Linux x64
-VERSION=0.9.0 GOOS=Linux GOARCH=amd64; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
+VERSION=0.10.0 GOOS=Linux GOARCH=amd64; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
 
 # For Windows x64
-VERSION=0.9.0; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_windows_amd64.zip" -o tq.zip && unzip tq.zip tq.exe
+VERSION=0.10.0; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_windows_amd64.zip" -o tq.zip && unzip tq.zip tq.exe
 ```
 
 ### Usage
