@@ -204,7 +204,7 @@ func jsonValue(t json.Token) Node {
 }
 
 // MarshalViaJSON returns the node encoding of v via "encoding/json".
-func MarshalViaJSON(v interface{}) (Node, error) {
+func MarshalViaJSON(v any) (Node, error) {
 	if v == nil {
 		return Nil, nil
 	}
@@ -219,7 +219,7 @@ func MarshalViaJSON(v interface{}) (Node, error) {
 }
 
 // UnmarshalViaJSON stores the node in the value pointed to by v via "encoding/json".
-func UnmarshalViaJSON(n Node, v interface{}) error {
+func UnmarshalViaJSON(n Node, v any) error {
 	data, err := MarshalJSON(n)
 	if err != nil {
 		return err

@@ -9,7 +9,7 @@ import (
 
 // ToValue converts the specified v to a Value as Node.
 // Node.Value() returns converted value.
-func ToValue(v interface{}) Node {
+func ToValue(v any) Node {
 	if v == nil {
 		return Nil
 	}
@@ -40,7 +40,7 @@ func ToValue(v interface{}) Node {
 }
 
 // ToArrayValues calls ToValue for each provided vs and returns them as an Array.
-func ToArrayValues(vs ...interface{}) Array {
+func ToArrayValues(vs ...any) Array {
 	a := make(Array, len(vs))
 	for i, v := range vs {
 		a[i] = ToValue(v)
@@ -49,7 +49,7 @@ func ToArrayValues(vs ...interface{}) Array {
 }
 
 // ToNodeValues calls ToValue for each provided vs and returns them as []Node.
-func ToNodeValues(vs ...interface{}) []Node {
+func ToNodeValues(vs ...any) []Node {
 	ns := make([]Node, len(vs))
 	for i, v := range vs {
 		ns[i] = ToValue(v)
@@ -58,26 +58,26 @@ func ToNodeValues(vs ...interface{}) []Node {
 }
 
 // ToNode converts the specified v to an Node.
-func ToNode(v interface{}) Node {
+func ToNode(v any) Node {
 	if v == nil {
 		return Nil
 	}
 	switch tv := v.(type) {
 	case Node:
 		return tv
-	case []interface{}:
+	case []any:
 		a := make(Array, len(tv))
 		for i, vv := range tv {
 			a[i] = ToNode(vv)
 		}
 		return a
-	case map[string]interface{}:
+	case map[string]any:
 		m := Map{}
 		for k := range tv {
 			m[k] = ToNode(tv[k])
 		}
 		return m
-	case map[interface{}]interface{}:
+	case map[any]any:
 		m := Map{}
 		for k := range tv {
 			m[fmt.Sprintf("%v", k)] = ToNode(tv[k])
@@ -87,9 +87,9 @@ func ToNode(v interface{}) Node {
 	return ToValue(v)
 }
 
-// ToAny converts a Node back to a native Go interface{} value.
+// ToAny converts a Node back to a native Go any value.
 // This is the reverse operation of ToNode.
-func ToAny(n Node) interface{} {
+func ToAny(n Node) any {
 	if n == nil {
 		return nil
 	}
@@ -97,14 +97,14 @@ func ToAny(n Node) interface{} {
 	switch t {
 	case TypeArray:
 		a := n.Array()
-		x := make([]interface{}, len(a))
+		x := make([]any, len(a))
 		for i, v := range a {
 			x[i] = ToAny(v)
 		}
 		return x
 	case TypeMap:
 		m := n.Map()
-		x := make(map[string]interface{}, len(m))
+		x := make(map[string]any, len(m))
 		for k, v := range m {
 			x[k] = ToAny(v)
 		}
@@ -134,17 +134,17 @@ var SkipWalk = errors.New("skip") //nolint:staticcheck // ST1012: sentinel value
 //
 // The keys argument contains that parent keys and the node key that
 // type is int (array index) or string (map key).
-type WalkFunc func(n Node, keys []interface{}) error
+type WalkFunc func(n Node, keys []any) error
 
 // Walk walks the node tree rooted at root, calling fn for each node or
 // that children in the tree, including root.
 func Walk(n Node, fn WalkFunc) error {
-	return walk(n, []interface{}{}, fn)
+	return walk(n, []any{}, fn)
 }
 
 // walk is a recursive helper function that traverses the node tree.
 // It maintains the path of keys from root to current node.
-func walk(n Node, lastKeys []interface{}, fn WalkFunc) error {
+func walk(n Node, lastKeys []any, fn WalkFunc) error {
 	if n == nil {
 		return nil
 	}
@@ -156,10 +156,10 @@ func walk(n Node, lastKeys []interface{}, fn WalkFunc) error {
 	}
 
 	last := len(lastKeys)
-	keys := make([]interface{}, last+1)
+	keys := make([]any, last+1)
 	copy(keys, lastKeys)
 
-	return n.Each(func(key interface{}, v Node) error {
+	return n.Each(func(key any, v Node) error {
 		if key == nil {
 			return nil
 		}
@@ -169,7 +169,7 @@ func walk(n Node, lastKeys []interface{}, fn WalkFunc) error {
 }
 
 var regexpPool = sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return map[string]*regexp.Regexp{}
 	},
 }

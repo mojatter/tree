@@ -69,9 +69,9 @@ func Test_Node(t *testing.T) {
 		a         Array
 		m         Map
 		v         Value
-		hasKeys   []interface{}
+		hasKeys   []any
 		hasValue  bool
-		getKeys   []interface{}
+		getKeys   []any
 		getValue  Node
 		findExpr  string
 		findValue []Node
@@ -181,81 +181,81 @@ func Test_Node(t *testing.T) {
 func Test_Node_Get(t *testing.T) {
 	tests := []struct {
 		n    Node
-		keys []interface{}
+		keys []any
 		has  bool
 		want Node
 	}{
 		{
 			n:    Array{StringValue("a"), StringValue("b")},
-			keys: []interface{}{1},
+			keys: []any{1},
 			has:  true,
 			want: StringValue("b"),
 		}, {
 			n:    Array{StringValue("a"), StringValue("b")},
-			keys: []interface{}{"1"},
+			keys: []any{"1"},
 			has:  true,
 			want: StringValue("b"),
 		}, {
 			n:    Array{StringValue("a"), StringValue("b")},
-			keys: []interface{}{1.0},
+			keys: []any{1.0},
 			want: Nil,
 		}, {
 			n:    Array{StringValue("a"), StringValue("b")},
-			keys: []interface{}{2},
+			keys: []any{2},
 			want: Nil,
 		}, {
 			n:    Array{StringValue("a"), nil},
-			keys: []interface{}{1},
+			keys: []any{1},
 			has:  true,
 			want: Nil,
 		}, {
 			n:    Map{"1": NumberValue(10), "2": NumberValue(20)},
-			keys: []interface{}{"1"},
+			keys: []any{"1"},
 			has:  true,
 			want: NumberValue(10),
 		}, {
 			n:    Map{"1": NumberValue(10), "2": NumberValue(20)},
-			keys: []interface{}{1},
+			keys: []any{1},
 			has:  true,
 			want: NumberValue(10),
 		}, {
 			n:    Map{"1": NumberValue(10), "2": NumberValue(20)},
-			keys: []interface{}{1.0},
+			keys: []any{1.0},
 			want: Nil,
 		}, {
 			n:    Map{"1": NumberValue(10), "2": NumberValue(20)},
-			keys: []interface{}{"3"},
+			keys: []any{"3"},
 			want: Nil,
 		}, {
 			n:    Map{"1": NumberValue(10), "2": nil},
-			keys: []interface{}{"2"},
+			keys: []any{"2"},
 			has:  true,
 			want: Nil,
 		}, {
 			n:    Map{"a": Map{"b": StringValue("v")}},
-			keys: []interface{}{"a", "b"},
-			has:  true,
-			want: StringValue("v"),
-		}, {
-			n:    Map{"a": Map{"b": StringValue("v")}},
-			keys: []interface{}{"a", "b", "c", "d"},
-			want: Nil,
-		}, {
-			n:    Map{"a": Map{"b": StringValue("v")}},
-			keys: []interface{}{"a", "c"},
-			want: Nil,
-		}, {
-			n:    Array{Array{nil, StringValue("v")}},
-			keys: []interface{}{0, 1},
+			keys: []any{"a", "b"},
 			has:  true,
 			want: StringValue("v"),
 		}, {
+			n:    Map{"a": Map{"b": StringValue("v")}},
+			keys: []any{"a", "b", "c", "d"},
+			want: Nil,
+		}, {
+			n:    Map{"a": Map{"b": StringValue("v")}},
+			keys: []any{"a", "c"},
+			want: Nil,
+		}, {
 			n:    Array{Array{nil, StringValue("v")}},
-			keys: []interface{}{0, 1, 2, 3},
+			keys: []any{0, 1},
+			has:  true,
+			want: StringValue("v"),
+		}, {
+			n:    Array{Array{nil, StringValue("v")}},
+			keys: []any{0, 1, 2, 3},
 			want: Nil,
 		}, {
 			n:    Array{Map{"a": Array{nil, Map{"b": StringValue("v")}}}},
-			keys: []interface{}{0, "a", 1, "b"},
+			keys: []any{0, "a", 1, "b"},
 			has:  true,
 			want: StringValue("v"),
 		}, {
@@ -283,31 +283,31 @@ func Test_Node_Get(t *testing.T) {
 func Test_Node_Each(t *testing.T) {
 	tests := []struct {
 		n    Node
-		want map[interface{}]Node
+		want map[any]Node
 	}{
 		{
 			n:    Array{StringValue("a"), StringValue("b")},
-			want: map[interface{}]Node{0: StringValue("a"), 1: StringValue("b")},
+			want: map[any]Node{0: StringValue("a"), 1: StringValue("b")},
 		}, {
 			n:    Map{"a": NumberValue(0), "b": NumberValue(1)},
-			want: map[interface{}]Node{"a": NumberValue(0), "b": NumberValue(1)},
+			want: map[any]Node{"a": NumberValue(0), "b": NumberValue(1)},
 		}, {
 			n:    StringValue("str"),
-			want: map[interface{}]Node{nil: StringValue("str")},
+			want: map[any]Node{nil: StringValue("str")},
 		}, {
 			n:    BoolValue(true),
-			want: map[interface{}]Node{nil: BoolValue(true)},
+			want: map[any]Node{nil: BoolValue(true)},
 		}, {
 			n:    NumberValue(1),
-			want: map[interface{}]Node{nil: NumberValue(1)},
+			want: map[any]Node{nil: NumberValue(1)},
 		}, {
 			n:    Any{Map{"a": NumberValue(0), "b": NumberValue(1)}},
-			want: map[interface{}]Node{"a": NumberValue(0), "b": NumberValue(1)},
+			want: map[any]Node{"a": NumberValue(0), "b": NumberValue(1)},
 		},
 	}
 	for i, test := range tests {
-		got := map[interface{}]Node{}
-		err := test.n.Each(func(key interface{}, v Node) error {
+		got := map[any]Node{}
+		err := test.n.Each(func(key any, v Node) error {
 			got[key] = v
 			return nil
 		})
@@ -318,7 +318,7 @@ func Test_Node_Each(t *testing.T) {
 			t.Errorf("tests[%d] got %v; want %v", i, got, test.want)
 		}
 		wantErr := fmt.Errorf("test%d", i)
-		gotErr := test.n.Each(func(key interface{}, v Node) error {
+		gotErr := test.n.Each(func(key any, v Node) error {
 			return wantErr
 		})
 		if wantErr != gotErr {
@@ -401,13 +401,13 @@ func Test_EditorNode_Append(t *testing.T) {
 func Test_EditorNode_Set(t *testing.T) {
 	tests := []struct {
 		n       EditorNode
-		entries map[interface{}]Node
+		entries map[any]Node
 		want    EditorNode
 		errstr  string
 	}{
 		{
 			n: &Array{NumberValue(0), StringValue("1")},
-			entries: map[interface{}]Node{
+			entries: map[any]Node{
 				0:   NumberValue(1),
 				"1": StringValue("2"),
 				2:   BoolValue(true),
@@ -415,7 +415,7 @@ func Test_EditorNode_Set(t *testing.T) {
 			want: &Array{NumberValue(1), StringValue("2"), BoolValue(true)},
 		}, {
 			n:       &Array{},
-			entries: map[interface{}]Node{-2: StringValue("value")},
+			entries: map[any]Node{-2: StringValue("value")},
 			errstr:  "cannot index array with -2",
 		}, {
 			n: Map{
@@ -423,7 +423,7 @@ func Test_EditorNode_Set(t *testing.T) {
 				"2": StringValue("2"),
 				"3": BoolValue(true),
 			},
-			entries: map[interface{}]Node{
+			entries: map[any]Node{
 				"1": NumberValue(10),
 				"4": StringValue("40"),
 				5:   BoolValue(true),
@@ -437,7 +437,7 @@ func Test_EditorNode_Set(t *testing.T) {
 			},
 		}, {
 			n:       Map{},
-			entries: map[interface{}]Node{true: StringValue("value")},
+			entries: map[any]Node{true: StringValue("value")},
 			errstr:  "cannot index array with true",
 		},
 	}
@@ -471,17 +471,17 @@ func Test_EditorNode_Set(t *testing.T) {
 func Test_EditorNode_Delete(t *testing.T) {
 	tests := []struct {
 		n      EditorNode
-		keys   []interface{}
+		keys   []any
 		want   EditorNode
 		errstr string
 	}{
 		{
 			n:    &Array{NumberValue(1), StringValue("1"), BoolValue(true)},
-			keys: []interface{}{1, "1"},
+			keys: []any{1, "1"},
 			want: &Array{NumberValue(1)},
 		}, {
 			n:      &Array{},
-			keys:   []interface{}{-1},
+			keys:   []any{-1},
 			errstr: "cannot index array with -1",
 		}, {
 			n: Map{
@@ -491,14 +491,14 @@ func Test_EditorNode_Delete(t *testing.T) {
 				"4": StringValue("4"),
 				"5": BoolValue(true),
 			},
-			keys: []interface{}{"2", "4", 5, 7},
+			keys: []any{"2", "4", 5, 7},
 			want: Map{
 				"1": NumberValue(1),
 				"3": BoolValue(true),
 			},
 		}, {
 			n:      Map{},
-			keys:   []interface{}{true},
+			keys:   []any{true},
 			errstr: "cannot index array with true",
 		},
 	}

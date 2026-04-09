@@ -203,7 +203,7 @@ func Test_Array_UnmarshalYAML(t *testing.T) {
 
 func Test_MarshalViaYAML(t *testing.T) {
 	tests := []struct {
-		v    interface{}
+		v    any
 		want Node
 	}{
 		{

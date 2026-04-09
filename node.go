@@ -71,14 +71,14 @@ type Node interface {
 	// If this type is not Value, returns a NilValue.
 	Value() Value
 	// Has checks this node has key.
-	Has(keys ...interface{}) bool
+	Has(keys ...any) bool
 	// Get returns array/map value that matched by the specified key.
 	// The key type allows int or string.
 	// If the specified keys does not match, returns NilValue.
-	Get(keys ...interface{}) Node
+	Get(keys ...any) Node
 	// Each calls the callback function for each Array|Map values.
 	// If the node type is not Array|Map then the callback called once with nil key and self as value.
-	Each(cb func(key interface{}, v Node) error) error
+	Each(cb func(key any, v Node) error) error
 	// Find finds a node using the query expression.
 	Find(expr string) ([]Node, error)
 }
@@ -87,8 +87,8 @@ type Node interface {
 type EditorNode interface {
 	Node
 	Append(v Node) error
-	Set(key interface{}, v Node) error
-	Delete(key interface{}) error
+	Set(key any, v Node) error
+	Delete(key any) error
 }
 
 // Any is an interface that defines any node.
@@ -124,17 +124,17 @@ func (n Any) Value() Value {
 }
 
 // Has checks this node has key.
-func (n Any) Has(keys ...interface{}) bool {
+func (n Any) Has(keys ...any) bool {
 	return n.Node.Has(keys...)
 }
 
 // Get returns an array value as Node.
-func (n Any) Get(keys ...interface{}) Node {
+func (n Any) Get(keys ...any) Node {
 	return n.Node.Get(keys...)
 }
 
 // Each calls the callback function for each Array values.
-func (n Any) Each(cb func(key interface{}, n Node) error) error {
+func (n Any) Each(cb func(key any, n Node) error) error {
 	return n.Node.Each(cb)
 }
 
@@ -178,7 +178,7 @@ func (n Array) Value() Value {
 
 // toIndex converts a key to an array index and checks if it's valid.
 // Supports both int and string representations of indices.
-func (n Array) toIndex(key interface{}) (int, bool) {
+func (n Array) toIndex(key any) (int, bool) {
 	switch tk := key.(type) {
 	case int:
 		if tk >= 0 {
@@ -194,7 +194,7 @@ func (n Array) toIndex(key interface{}) (int, bool) {
 }
 
 // Has checks this node has key.
-func (n Array) Has(keys ...interface{}) bool {
+func (n Array) Has(keys ...any) bool {
 	if len(keys) > 0 {
 		if i, ok := n.toIndex(keys[0]); ok {
 			if len(keys) > 1 {
@@ -207,7 +207,7 @@ func (n Array) Has(keys ...interface{}) bool {
 }
 
 // Get returns an array value as Node.
-func (n Array) Get(keys ...interface{}) Node {
+func (n Array) Get(keys ...any) Node {
 	if len(keys) > 0 {
 		if i, ok := n.toIndex(keys[0]); ok {
 			if len(keys) > 1 {
@@ -223,7 +223,7 @@ func (n Array) Get(keys ...interface{}) Node {
 }
 
 // Each calls the callback function for each Array values.
-func (n Array) Each(cb func(key interface{}, n Node) error) error {
+func (n Array) Each(cb func(key any, n Node) error) error {
 	for i, v := range n {
 		if err := cb(i, v); err != nil {
 			return err
@@ -244,7 +244,7 @@ func (n *Array) Append(v Node) error {
 }
 
 // Set sets v to n[key].
-func (n *Array) Set(key interface{}, v Node) error {
+func (n *Array) Set(key any, v Node) error {
 	i, ok := n.toIndex(key)
 	if i == -1 {
 		return fmt.Errorf("cannot index array with %v", key)
@@ -259,7 +259,7 @@ func (n *Array) Set(key interface{}, v Node) error {
 }
 
 // Delete deletes n[key].
-func (n *Array) Delete(key interface{}) error {
+func (n *Array) Delete(key any) error {
 	i, ok := n.toIndex(key)
 	if i == -1 {
 		return fmt.Errorf("cannot index array with %v", key)
@@ -303,7 +303,7 @@ func (n Map) Value() Value {
 
 // toKey converts a key to a string and checks if it exists in the map.
 // Supports both int and string keys.
-func (n Map) toKey(key interface{}) (string, bool) {
+func (n Map) toKey(key any) (string, bool) {
 	switch tk := key.(type) {
 	case int:
 		k := strconv.Itoa(tk)
@@ -317,7 +317,7 @@ func (n Map) toKey(key interface{}) (string, bool) {
 }
 
 // Has checks this node has key.
-func (n Map) Has(keys ...interface{}) bool {
+func (n Map) Has(keys ...any) bool {
 	if len(keys) > 0 {
 		if k, ok := n.toKey(keys[0]); ok {
 			if len(keys) > 1 {
@@ -330,7 +330,7 @@ func (n Map) Has(keys ...interface{}) bool {
 }
 
 // Get returns an array value as Node.
-func (n Map) Get(keys ...interface{}) Node {
+func (n Map) Get(keys ...any) Node {
 	if len(keys) > 0 {
 		if k, ok := n.toKey(keys[0]); ok {
 			if len(keys) > 1 {
@@ -372,7 +372,7 @@ func (n Map) Append(v Node) error {
 }
 
 // Set sets v to n[key].
-func (n Map) Set(key interface{}, v Node) error {
+func (n Map) Set(key any, v Node) error {
 	switch tk := key.(type) {
 	case int:
 		n[strconv.Itoa(tk)] = v
@@ -385,7 +385,7 @@ func (n Map) Set(key interface{}, v Node) error {
 }
 
 // Delete deletes n[key].
-func (n Map) Delete(key interface{}) error {
+func (n Map) Delete(key any) error {
 	switch tk := key.(type) {
 	case int:
 		delete(n, strconv.Itoa(tk))
@@ -398,7 +398,7 @@ func (n Map) Delete(key interface{}) error {
 }
 
 // Each calls the callback function for each Map values.
-func (n Map) Each(cb func(key interface{}, n Node) error) error {
+func (n Map) Each(cb func(key any, n Node) error) error {
 	for _, k := range n.Keys() {
 		if err := cb(k, n[k]); err != nil {
 			return err

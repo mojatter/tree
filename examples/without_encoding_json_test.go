@@ -5,8 +5,8 @@ import (
 	"log"
 
 	gojson "github.com/goccy/go-json"
-	"github.com/mojatter/tree"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/mojatter/tree"
 )
 
 func Example_goJSONUnmarshal() {

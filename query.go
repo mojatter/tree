@@ -327,7 +327,7 @@ func (q WalkQuery) Exec(root Node) ([]Node, error) {
 	key := string(q)
 	var r []Node
 	// NOTE: Walk returns no error.
-	_ = Walk(root, func(n Node, keys []interface{}) error {
+	_ = Walk(root, func(n Node, keys []any) error {
 		if n == nil {
 			return nil
 		}
@@ -341,7 +341,7 @@ func (q WalkQuery) Exec(root Node) ([]Node, error) {
 
 func (q WalkQuery) Set(pn *Node, v Node) error {
 	key := string(q)
-	return Walk(*pn, func(n Node, keys []interface{}) error {
+	return Walk(*pn, func(n Node, keys []any) error {
 		if n.Has(key) {
 			if en, ok := n.(EditorNode); ok {
 				_ = en.Set(key, v)
@@ -353,7 +353,7 @@ func (q WalkQuery) Set(pn *Node, v Node) error {
 
 func (q WalkQuery) Append(pn *Node, v Node) error {
 	key := string(q)
-	return Walk(*pn, func(n Node, keys []interface{}) error {
+	return Walk(*pn, func(n Node, keys []any) error {
 		if n.Has(key) {
 			if nv := n.Get(key); nv != nil {
 				if env, ok := nv.(EditorNode); ok {
@@ -367,7 +367,7 @@ func (q WalkQuery) Append(pn *Node, v Node) error {
 
 func (q WalkQuery) Delete(pn *Node) error {
 	key := string(q)
-	return Walk(*pn, func(n Node, keys []interface{}) error {
+	return Walk(*pn, func(n Node, keys []any) error {
 		if n.Has(key) {
 			if en, ok := n.(EditorNode); ok {
 				_ = en.Delete(key)
@@ -858,18 +858,18 @@ func Find(n Node, expr string) ([]Node, error) {
 
 type arrayHolder struct{ a *Array }
 
-func (h *arrayHolder) IsNil() bool                                       { return h.a.IsNil() }
-func (h *arrayHolder) Type() Type                                        { return h.a.Type() }
-func (h *arrayHolder) Array() Array                                      { return *h.a }
-func (h *arrayHolder) Map() Map                                          { return h.a.Map() }
-func (h *arrayHolder) Value() Value                                      { return h.a.Value() }
-func (h *arrayHolder) Has(keys ...interface{}) bool                      { return h.a.Has(keys...) }
-func (h *arrayHolder) Get(keys ...interface{}) Node                      { return h.a.Get(keys...) }
-func (h *arrayHolder) Each(cb func(key interface{}, v Node) error) error { return h.a.Each(cb) }
-func (h *arrayHolder) Find(expr string) ([]Node, error)                  { return h.a.Find(expr) }
-func (h *arrayHolder) Delete(key interface{}) error                      { return h.a.Delete(key) }
-func (h *arrayHolder) Append(v Node) error                               { return h.a.Append(*holdArray(&v)) }
-func (h *arrayHolder) Set(key interface{}, v Node) error                 { return h.a.Set(key, *holdArray(&v)) }
+func (h *arrayHolder) IsNil() bool                               { return h.a.IsNil() }
+func (h *arrayHolder) Type() Type                                { return h.a.Type() }
+func (h *arrayHolder) Array() Array                              { return *h.a }
+func (h *arrayHolder) Map() Map                                  { return h.a.Map() }
+func (h *arrayHolder) Value() Value                              { return h.a.Value() }
+func (h *arrayHolder) Has(keys ...any) bool                      { return h.a.Has(keys...) }
+func (h *arrayHolder) Get(keys ...any) Node                      { return h.a.Get(keys...) }
+func (h *arrayHolder) Each(cb func(key any, v Node) error) error { return h.a.Each(cb) }
+func (h *arrayHolder) Find(expr string) ([]Node, error)          { return h.a.Find(expr) }
+func (h *arrayHolder) Delete(key any) error                      { return h.a.Delete(key) }
+func (h *arrayHolder) Append(v Node) error                       { return h.a.Append(*holdArray(&v)) }
+func (h *arrayHolder) Set(key any, v Node) error                 { return h.a.Set(key, *holdArray(&v)) }
 
 var _ EditorNode = (*arrayHolder)(nil)
 
