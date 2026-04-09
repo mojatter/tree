@@ -384,6 +384,11 @@ tq is a portable command-line JSON/YAML processor.
 
 ### Installation
 
+> Previously published as `jarxorg/tree`. If you installed `tq` from
+> the old tap or have the old Go module in your `go.mod`, read
+> [docs/MIGRATION.md](docs/MIGRATION.md) before installing the new
+> version — the old binary can shadow the new one on `$PATH`.
+
 ```sh
 go install github.com/mojatter/tree/cmd/tq@latest
 ```
