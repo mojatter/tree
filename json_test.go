@@ -184,7 +184,7 @@ func Test_Array_UnmarshalJSON(t *testing.T) {
 
 func Test_MarshalViaJSON(t *testing.T) {
 	tests := []struct {
-		v    interface{}
+		v    any
 		want Node
 	}{
 		{

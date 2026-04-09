@@ -68,17 +68,17 @@ func (n NilValue) Value() Value {
 }
 
 // Has returns false.
-func (n NilValue) Has(keys ...interface{}) bool {
+func (n NilValue) Has(keys ...any) bool {
 	return false
 }
 
 // Get returns nil.
-func (n NilValue) Get(keys ...interface{}) Node {
+func (n NilValue) Get(keys ...any) Node {
 	return n
 }
 
 // Each calls cb(nil, n).
-func (n NilValue) Each(cb func(key interface{}, n Node) error) error {
+func (n NilValue) Each(cb func(key any, n Node) error) error {
 	return cb(nil, n)
 }
 
@@ -154,17 +154,17 @@ func (n StringValue) Value() Value {
 }
 
 // Has returns false.
-func (n StringValue) Has(keys ...interface{}) bool {
+func (n StringValue) Has(keys ...any) bool {
 	return false
 }
 
 // Get returns nil.
-func (n StringValue) Get(keys ...interface{}) Node {
+func (n StringValue) Get(keys ...any) Node {
 	return Nil
 }
 
 // Each calls cb(nil, n).
-func (n StringValue) Each(cb func(key interface{}, n Node) error) error {
+func (n StringValue) Each(cb func(key any, n Node) error) error {
 	return cb(nil, n)
 }
 
@@ -256,17 +256,17 @@ func (n BoolValue) Value() Value {
 }
 
 // Has returns false.
-func (n BoolValue) Has(keys ...interface{}) bool {
+func (n BoolValue) Has(keys ...any) bool {
 	return false
 }
 
 // Get returns nil.
-func (n BoolValue) Get(keys ...interface{}) Node {
+func (n BoolValue) Get(keys ...any) Node {
 	return Nil
 }
 
 // Each calls cb(nil, n).
-func (n BoolValue) Each(cb func(key interface{}, n Node) error) error {
+func (n BoolValue) Each(cb func(key any, n Node) error) error {
 	return cb(nil, n)
 }
 
@@ -345,17 +345,17 @@ func (n NumberValue) Value() Value {
 }
 
 // Has returns false.
-func (n NumberValue) Has(keys ...interface{}) bool {
+func (n NumberValue) Has(keys ...any) bool {
 	return false
 }
 
 // Get returns nil.
-func (n NumberValue) Get(keys ...interface{}) Node {
+func (n NumberValue) Get(keys ...any) Node {
 	return Nil
 }
 
 // Each calls cb(nil, n).
-func (n NumberValue) Each(cb func(key interface{}, n Node) error) error {
+func (n NumberValue) Each(cb func(key any, n Node) error) error {
 	return cb(nil, n)
 }
 

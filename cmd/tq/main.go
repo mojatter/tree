@@ -12,8 +12,8 @@ import (
 	"github.com/mojatter/io2"
 	"github.com/mojatter/tree"
 	"github.com/spf13/pflag"
-	"golang.org/x/term"
 	"go.yaml.in/yaml/v3"
+	"golang.org/x/term"
 )
 
 const (
@@ -346,7 +346,7 @@ func (r *runner) evaluateNode(node tree.Node) error {
 		return nil
 	}
 	if r.isExpand {
-		cb := func(_ interface{}, v tree.Node) error {
+		cb := func(_ any, v tree.Node) error {
 			return r.output(v)
 		}
 		for _, result := range results {
