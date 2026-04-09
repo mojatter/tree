@@ -2,10 +2,10 @@ author: Nigel Rees
 category: reference
 price: 8.95
 tags:
-- name: genre
-  value: reference
-- name: era
-  value: 20th century
-- name: theme
-  value: quotations
+  - name: genre
+    value: reference
+  - name: era
+    value: 20th century
+  - name: theme
+    value: quotations
 title: Sayings of the Century

@@ -13,7 +13,7 @@ import (
 	"github.com/mojatter/tree"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v3"
 )
 
 const (
@@ -396,7 +396,12 @@ func (r *runner) outputYAML(n tree.Node) error {
 	if r.isColor {
 		return tree.OutputColorYAML(r.out, n)
 	}
-	return yaml.NewEncoder(r.out).Encode(n)
+	enc := yaml.NewEncoder(r.out)
+	enc.SetIndent(2)
+	if err := enc.Encode(n); err != nil {
+		return err
+	}
+	return enc.Close()
 }
 
 func (r *runner) outputJSON(n tree.Node) error {
