@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/mojatter/tree"
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v3"
 )
 
 func ExampleMarshalJSON() {
@@ -108,7 +108,7 @@ func ExampleMarshalYAML() {
 		"Name":   tree.ToValue("Reds"),
 		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 	}
-	b, err := yaml.Marshal(group)
+	b, err := tree.MarshalYAML(group)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -116,10 +116,10 @@ func ExampleMarshalYAML() {
 
 	// Output:
 	// Colors:
-	// - Crimson
-	// - Red
-	// - Ruby
-	// - Maroon
+	//   - Crimson
+	//   - Red
+	//   - Ruby
+	//   - Maroon
 	// ID: 1
 	// Name: Reds
 }

@@ -5,16 +5,16 @@ import (
 	"reflect"
 	"testing"
 
-	"gopkg.in/yaml.v2"
+	"go.yaml.in/yaml/v3"
 )
 
 func Test_MarshalYAML(t *testing.T) {
 	want := `a:
-- "1"
-- 2
-- true
-- null
-- null
+  - "1"
+  - 2
+  - true
+  - null
+  - null
 `
 	n := Map{
 		"a": Array{
@@ -36,9 +36,9 @@ func Test_MarshalYAML(t *testing.T) {
 
 func Test_Map_MarshalYAML(t *testing.T) {
 	want := `a:
-- "1"
-- 2
-- true
+  - "1"
+  - 2
+  - true
 `
 	n := Map{
 		"a": Array{
@@ -47,7 +47,7 @@ func Test_Map_MarshalYAML(t *testing.T) {
 			BoolValue(true),
 		},
 	}
-	got, err := yaml.Marshal(n)
+	got, err := MarshalYAML(n)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func Test_Array_MarshalYAML(t *testing.T) {
 		NumberValue(2),
 		BoolValue(true),
 	}
-	got, err := yaml.Marshal(n)
+	got, err := MarshalYAML(n)
 	if err != nil {
 		t.Fatal(err)
 	}

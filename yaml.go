@@ -1,12 +1,30 @@
 package tree
 
 import (
-	"gopkg.in/yaml.v2"
+	"bytes"
+
+	"go.yaml.in/yaml/v3"
 )
 
-// MarshalYAML returns the YAML encoding of the specified node.
+// yamlIndent is the block sequence/mapping indent used by tree's
+// YAML encoder. yaml.v3 defaults to 4 spaces; we pick 2 to stay closer
+// to yaml.v2's output and to common convention.
+const yamlIndent = 2
+
+// MarshalYAML returns the YAML encoding of the specified node using
+// tree's default 2-space indentation.
 func MarshalYAML(n Node) ([]byte, error) {
-	return yaml.Marshal(n)
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(yamlIndent)
+	if err := enc.Encode(n); err != nil {
+		_ = enc.Close()
+		return nil, err
+	}
+	if err := enc.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
 
 // DecodeYAML decodes YAML as a node using the provided decoder.
@@ -27,10 +45,10 @@ func UnmarshalYAML(data []byte) (Node, error) {
 	return ToNode(v), nil
 }
 
-// UnmarshalYAML is an implementation of yaml.Unmarshaler.
-func (n *Map) UnmarshalYAML(unmarshal func(interface{}) error) error {
+// UnmarshalYAML is an implementation of yaml.Unmarshaler (yaml.v3).
+func (n *Map) UnmarshalYAML(value *yaml.Node) error {
 	var v interface{}
-	if err := unmarshal(&v); err != nil {
+	if err := value.Decode(&v); err != nil {
 		return err
 	}
 	if *n == nil {
@@ -42,10 +60,10 @@ func (n *Map) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-// UnmarshalYAML is an implementation of yaml.Unmarshaler.
-func (n *Array) UnmarshalYAML(unmarshal func(interface{}) error) error {
+// UnmarshalYAML is an implementation of yaml.Unmarshaler (yaml.v3).
+func (n *Array) UnmarshalYAML(value *yaml.Node) error {
 	var v interface{}
-	if err := unmarshal(&v); err != nil {
+	if err := value.Decode(&v); err != nil {
 		return err
 	}
 	_ = ToNode(v).Array().Each(func(key interface{}, v Node) error {
@@ -60,7 +78,7 @@ func (n NilValue) MarshalYAML() (interface{}, error) {
 	return nil, nil
 }
 
-// MarshalViaYAML returns the node encoding of v via "gopkg.in/yaml.v2".
+// MarshalViaYAML returns the node encoding of v via "gopkg.in/yaml.v3".
 func MarshalViaYAML(v interface{}) (Node, error) {
 	if v == nil {
 		return Nil, nil
@@ -75,7 +93,7 @@ func MarshalViaYAML(v interface{}) (Node, error) {
 	return UnmarshalYAML(data)
 }
 
-// UnmarshalViaYAML stores the node in the value pointed to by v via "gopkg.in/yaml.v2".
+// UnmarshalViaYAML stores the node in the value pointed to by v via "gopkg.in/yaml.v3".
 func UnmarshalViaYAML(n Node, v interface{}) error {
 	data, err := MarshalYAML(n)
 	if err != nil {
