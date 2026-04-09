@@ -6,7 +6,7 @@ import (
 
 	goyaml "github.com/goccy/go-yaml"
 	"github.com/mojatter/tree"
-	yamlv3 "gopkg.in/yaml.v3"
+	yamlv3 "go.yaml.in/yaml/v3"
 )
 
 func Example_v3YAMLUnmarshal() {
@@ -63,13 +63,22 @@ ID: 1
 Name: Reds
 `)
 
-	var group tree.Map
-	if err := goyaml.Unmarshal(data, &group); err != nil {
+	// NOTE: goccy/go-yaml used to be able to unmarshal directly into a
+	// tree.Map in the same style as Example_v3YAMLUnmarshal, but newer
+	// versions of goccy/go-yaml no longer do. As a workaround, decode
+	// into a plain map[string]any first and then convert it to a
+	// tree.Map via tree.ToNode. Sorry for the extra step.
+	var raw map[string]any
+	if err := goyaml.Unmarshal(data, &raw); err != nil {
 		log.Fatal(err)
 	}
+	fmt.Printf("%+v\n", raw)
+
+	group := tree.ToNode(raw).Map()
 	fmt.Printf("%+v\n", group)
 
 	// Output:
+	// map[Colors:[Crimson Red Ruby Maroon] ID:1 Name:Reds]
 	// map[Colors:[Crimson Red Ruby Maroon] ID:1 Name:Reds]
 }
 
