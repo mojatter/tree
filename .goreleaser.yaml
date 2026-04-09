@@ -8,6 +8,8 @@ builds:
     binary: tq
     env:
       - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X github.com/mojatter/tree.VERSION={{.Version}}
     goos:
       - linux
       - windows
