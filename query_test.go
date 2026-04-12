@@ -564,27 +564,33 @@ func Test_unholdArray(t *testing.T) {
 }
 
 func Test_Edit(t *testing.T) {
-	tests := []struct {
-		n      Node
-		expr   string
-		want   Node
-		errstr string
+	testCases := []struct {
+		caseName string
+		n        Node
+		expr     string
+		want     Node
+		errstr   string
 	}{
+		// --- Set operations on Map ---
 		{
-			n:    Map{},
-			expr: `.store = {}`,
-			want: Map{"store": Map{}},
+			caseName: "set empty map on map key",
+			n:        Map{},
+			expr:     `.store = {}`,
+			want:     Map{"store": Map{}},
 		}, {
-			n:    Map{},
-			expr: `.store={}`, // NOTE: trim spaces
-			want: Map{"store": Map{}},
+			caseName: "set empty map on map key without spaces",
+			n:        Map{},
+			expr:     `.store={}`, // NOTE: trim spaces
+			want:     Map{"store": Map{}},
 		}, {
-			n:    Map{},
-			expr: `.store.book = {}`,
-			want: Map{"store": Map{"book": Map{}}},
+			caseName: "set nested map key",
+			n:        Map{},
+			expr:     `.store.book = {}`,
+			want:     Map{"store": Map{"book": Map{}}},
 		}, {
-			n:    Map{},
-			expr: `.store.pen = [{"color":"red"},{"color":"blue"}]`,
+			caseName: "set array of maps with double quotes",
+			n:        Map{},
+			expr:     `.store.pen = [{"color":"red"},{"color":"blue"}]`,
 			want: Map{
 				"store": Map{
 					"pen": Array{
@@ -594,8 +600,9 @@ func Test_Edit(t *testing.T) {
 				},
 			},
 		}, {
-			n:    Map{},
-			expr: `.store.pen = [{'color':'red'},{'color':'blue'}]`,
+			caseName: "set array of maps with single quotes",
+			n:        Map{},
+			expr:     `.store.pen = [{'color':'red'},{'color':'blue'}]`,
 			want: Map{
 				"store": Map{
 					"pen": Array{
@@ -605,110 +612,152 @@ func Test_Edit(t *testing.T) {
 				},
 			},
 		}, {
-			n:      StringValue("str"),
-			expr:   `.key = {}`,
-			errstr: `cannot index array with "key"`,
+			caseName: "set on non-map returns error",
+			n:        StringValue("str"),
+			expr:     `.key = {}`,
+			errstr:   `cannot index array with "key"`,
+		},
+
+		// --- Append error cases ---
+		{
+			caseName: "append to map root returns error",
+			n:        Map{"key": StringValue("str")},
+			expr:     `. += {}`,
+			errstr:   "cannot append to .",
 		}, {
-			n:      Map{"key": StringValue("str")},
-			expr:   `. += {}`,
-			errstr: "cannot append to .",
+			caseName: "append to string root returns error",
+			n:        StringValue("str"),
+			expr:     `. += {}`,
+			errstr:   "cannot append to .",
 		}, {
-			n:      StringValue("str"),
-			expr:   `. += {}`,
-			errstr: "cannot append to .",
+			caseName: "append to map string value returns error",
+			n:        Map{"key": StringValue("str")},
+			expr:     `.key += {}`,
+			errstr:   `cannot append to "key"`,
 		}, {
-			n:      Map{"key": StringValue("str")},
-			expr:   `.key += {}`,
-			errstr: `cannot append to "key"`,
+			caseName: "append to string value returns error",
+			n:        StringValue("str"),
+			expr:     `.key += {}`,
+			errstr:   `cannot append to "key"`,
+		},
+
+		// --- Set operations on Array ---
+		{
+			caseName: "set on array by index",
+			n:        Array{},
+			expr:     `[0] = "red"`,
+			want:     Array{StringValue("red")},
 		}, {
-			n:      StringValue("str"),
-			expr:   `.key += {}`,
-			errstr: `cannot append to "key"`,
+			caseName: "set on nested array by index",
+			n:        Array{},
+			expr:     `[0][1] = "red"`,
+			want:     Array{Array{nil, StringValue("red")}},
 		}, {
-			n:    Array{},
-			expr: `[0] = "red"`,
-			want: Array{StringValue("red")},
+			caseName: "set on non-array by index returns error",
+			n:        StringValue("str"),
+			expr:     `[0] = "red"`,
+			errstr:   `cannot index array with 0`,
 		}, {
-			n:    Array{},
-			expr: `[0][1] = "red"`,
-			want: Array{Array{nil, StringValue("red")}},
+			caseName: "set on array by dot-index",
+			n:        Array{},
+			expr:     `.0 = "red"`,
+			want:     Array{StringValue("red")},
 		}, {
-			n:      StringValue("str"),
-			expr:   `[0] = "red"`,
-			errstr: `cannot index array with 0`,
+			caseName: "set on array by dot-index creates map",
+			n:        Array{},
+			expr:     `.0.1 = "red"`,
+			want:     Array{Map{"1": StringValue("red")}},
 		}, {
-			n:    Array{},
-			expr: `.0 = "red"`,
-			want: Array{StringValue("red")},
+			caseName: "set root to value",
+			n:        Array{},
+			expr:     `. = "red"`,
+			want:     StringValue("red"),
+		},
+
+		// --- Append operations ---
+		{
+			caseName: "append to new map key creates array",
+			n:        Map{},
+			expr:     `.colors += "red"`,
+			want:     Map{"colors": Array{StringValue("red")}},
 		}, {
-			n:    Array{},
-			expr: `.0.1 = "red"`,
-			want: Array{Map{"1": StringValue("red")}},
+			caseName: "append to new map key without spaces",
+			n:        Map{},
+			expr:     `.colors+="red"`, // NOTE: trim spaces
+			want:     Map{"colors": Array{StringValue("red")}},
 		}, {
-			n:    Array{},
-			expr: `. = "red"`,
-			want: StringValue("red"),
+			caseName: "append to existing array in map",
+			n:        Map{"colors": Array{StringValue("red"), StringValue("green")}},
+			expr:     `.colors += "blue"`,
+			want:     Map{"colors": Array{StringValue("red"), StringValue("green"), StringValue("blue")}},
 		}, {
-			n:    Map{},
-			expr: `.colors += "red"`,
-			want: Map{"colors": Array{StringValue("red")}},
+			caseName: "append to nested array by index",
+			n:        Array{Array{StringValue("red")}},
+			expr:     `[0] += "blue"`,
+			want:     Array{Array{StringValue("red"), StringValue("blue")}},
 		}, {
-			n:    Map{},
-			expr: `.colors+="red"`, // NOTE: trime spaces
-			want: Map{"colors": Array{StringValue("red")}},
+			caseName: "append to nested array by index with gap",
+			n:        Array{Array{StringValue("red")}},
+			expr:     `[2] += "blue"`,
+			want:     Array{Array{StringValue("red")}, nil, Array{StringValue("blue")}},
 		}, {
-			n:    Map{"colors": Array{StringValue("red"), StringValue("green")}},
-			expr: `.colors += "blue"`,
-			want: Map{"colors": Array{StringValue("red"), StringValue("green"), StringValue("blue")}},
+			caseName: "append to non-array element returns error",
+			n:        Array{StringValue("red")},
+			expr:     `[0] += "blue"`,
+			errstr:   `cannot append to array with 0`,
 		}, {
-			n:    Array{Array{StringValue("red")}},
-			expr: `[0] += "blue"`,
-			want: Array{Array{StringValue("red"), StringValue("blue")}},
+			caseName: "append to non-array root returns error",
+			n:        StringValue("red"),
+			expr:     `[0] += "blue"`,
+			errstr:   `cannot append to array with 0`,
 		}, {
-			n:    Array{Array{StringValue("red")}},
-			expr: `[2] += "blue"`,
-			want: Array{Array{StringValue("red")}, nil, Array{StringValue("blue")}},
+			caseName: "append to array root",
+			n:        Array{},
+			expr:     `. += "red"`,
+			want:     Array{StringValue("red")},
+		},
+
+		// --- Delete operations ---
+		{
+			caseName: "delete map key",
+			n:        Map{"key1": StringValue("value1"), "key2": StringValue("value2")},
+			expr:     `.key1 ^?`,
+			want:     Map{"key2": StringValue("value2")},
 		}, {
-			n:      Array{StringValue("red")},
-			expr:   `[0] += "blue"`,
-			errstr: `cannot append to array with 0`,
+			caseName: "delete map key without spaces",
+			n:        Map{"key1": StringValue("value1"), "key2": StringValue("value2")},
+			expr:     `.key1^?`, // NOTE: trim spaces
+			want:     Map{"key2": StringValue("value2")},
 		}, {
-			n:      StringValue("red"),
-			expr:   `[0] += "blue"`,
-			errstr: `cannot append to array with 0`,
+			caseName: "delete array element by bracket-index",
+			n:        Array{StringValue("red")},
+			expr:     `[0] ^?`,
+			want:     Array{},
 		}, {
-			n:    Array{},
-			expr: `. += "red"`,
-			want: Array{StringValue("red")},
+			caseName: "delete array element by dot-index",
+			n:        Array{StringValue("red")},
+			expr:     `.0 ^?`,
+			want:     Array{},
 		}, {
-			n:    Map{"key1": StringValue("value1"), "key2": StringValue("value2")},
-			expr: `.key1 ^?`,
-			want: Map{"key2": StringValue("value2")},
+			caseName: "delete root returns error",
+			n:        Map{},
+			expr:     `. ^?`,
+			errstr:   "cannot delete .",
 		}, {
-			n:    Map{"key1": StringValue("value1"), "key2": StringValue("value2")},
-			expr: `.key1^?`, // NOTE: trim spaces
-			want: Map{"key2": StringValue("value2")},
+			caseName: "delete key on non-map returns error",
+			n:        StringValue("str"),
+			expr:     `.key ^?`,
+			errstr:   `cannot delete "key"`,
 		}, {
-			n:    Array{StringValue("red")},
-			expr: `[0] ^?`,
-			want: Array{},
-		}, {
-			n:    Array{StringValue("red")},
-			expr: `.0 ^?`,
-			want: Array{},
-		}, {
-			n:      Map{},
-			expr:   `. ^?`,
-			errstr: "cannot delete .",
-		}, {
-			n:      StringValue("str"),
-			expr:   `.key ^?`,
-			errstr: `cannot delete "key"`,
-		}, {
-			n:      StringValue("str"),
-			expr:   `[0] ^?`,
-			errstr: `cannot delete array with 0`,
-		}, {
+			caseName: "delete index on non-array returns error",
+			n:        StringValue("str"),
+			expr:     `[0] ^?`,
+			errstr:   `cannot delete array with 0`,
+		},
+
+		// --- Recursive walk operations ---
+		{
+			caseName: "walk set on nested name fields",
 			n: Map{
 				"users": Array{
 					Map{"name": StringValue("one"), "class": StringValue("A")},
@@ -723,6 +772,7 @@ func Test_Edit(t *testing.T) {
 				},
 			},
 		}, {
+			caseName: "walk append to array",
 			n: Map{
 				"numbers": Array{
 					NumberValue(1),
@@ -738,6 +788,7 @@ func Test_Edit(t *testing.T) {
 				},
 			},
 		}, {
+			caseName: "walk delete key",
 			n: Map{
 				"users": Array{
 					Map{"name": StringValue("one"), "class": StringValue("A")},
@@ -751,7 +802,11 @@ func Test_Edit(t *testing.T) {
 					Map{"name": StringValue("two")},
 				},
 			},
-		}, {
+		},
+
+		// --- Filtered edit operations ---
+		{
+			caseName: "filtered set on all array elements",
 			n: Map{
 				"users": Array{
 					Map{"name": StringValue("one"), "class": StringValue("A")},
@@ -766,6 +821,7 @@ func Test_Edit(t *testing.T) {
 				},
 			},
 		}, {
+			caseName: "filtered set with condition",
 			n: Map{
 				"users": Array{
 					Map{"name": StringValue("one"), "class": StringValue("A")},
@@ -780,6 +836,7 @@ func Test_Edit(t *testing.T) {
 				},
 			},
 		}, {
+			caseName: "filtered set with condition without spaces",
 			n: Map{
 				"users": Array{
 					Map{"name": StringValue("one"), "class": StringValue("A")},
@@ -793,7 +850,11 @@ func Test_Edit(t *testing.T) {
 					Map{"name": StringValue("two"), "class": StringValue("B")},
 				},
 			},
-		}, {
+		},
+
+		// --- Pipe operations ---
+		{
+			caseName: "pipe with index set",
 			n: Map{
 				"users": Array{
 					Map{"name": StringValue("one"), "class": StringValue("A")},
@@ -806,25 +867,193 @@ func Test_Edit(t *testing.T) {
 				},
 			},
 		},
+
+		// --- Array holder scenarios (nested array mutations) ---
+		{
+			caseName: "append to array nested in map nested in array",
+			n: Array{
+				Map{"items": Array{StringValue("a")}},
+			},
+			expr: `[0].items += "b"`,
+			want: Array{
+				Map{"items": Array{StringValue("a"), StringValue("b")}},
+			},
+		}, {
+			caseName: "append multiple levels deep array",
+			n: Map{
+				"l1": Array{
+					Map{
+						"l2": Array{StringValue("x")},
+					},
+				},
+			},
+			expr: `.l1[0].l2 += "y"`,
+			want: Map{
+				"l1": Array{
+					Map{
+						"l2": Array{StringValue("x"), StringValue("y")},
+					},
+				},
+			},
+		}, {
+			caseName: "delete from array nested in array",
+			n: Array{
+				Array{StringValue("a"), StringValue("b"), StringValue("c")},
+			},
+			expr: `[0][1] ^?`,
+			want: Array{
+				Array{StringValue("a"), StringValue("c")},
+			},
+		}, {
+			caseName: "set on deeply nested array path",
+			n: Map{
+				"a": Array{
+					Map{
+						"b": Array{
+							Map{"c": StringValue("old")},
+						},
+					},
+				},
+			},
+			expr: `.a[0].b[0].c = "new"`,
+			want: Map{
+				"a": Array{
+					Map{
+						"b": Array{
+							Map{"c": StringValue("new")},
+						},
+					},
+				},
+			},
+		}, {
+			caseName: "append to root array with existing elements",
+			n:    Array{StringValue("a"), StringValue("b")},
+			expr: `. += "c"`,
+			want: Array{StringValue("a"), StringValue("b"), StringValue("c")},
+		}, {
+			caseName: "delete from root array",
+			n:    Array{StringValue("a"), StringValue("b"), StringValue("c")},
+			expr: `[1] ^?`,
+			want: Array{StringValue("a"), StringValue("c")},
+		}, {
+			caseName: "set grows array in nested structure",
+			n: Map{
+				"data": Array{StringValue("x")},
+			},
+			expr: `.data[3] = "y"`,
+			want: Map{
+				"data": Array{StringValue("x"), nil, nil, StringValue("y")},
+			},
+		}, {
+			caseName: "walk append on nested arrays",
+			n: Map{
+				"groups": Array{
+					Map{"tags": Array{StringValue("a")}},
+					Map{"tags": Array{StringValue("b")}},
+				},
+			},
+			expr: `..tags += "z"`,
+			want: Map{
+				"groups": Array{
+					Map{"tags": Array{StringValue("a"), StringValue("z")}},
+					Map{"tags": Array{StringValue("b"), StringValue("z")}},
+				},
+			},
+		}, {
+			caseName: "walk delete from nested arrays",
+			n: Map{
+				"rows": Array{
+					Map{"cols": Array{NumberValue(1), NumberValue(2)}},
+					Map{"cols": Array{NumberValue(3), NumberValue(4)}},
+				},
+			},
+			expr: `..cols[0] ^?`,
+			want: Map{
+				"rows": Array{
+					Map{"cols": Array{NumberValue(2)}},
+					Map{"cols": Array{NumberValue(4)}},
+				},
+			},
+		}, {
+			caseName: "filtered append on array elements",
+			n: Map{
+				"items": Array{
+					Map{"type": StringValue("list"), "values": Array{NumberValue(1)}},
+					Map{"type": StringValue("single"), "values": Array{NumberValue(2)}},
+				},
+			},
+			expr: `.items[.type == "list"].values += 9`,
+			want: Map{
+				"items": Array{
+					Map{"type": StringValue("list"), "values": Array{NumberValue(1), NumberValue(9)}},
+					Map{"type": StringValue("single"), "values": Array{NumberValue(2)}},
+				},
+			},
+		}, {
+			caseName: "set on array in array in array",
+			n:    Array{Array{Array{StringValue("deep")}}},
+			expr: `[0][0][0] = "new"`,
+			want: Array{Array{Array{StringValue("new")}}},
+		}, {
+			caseName: "append to array in array in array",
+			n:    Array{Array{Array{StringValue("a")}}},
+			expr: `[0][0] += "b"`,
+			want: Array{Array{Array{StringValue("a"), StringValue("b")}}},
+		}, {
+			caseName: "delete from array in array in array",
+			n:    Array{Array{Array{StringValue("a"), StringValue("b")}}},
+			expr: `[0][0][0] ^?`,
+			want: Array{Array{Array{StringValue("b")}}},
+		}, {
+			caseName: "set replaces entire nested array",
+			n: Map{
+				"data": Array{NumberValue(1), NumberValue(2)},
+			},
+			expr: `.data = [3, 4, 5]`,
+			want: Map{
+				"data": Array{NumberValue(3), NumberValue(4), NumberValue(5)},
+			},
+		}, {
+			caseName: "edit with nil element in array",
+			n:    Array{nil, StringValue("b")},
+			expr: `[0] = "a"`,
+			want: Array{StringValue("a"), StringValue("b")},
+		}, {
+			caseName: "delete middle element from three-element array",
+			n:    Array{StringValue("a"), StringValue("b"), StringValue("c")},
+			expr: `[1] ^?`,
+			want: Array{StringValue("a"), StringValue("c")},
+		}, {
+			caseName: "append to empty nested array",
+			n: Map{
+				"list": Array{},
+			},
+			expr: `.list += "first"`,
+			want: Map{
+				"list": Array{StringValue("first")},
+			},
+		},
 	}
-	for i, test := range tests {
-		err := Edit(&(test.n), test.expr)
-		if test.errstr != "" {
-			if err == nil {
-				t.Fatalf("tests[%d] for %v; no error", i, test.expr)
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			err := Edit(&(tc.n), tc.expr)
+			if tc.errstr != "" {
+				if err == nil {
+					t.Fatalf("no error; want %s", tc.errstr)
+				}
+				if err.Error() != tc.errstr {
+					t.Errorf("got error %s; want %s", err.Error(), tc.errstr)
+				}
+				return
 			}
-			if err.Error() != test.errstr {
-				t.Errorf("tests[%d] for %v; got %s; want %s", i, test.expr, err.Error(), test.errstr)
+			if err != nil {
+				t.Fatalf("unexpected error: %+v", err)
 			}
-			continue
-		}
-		if err != nil {
-			t.Fatalf("tests[%d] for %v; %+v", i, test.expr, err)
-		}
-		got := test.n
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf("tests[%d] for %v; got %#v; want %#v", i, test.expr, got, test.want)
-		}
+			got := tc.n
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %#v; want %#v", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -940,6 +1169,63 @@ func BenchmarkFind(b *testing.B) {
 		b.Run(e.caseName, func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				if _, err := Find(n, e.expr); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkEdit measures Edit performance across different operations
+// and tree depths. These benchmarks serve as the baseline for
+// comparing the arrayHolder implementation against future alternatives.
+func BenchmarkEdit(b *testing.B) {
+	testCases := []struct {
+		caseName string
+		setup    func() Node
+		expr     string
+	}{
+		{
+			caseName: "set_shallow",
+			setup:    func() Node { return mustBenchNode(b) },
+			expr:     `.store.bicycle.color = "blue"`,
+		},
+		{
+			caseName: "set_deep_array",
+			setup:    func() Node { return mustBenchNode(b) },
+			expr:     `.store.book[2].title = "New Title"`,
+		},
+		{
+			caseName: "append_to_array",
+			setup:    func() Node { return mustBenchNode(b) },
+			expr:     `.store.book += {"author":"New","title":"Book"}`,
+		},
+		{
+			caseName: "delete_from_array",
+			setup:    func() Node { return mustBenchNode(b) },
+			expr:     `.store.book[0] ^?`,
+		},
+		{
+			caseName: "walk_set",
+			setup:    func() Node { return mustBenchNode(b) },
+			expr:     `..price = 0`,
+		},
+		{
+			caseName: "filtered_set",
+			setup:    func() Node { return mustBenchNode(b) },
+			expr:     `.store.book[.category == "fiction"].price = 9.99`,
+		},
+		{
+			caseName: "nested_array_append",
+			setup:    func() Node { return mustBenchNode(b) },
+			expr:     `.store.book[0].tags += {"name":"new","value":"tag"}`,
+		},
+	}
+	for _, tc := range testCases {
+		b.Run(tc.caseName, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				n := tc.setup()
+				if err := Edit(&n, tc.expr); err != nil {
 					b.Fatal(err)
 				}
 			}
