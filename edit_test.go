@@ -5,44 +5,6 @@ import (
 	"testing"
 )
 
-func Test_holdArray(t *testing.T) {
-	var got Node = Array{
-		StringValue("0"),
-		Array{StringValue("0-0"), StringValue("0-1")},
-		Map{"1": Array{BoolValue(true)}},
-	}
-	want := &arrayHolder{
-		&Array{
-			StringValue("0"),
-			&arrayHolder{a: &Array{StringValue("0-0"), StringValue("0-1")}},
-			Map{"1": &arrayHolder{a: &Array{BoolValue(true)}}},
-		},
-	}
-	holdArray(&got)
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %#v; want %#v", got, want)
-	}
-}
-
-func Test_unholdArray(t *testing.T) {
-	var want Node = Array{
-		StringValue("0"),
-		Array{StringValue("0-0"), StringValue("0-1")},
-		Map{"1": Array{BoolValue(true)}},
-	}
-	var got Node = &arrayHolder{
-		&Array{
-			StringValue("0"),
-			&arrayHolder{a: &Array{StringValue("0-0"), StringValue("0-1")}},
-			Map{"1": &arrayHolder{a: &Array{BoolValue(true)}}},
-		},
-	}
-	unholdArray(&got)
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %#v; want %#v", got, want)
-	}
-}
-
 func Test_Edit(t *testing.T) {
 	testCases := []struct {
 		caseName string
