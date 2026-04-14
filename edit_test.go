@@ -1,47 +1,10 @@
 package tree
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 )
-
-func Test_holdArray(t *testing.T) {
-	var got Node = Array{
-		StringValue("0"),
-		Array{StringValue("0-0"), StringValue("0-1")},
-		Map{"1": Array{BoolValue(true)}},
-	}
-	want := &arrayHolder{
-		&Array{
-			StringValue("0"),
-			&arrayHolder{a: &Array{StringValue("0-0"), StringValue("0-1")}},
-			Map{"1": &arrayHolder{a: &Array{BoolValue(true)}}},
-		},
-	}
-	holdArray(&got)
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %#v; want %#v", got, want)
-	}
-}
-
-func Test_unholdArray(t *testing.T) {
-	var want Node = Array{
-		StringValue("0"),
-		Array{StringValue("0-0"), StringValue("0-1")},
-		Map{"1": Array{BoolValue(true)}},
-	}
-	var got Node = &arrayHolder{
-		&Array{
-			StringValue("0"),
-			&arrayHolder{a: &Array{StringValue("0-0"), StringValue("0-1")}},
-			Map{"1": &arrayHolder{a: &Array{BoolValue(true)}}},
-		},
-	}
-	unholdArray(&got)
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %#v; want %#v", got, want)
-	}
-}
 
 func Test_Edit(t *testing.T) {
 	testCases := []struct {
@@ -348,7 +311,7 @@ func Test_Edit(t *testing.T) {
 			},
 		},
 
-		// --- Array holder scenarios (nested array mutations) ---
+		// --- Deep nested Array write-back (mutations through value-typed Arrays) ---
 		{
 			caseName: "append to array nested in map nested in array",
 			n: Array{
@@ -407,14 +370,14 @@ func Test_Edit(t *testing.T) {
 			},
 		}, {
 			caseName: "append to root array with existing elements",
-			n:    Array{StringValue("a"), StringValue("b")},
-			expr: `. += "c"`,
-			want: Array{StringValue("a"), StringValue("b"), StringValue("c")},
+			n:        Array{StringValue("a"), StringValue("b")},
+			expr:     `. += "c"`,
+			want:     Array{StringValue("a"), StringValue("b"), StringValue("c")},
 		}, {
 			caseName: "delete from root array",
-			n:    Array{StringValue("a"), StringValue("b"), StringValue("c")},
-			expr: `[1] ^?`,
-			want: Array{StringValue("a"), StringValue("c")},
+			n:        Array{StringValue("a"), StringValue("b"), StringValue("c")},
+			expr:     `[1] ^?`,
+			want:     Array{StringValue("a"), StringValue("c")},
 		}, {
 			caseName: "set grows array in nested structure",
 			n: Map{
@@ -471,19 +434,19 @@ func Test_Edit(t *testing.T) {
 			},
 		}, {
 			caseName: "set on array in array in array",
-			n:    Array{Array{Array{StringValue("deep")}}},
-			expr: `[0][0][0] = "new"`,
-			want: Array{Array{Array{StringValue("new")}}},
+			n:        Array{Array{Array{StringValue("deep")}}},
+			expr:     `[0][0][0] = "new"`,
+			want:     Array{Array{Array{StringValue("new")}}},
 		}, {
 			caseName: "append to array in array in array",
-			n:    Array{Array{Array{StringValue("a")}}},
-			expr: `[0][0] += "b"`,
-			want: Array{Array{Array{StringValue("a"), StringValue("b")}}},
+			n:        Array{Array{Array{StringValue("a")}}},
+			expr:     `[0][0] += "b"`,
+			want:     Array{Array{Array{StringValue("a"), StringValue("b")}}},
 		}, {
 			caseName: "delete from array in array in array",
-			n:    Array{Array{Array{StringValue("a"), StringValue("b")}}},
-			expr: `[0][0][0] ^?`,
-			want: Array{Array{Array{StringValue("b")}}},
+			n:        Array{Array{Array{StringValue("a"), StringValue("b")}}},
+			expr:     `[0][0][0] ^?`,
+			want:     Array{Array{Array{StringValue("b")}}},
 		}, {
 			caseName: "set replaces entire nested array",
 			n: Map{
@@ -495,14 +458,14 @@ func Test_Edit(t *testing.T) {
 			},
 		}, {
 			caseName: "edit with nil element in array",
-			n:    Array{nil, StringValue("b")},
-			expr: `[0] = "a"`,
-			want: Array{StringValue("a"), StringValue("b")},
+			n:        Array{nil, StringValue("b")},
+			expr:     `[0] = "a"`,
+			want:     Array{StringValue("a"), StringValue("b")},
 		}, {
 			caseName: "delete middle element from three-element array",
-			n:    Array{StringValue("a"), StringValue("b"), StringValue("c")},
-			expr: `[1] ^?`,
-			want: Array{StringValue("a"), StringValue("c")},
+			n:        Array{StringValue("a"), StringValue("b"), StringValue("c")},
+			expr:     `[1] ^?`,
+			want:     Array{StringValue("a"), StringValue("c")},
 		}, {
 			caseName: "append to empty nested array",
 			n: Map{
@@ -511,6 +474,170 @@ func Test_Edit(t *testing.T) {
 			expr: `.list += "first"`,
 			want: Map{
 				"list": Array{StringValue("first")},
+			},
+		},
+
+		// --- Edit-level parse / unmarshal errors ---
+		{
+			caseName: "invalid query expression returns parse error",
+			n:        Map{},
+			expr:     `[ = 1`,
+			errstr:   `syntax error: no right brackets: "[ "`,
+		}, {
+			caseName: "invalid YAML on RHS returns unmarshal error",
+			n:        Map{},
+			expr:     `.a = }not yaml`,
+			errstr:   `yaml: did not find expected node content`,
+		},
+
+		// --- Intermediate-step edge cases in resolveAndEdit ---
+		{
+			caseName: "pipe-prefixed query slurps root then edits wrapper",
+			n:        Map{"a": StringValue("v")},
+			expr:     `| [0] = "x"`,
+			want:     Map{"a": StringValue("v")},
+		}, {
+			caseName: "NopQuery as intermediate step uses default branch",
+			n:        Map{},
+			expr:     `..[0] = 1`,
+			want:     Map{"0": NumberValue(1)},
+		}, {
+			caseName: "missing map key with non-collection next is a no-op",
+			n:        Map{},
+			expr:     `.missing[].x = 1`,
+			want:     Map{},
+		}, {
+			caseName: "non-numeric map key on Array is a no-op",
+			n:        Map{"arr": Array{NumberValue(1)}},
+			expr:     `.arr.badkey.x = 1`,
+			want:     Map{"arr": Array{NumberValue(1)}},
+		}, {
+			caseName: "nil element at Array MapQuery step with non-collection next is a no-op",
+			n:        Map{"arr": Array{nil, nil}},
+			expr:     `.arr.0[].x = 1`,
+			want:     Map{"arr": Array{nil, nil}},
+		}, {
+			caseName: "nil element at Array ArrayQuery step with non-collection next is a no-op",
+			n:        Array{nil, nil},
+			expr:     `[0][].x = 1`,
+			want:     Array{nil, nil},
+		}, {
+			caseName: "MapQuery intermediate on non-collection is a no-op",
+			n:        Map{"s": StringValue("hi")},
+			expr:     `.s.x.y = 1`,
+			want:     Map{"s": StringValue("hi")},
+		}, {
+			caseName: "ArrayQuery intermediate on non-collection is a no-op",
+			n:        Map{"s": StringValue("hi")},
+			expr:     `.s[0].x = 1`,
+			want:     Map{"s": StringValue("hi")},
+		}, {
+			caseName: "ArrayQuery intermediate on Map uses EditorNode branch",
+			n:        Map{"m": Map{"0": Map{"x": StringValue("old")}}},
+			expr:     `.m[0].x = "new"`,
+			want:     Map{"m": Map{"0": Map{"x": StringValue("new")}}},
+		}, {
+			caseName: "ArrayQuery intermediate on Map creates missing key via emptyIntermediate",
+			n:        Map{"arr": Map{"x": StringValue("v")}},
+			expr:     `.arr[0].y = 1`,
+			want:     Map{"arr": Map{"0": Map{"y": NumberValue(1)}, "x": StringValue("v")}},
+		}, {
+			caseName: "SelectQuery intermediate iterates Map values",
+			n: Map{
+				"items": Map{
+					"a": Map{"active": BoolValue(true), "name": StringValue("old")},
+					"b": Map{"active": BoolValue(false), "name": StringValue("old2")},
+				},
+			},
+			expr: `.items[].name = "new"`,
+			want: Map{
+				"items": Map{
+					"a": Map{"active": BoolValue(true), "name": StringValue("new")},
+					"b": Map{"active": BoolValue(false), "name": StringValue("new")},
+				},
+			},
+		},
+
+		// --- Recursion error propagation from terminal step ---
+		{
+			caseName: "error from MapQuery terminal propagates through map step",
+			n:        Map{"s": StringValue("hi")},
+			expr:     `.s.x = 1`,
+			errstr:   `cannot index array with "x"`,
+		}, {
+			caseName: "error from MapQuery terminal propagates through Array map step",
+			n:        Map{"arr": Array{StringValue("hi")}},
+			expr:     `.arr.0.x = 1`,
+			errstr:   `cannot index array with "x"`,
+		}, {
+			caseName: "error from MapQuery terminal propagates through ArrayQuery step",
+			n:        Array{StringValue("hi")},
+			expr:     `[0].x = 1`,
+			errstr:   `cannot index array with "x"`,
+		}, {
+			caseName: "error from SelectQuery Array branch propagates through iteration",
+			n:        Map{"items": Array{StringValue("oops")}},
+			expr:     `.items[].name = "x"`,
+			errstr:   `cannot index array with "name"`,
+		}, {
+			caseName: "error from SelectQuery Map branch propagates through iteration",
+			n:        Map{"items": Map{"a": StringValue("oops")}},
+			expr:     `.items[].name = "x"`,
+			errstr:   `cannot index array with "name"`,
+		}, {
+			caseName: "error from WalkQuery intermediate recursion propagates up",
+			n:        Map{"outer": Map{"name": StringValue("str")}},
+			expr:     `..name.x = 1`,
+			errstr:   `cannot index array with "x"`,
+		}, {
+			caseName: "error from default-branch terminal step propagates up",
+			n:        Array{StringValue("hi")},
+			expr:     `..[0].x = 1`,
+			errstr:   `cannot index array with "x"`,
+		}, {
+			caseName: "EditorNode ArrayQuery intermediate with missing key and non-collection next is a no-op",
+			n:        Map{"arr": Map{"x": StringValue("v")}},
+			expr:     `.arr[0][].y = 1`,
+			want:     Map{"arr": Map{"x": StringValue("v")}},
+		}, {
+			caseName: "error from EditorNode ArrayQuery branch recursion propagates up",
+			n:        Map{"arr": Map{"0": StringValue("oops")}},
+			expr:     `.arr[0].x = 1`,
+			errstr:   `cannot index array with "x"`,
+		}, {
+			caseName: "default-branch intermediate Exec error propagates up",
+			n:        Map{"items": Map{"x": StringValue("v")}},
+			expr:     `.items[1:2].x = 1`,
+			errstr:   `cannot index array with range 1:2`,
+		}, {
+			caseName: "slurp left.Exec error propagates up",
+			n:        Map{"items": Map{"x": StringValue("v")}},
+			expr:     `.items[1:2] | .x = 1`,
+			errstr:   `cannot index array with range 1:2`,
+		}, {
+			caseName: "terminal SelectQuery is an unsupported edit query",
+			n:        Map{"items": Array{NumberValue(1)}},
+			expr:     `.items[] = "new"`,
+			errstr:   `syntax error: unsupported edit query: []`,
+		}, {
+			caseName: "SelectQuery intermediate on non-collection is a no-op",
+			n:        Map{"s": StringValue("hi")},
+			expr:     `.s[].x = 1`,
+			want:     Map{"s": StringValue("hi")},
+		}, {
+			caseName: "SelectQuery with selector iterates Map values matching comparator",
+			n: Map{
+				"items": Map{
+					"a": Map{"x": NumberValue(1), "name": StringValue("old")},
+					"b": Map{"x": NumberValue(2), "name": StringValue("old2")},
+				},
+			},
+			expr: `.items[.x == 1].name = "new"`,
+			want: Map{
+				"items": Map{
+					"a": Map{"x": NumberValue(1), "name": StringValue("new")},
+					"b": Map{"x": NumberValue(2), "name": StringValue("old2")},
+				},
 			},
 		},
 	}
@@ -532,6 +659,42 @@ func Test_Edit(t *testing.T) {
 			got := tc.n
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("got %#v; want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
+func Test_Edit_resolveSelectStep_SelectorError(t *testing.T) {
+	selector := &testSelectorDelegator{
+		matchesFunc: func(Node) (bool, error) {
+			return false, errors.New("selector boom")
+		},
+	}
+	fq := FilterQuery{
+		MapQuery("items"),
+		SelectQuery{Selector: selector},
+		MapQuery("name"),
+	}
+	testCases := []struct {
+		caseName string
+		n        Node
+	}{
+		{
+			caseName: "Array branch propagates selector error",
+			n:        Map{"items": Array{Map{"name": StringValue("a")}}},
+		}, {
+			caseName: "Map branch propagates selector error",
+			n:        Map{"items": Map{"a": Map{"name": StringValue("a")}}},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			err := resolveAndEdit(&tc.n, fq, 0, "=", StringValue("x"))
+			if err == nil {
+				t.Fatalf("no error; want %q", "selector boom")
+			}
+			if err.Error() != "selector boom" {
+				t.Errorf("got error %q; want %q", err.Error(), "selector boom")
 			}
 		})
 	}

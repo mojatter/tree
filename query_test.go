@@ -622,3 +622,22 @@ func BenchmarkFind(b *testing.B) {
 	}
 }
 
+// testSelectorDelegator is a test-only Selector whose Matches behavior
+// can be configured per-test by assigning matchesFunc. It exists so
+// that tests can exercise Selector error paths and custom match logic
+// that parser-produced selectors cannot easily produce.
+type testSelectorDelegator struct {
+	matchesFunc func(Node) (bool, error)
+}
+
+func (d *testSelectorDelegator) Matches(n Node) (bool, error) {
+	if d.matchesFunc != nil {
+		return d.matchesFunc(n)
+	}
+	return false, nil
+}
+
+func (d *testSelectorDelegator) String() string {
+	return "testSelectorDelegator"
+}
+
