@@ -42,10 +42,9 @@ func (q NopQuery) Set(pn *Node, v Node) error {
 }
 
 func (q NopQuery) Append(pn *Node, v Node) error {
-	if en, ok := (*pn).(EditorNode); ok {
-		if err := en.Append(v); err == nil {
-			return nil
-		}
+	if a := (*pn).Array(); a != nil {
+		*pn = append(a, v)
+		return nil
 	}
 	return fmt.Errorf("cannot append to %s", ".")
 }
@@ -93,21 +92,24 @@ func (q MapQuery) Set(pn *Node, v Node) error {
 	if en, ok := (*pn).(EditorNode); ok {
 		return en.Set(key, v)
 	}
+	if a := (*pn).Array(); a != nil {
+		if err := a.Set(key, v); err != nil {
+			return err
+		}
+
+		*pn = a
+		return nil
+	}
 	return fmt.Errorf("cannot index array with %q", key)
 }
 
 func (q MapQuery) Append(pn *Node, v Node) error {
 	n := *pn
 	key := string(q)
-	if en, ok := (*pn).(EditorNode); ok {
+	if en, ok := n.(EditorNode); ok {
 		if n.Has(key) {
-			x := n.Get(key)
-			if x != nil {
-				if ex, ok := x.(EditorNode); ok {
-					if err := ex.Append(v); err == nil {
-						return nil
-					}
-				}
+			if ca := n.Get(key).Array(); ca != nil {
+				return en.Set(key, append(ca, v))
 			}
 			return fmt.Errorf("cannot append to %q", key)
 		}
@@ -122,6 +124,14 @@ func (q MapQuery) Delete(pn *Node) error {
 		if err := en.Delete(key); err == nil {
 			return nil
 		}
+	}
+	if a := (*pn).Array(); a != nil {
+		if err := a.Delete(key); err != nil {
+			return fmt.Errorf("cannot delete %q", key)
+		}
+
+		*pn = a
+		return nil
 	}
 	return fmt.Errorf("cannot delete %q", key)
 }
@@ -151,25 +161,43 @@ func (q ArrayQuery) Set(pn *Node, v Node) error {
 	if en, ok := (*pn).(EditorNode); ok {
 		return en.Set(index, v)
 	}
+	if a := (*pn).Array(); a != nil {
+		if err := a.Set(index, v); err != nil {
+			return err
+		}
+
+		*pn = a
+		return nil
+	}
 	return fmt.Errorf("cannot index array with %d", index)
 }
 
 func (q ArrayQuery) Append(pn *Node, v Node) error {
 	index := int(q)
 	n := *pn
-	if en, ok := (*pn).(EditorNode); ok {
+	if en, ok := n.(EditorNode); ok {
 		if n.Has(index) {
-			x := n.Get(index)
-			if x != nil {
-				if ex, ok := x.(EditorNode); ok {
-					if err := ex.Append(v); err == nil {
-						return nil
-					}
-				}
+			if ca := n.Get(index).Array(); ca != nil {
+				return en.Set(index, append(ca, v))
 			}
 			return fmt.Errorf("cannot append to array with %d", index)
 		}
 		return en.Set(index, Array{v})
+	}
+	if a := n.Array(); a != nil {
+		if n.Has(index) {
+			if ca := a[index].Array(); ca != nil {
+				a[index] = append(ca, v)
+				*pn = a
+				return nil
+			}
+			return fmt.Errorf("cannot append to array with %d", index)
+		}
+		na := make(Array, index+1)
+		copy(na, a)
+		na[index] = Array{v}
+		*pn = na
+		return nil
 	}
 	return fmt.Errorf("cannot append to array with %d", index)
 }
@@ -180,6 +208,14 @@ func (q ArrayQuery) Delete(pn *Node) error {
 		if err := en.Delete(index); err == nil {
 			return nil
 		}
+	}
+	if a := (*pn).Array(); a != nil {
+		if err := a.Delete(index); err != nil {
+			return fmt.Errorf("cannot delete array with %d", index)
+		}
+
+		*pn = a
+		return nil
 	}
 	return fmt.Errorf("cannot delete array with %d", index)
 }
@@ -262,53 +298,6 @@ func (qs FilterQuery) Exec(n Node) ([]Node, error) {
 	return rs, nil
 }
 
-func (qs FilterQuery) execForEdit(n Node) ([]Node, error) {
-	rs := []Node{n}
-	for i, q := range qs[:len(qs)-1] {
-		switch q.(type) {
-		case SlurpQuery:
-			nrs, err := q.Exec(Array(rs))
-			if err != nil {
-				return nil, err
-			}
-			rs = nrs
-			continue
-		}
-		var nrs []Node
-		for _, r := range rs {
-			if r == nil {
-				continue
-			}
-			nr, err := q.Exec(r)
-			if err != nil {
-				return nil, err
-			}
-			if len(nr) == 0 {
-				var empty Node
-				switch qs[i+1].(type) {
-				case MapQuery:
-					empty = Map{}
-				case ArrayQuery:
-					empty = Array{}
-				}
-				if empty != nil {
-					if eq, ok := q.(EditorQuery); ok {
-						if err = eq.Set(&r, empty); err != nil {
-							return nil, err
-						}
-						if nr, err = eq.Exec(r); err != nil {
-							return nil, err
-						}
-					}
-				}
-			}
-			nrs = append(nrs, nr...)
-		}
-		rs = nrs
-	}
-	return rs, nil
-}
-
 func (qs FilterQuery) String() string {
 	ss := make([]string, len(qs))
 	for i, q := range qs {
@@ -355,9 +344,9 @@ func (q WalkQuery) Append(pn *Node, v Node) error {
 	key := string(q)
 	return Walk(*pn, func(n Node, keys []any) error {
 		if n.Has(key) {
-			if nv := n.Get(key); nv != nil {
-				if env, ok := nv.(EditorNode); ok {
-					_ = env.Append(v)
+			if ca := n.Get(key).Array(); ca != nil {
+				if en, ok := n.(EditorNode); ok {
+					_ = en.Set(key, append(ca, v))
 				}
 			}
 		}
