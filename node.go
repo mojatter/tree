@@ -72,9 +72,10 @@ type Node interface {
 	Value() Value
 	// Has checks this node has key.
 	Has(keys ...any) bool
-	// Get returns array/map value that matched by the specified key.
+	// Get returns the child node that matches the specified keys.
 	// The key type allows int or string.
-	// If the specified keys does not match, returns NilValue.
+	// Get returns NilValue both when the key is missing and when the
+	// stored value is nil. Use [Node.Has] to distinguish between the two.
 	Get(keys ...any) Node
 	// Each calls the callback function for each Array|Map values.
 	// If the node type is not Array|Map then the callback called once with nil key and self as value.
@@ -128,7 +129,7 @@ func (n Any) Has(keys ...any) bool {
 	return n.Node.Has(keys...)
 }
 
-// Get returns an array value as Node.
+// Get returns the child node that matches the specified keys.
 func (n Any) Get(keys ...any) Node {
 	return n.Node.Get(keys...)
 }
@@ -206,7 +207,8 @@ func (n Array) Has(keys ...any) bool {
 	return false
 }
 
-// Get returns an array value as Node.
+// Get returns the child node at the given index.
+// It returns NilValue if the index is out of range or the element is nil.
 func (n Array) Get(keys ...any) Node {
 	if len(keys) > 0 {
 		if i, ok := n.toIndex(keys[0]); ok {
@@ -329,7 +331,8 @@ func (n Map) Has(keys ...any) bool {
 	return false
 }
 
-// Get returns an array value as Node.
+// Get returns the child node for the given key.
+// It returns NilValue if the key is missing or the stored value is nil.
 func (n Map) Get(keys ...any) Node {
 	if len(keys) > 0 {
 		if k, ok := n.toKey(keys[0]); ok {
