@@ -16,6 +16,15 @@ func Test_V(t *testing.T) {
 	}
 }
 
+func Test_A(t *testing.T) {
+	// A is a thin alias for ToArrayValues.
+	got := A("a", 1, true)
+	want := ToArrayValues("a", 1, true)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("A(...) = %#v; want %#v", got, want)
+	}
+}
+
 func Test_ToValue(t *testing.T) {
 	tests := []struct {
 		v    any

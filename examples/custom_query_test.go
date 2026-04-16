@@ -31,17 +31,17 @@ func Example_customQuery() {
 		tree.Map{
 			"ID":     tree.V(1),
 			"Name":   tree.V("Reds"),
-			"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
+			"Colors": tree.A("Crimson", "Red", "Ruby", "Maroon"),
 		},
 		tree.Map{
 			"ID":     tree.V(2),
 			"Name":   tree.V("Greens"),
-			"Colors": tree.ToArrayValues("Green", "Lime", "Olive", "Teal"),
+			"Colors": tree.A("Green", "Lime", "Olive", "Teal"),
 		},
 		tree.Map{
 			"ID":     tree.V(3),
 			"Name":   tree.V("Blues"),
-			"Colors": tree.ToArrayValues("Aqua", "Blue", "Cyan", "SkyBlue"),
+			"Colors": tree.A("Aqua", "Blue", "Cyan", "SkyBlue"),
 		},
 	}
 
@@ -84,17 +84,17 @@ func Example_customSelector() {
 		tree.Map{
 			"ID":     tree.V(1),
 			"Name":   tree.V("Reds"),
-			"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
+			"Colors": tree.A("Crimson", "Red", "Ruby", "Maroon"),
 		},
 		tree.Map{
 			"ID":     tree.V(2),
 			"Name":   tree.V("Greens"),
-			"Colors": tree.ToArrayValues("Green", "Lime", "Olive", "Teal"),
+			"Colors": tree.A("Green", "Lime", "Olive", "Teal"),
 		},
 		tree.Map{
 			"ID":     tree.V(3),
 			"Name":   tree.V("Blues"),
-			"Colors": tree.ToArrayValues("Aqua", "Blue", "Cyan", "SkyBlue"),
+			"Colors": tree.A("Aqua", "Blue", "Cyan", "SkyBlue"),
 		},
 	}
 

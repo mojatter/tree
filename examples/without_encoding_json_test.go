@@ -50,7 +50,7 @@ func Example_goJSONMarshal() {
 	group := tree.Map{
 		"ID":     tree.V(1),
 		"Name":   tree.V("Reds"),
-		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
+		"Colors": tree.A("Crimson", "Red", "Ruby", "Maroon"),
 	}
 	b, err := gojson.Marshal(group)
 	if err != nil {
@@ -109,7 +109,7 @@ func Example_jsonIteratorMarshal() {
 	group := tree.Map{
 		"ID":     tree.V(1),
 		"Name":   tree.V("Reds"),
-		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
+		"Colors": tree.A("Crimson", "Red", "Ruby", "Maroon"),
 	}
 	b, err := json.Marshal(group)
 	if err != nil {
