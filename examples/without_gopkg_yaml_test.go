@@ -32,8 +32,8 @@ Name: Reds
 
 func Example_yamlV3Marshal() {
 	group := tree.Map{
-		"ID":     tree.ToValue(1),
-		"Name":   tree.ToValue("Reds"),
+		"ID":     tree.V(1),
+		"Name":   tree.V("Reds"),
 		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 	}
 	b, err := yamlv3.Marshal(group)
@@ -84,8 +84,8 @@ Name: Reds
 
 func Example_goYAMLMarshal() {
 	group := tree.Map{
-		"ID":     tree.ToValue(1),
-		"Name":   tree.ToValue("Reds"),
+		"ID":     tree.V(1),
+		"Name":   tree.V("Reds"),
 		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 	}
 	b, err := goyaml.Marshal(group)

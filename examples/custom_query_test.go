@@ -29,18 +29,18 @@ func (q *evenIndexQuery) String() string {
 func Example_customQuery() {
 	group := tree.Array{
 		tree.Map{
-			"ID":     tree.ToValue(1),
-			"Name":   tree.ToValue("Reds"),
+			"ID":     tree.V(1),
+			"Name":   tree.V("Reds"),
 			"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 		},
 		tree.Map{
-			"ID":     tree.ToValue(2),
-			"Name":   tree.ToValue("Greens"),
+			"ID":     tree.V(2),
+			"Name":   tree.V("Greens"),
 			"Colors": tree.ToArrayValues("Green", "Lime", "Olive", "Teal"),
 		},
 		tree.Map{
-			"ID":     tree.ToValue(3),
-			"Name":   tree.ToValue("Blues"),
+			"ID":     tree.V(3),
+			"Name":   tree.V("Blues"),
 			"Colors": tree.ToArrayValues("Aqua", "Blue", "Cyan", "SkyBlue"),
 		},
 	}
@@ -82,18 +82,18 @@ func (s *primaryColorSelector) String() string {
 func Example_customSelector() {
 	group := tree.Array{
 		tree.Map{
-			"ID":     tree.ToValue(1),
-			"Name":   tree.ToValue("Reds"),
+			"ID":     tree.V(1),
+			"Name":   tree.V("Reds"),
 			"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 		},
 		tree.Map{
-			"ID":     tree.ToValue(2),
-			"Name":   tree.ToValue("Greens"),
+			"ID":     tree.V(2),
+			"Name":   tree.V("Greens"),
 			"Colors": tree.ToArrayValues("Green", "Lime", "Olive", "Teal"),
 		},
 		tree.Map{
-			"ID":     tree.ToValue(3),
-			"Name":   tree.ToValue("Blues"),
+			"ID":     tree.V(3),
+			"Name":   tree.V("Blues"),
 			"Colors": tree.ToArrayValues("Aqua", "Blue", "Cyan", "SkyBlue"),
 		},
 	}

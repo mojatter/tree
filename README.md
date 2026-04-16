@@ -42,8 +42,8 @@ Tree is a simple structure for dealing with dynamic or unknown JSON/YAML in Go.
 
 ```go
 tree.Map{
-	"ID":     tree.ToValue(1),
-	"Name":   tree.ToValue("Reds"),
+	"ID":     tree.V(1),
+	"Name":   tree.V("Reds"),
 	"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 }
 ```
@@ -75,8 +75,8 @@ Colors:
 ```go
 func ExampleMarshalJSON() {
 	group := tree.Map{
-		"ID":     tree.ToValue(1),
-		"Name":   tree.ToValue("Reds"),
+		"ID":     tree.V(1),
+		"Name":   tree.V("Reds"),
 		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 	}
 	b, err := json.Marshal(group)
@@ -164,8 +164,8 @@ func main() {
 ```go
 func ExampleGet() {
 	group := tree.Map{
-		"ID":     tree.ToValue(1),
-		"Name":   tree.ToValue("Reds"),
+		"ID":     tree.V(1),
+		"Name":   tree.V("Reds"),
 		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 		"Nil":    nil,
 	}
@@ -187,8 +187,8 @@ func ExampleGet() {
 ```go
 func ExampleFind() {
 	group := tree.Map{
-		"ID":     tree.ToValue(1),
-		"Name":   tree.ToValue("Reds"),
+		"ID":     tree.V(1),
+		"Name":   tree.V("Reds"),
 		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 	}
 
@@ -348,8 +348,8 @@ node.Find(".store.book.rsort(\".price\")")  // Books ordered by descending price
 ```go
 func ExampleEdit() {
 	var group tree.Node = tree.Map{
-		"ID":     tree.ToValue(1),
-		"Name":   tree.ToValue("Reds"),
+		"ID":     tree.V(1),
+		"Name":   tree.V("Reds"),
 		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 	}
 

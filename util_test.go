@@ -5,6 +5,17 @@ import (
 	"testing"
 )
 
+func Test_V(t *testing.T) {
+	// V is a thin alias for ToValue; sample a few representative
+	// inputs to confirm they yield identical results.
+	inputs := []any{nil, "s", true, 1, int64(2), 3.5}
+	for _, in := range inputs {
+		if got, want := V(in), ToValue(in); got != want {
+			t.Errorf("V(%v) = %#v; want %#v", in, got, want)
+		}
+	}
+}
+
 func Test_ToValue(t *testing.T) {
 	tests := []struct {
 		v    any
