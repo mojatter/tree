@@ -15,6 +15,14 @@ func V(v any) Node {
 	return ToValue(v)
 }
 
+// A is a short alias for [ToArrayValues]. It pairs with [V] for concise
+// construction of arrays:
+//
+//	tree.A("Crimson", "Red", "Ruby")
+func A(vs ...any) Array {
+	return ToArrayValues(vs...)
+}
+
 // ToValue converts the specified v to a Value as Node.
 // Node.Value() returns converted value.
 func ToValue(v any) Node {

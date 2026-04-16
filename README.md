@@ -44,7 +44,7 @@ Tree is a simple structure for dealing with dynamic or unknown JSON/YAML in Go.
 tree.Map{
 	"ID":     tree.V(1),
 	"Name":   tree.V("Reds"),
-	"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
+	"Colors": tree.A("Crimson", "Red", "Ruby", "Maroon"),
 }
 ```
 
@@ -77,7 +77,7 @@ func ExampleMarshalJSON() {
 	group := tree.Map{
 		"ID":     tree.V(1),
 		"Name":   tree.V("Reds"),
-		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
+		"Colors": tree.A("Crimson", "Red", "Ruby", "Maroon"),
 	}
 	b, err := json.Marshal(group)
 	if err != nil {
@@ -166,7 +166,7 @@ func ExampleGet() {
 	group := tree.Map{
 		"ID":     tree.V(1),
 		"Name":   tree.V("Reds"),
-		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
+		"Colors": tree.A("Crimson", "Red", "Ruby", "Maroon"),
 		"Nil":    nil,
 	}
 	fmt.Println(group.Get("Colors").Get(1))
@@ -189,7 +189,7 @@ func ExampleFind() {
 	group := tree.Map{
 		"ID":     tree.V(1),
 		"Name":   tree.V("Reds"),
-		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
+		"Colors": tree.A("Crimson", "Red", "Ruby", "Maroon"),
 	}
 
 	rs, err := group.Find(".Colors[1:3]")
@@ -350,7 +350,7 @@ func ExampleEdit() {
 	var group tree.Node = tree.Map{
 		"ID":     tree.V(1),
 		"Name":   tree.V("Reds"),
-		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
+		"Colors": tree.A("Crimson", "Red", "Ruby", "Maroon"),
 	}
 
 	if err := tree.Edit(&group, ".Colors += \"Pink\""); err != nil {
