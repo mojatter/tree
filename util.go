@@ -7,6 +7,14 @@ import (
 	"sync"
 )
 
+// V is a short alias for [ToValue]. It is intended to keep
+// composite-literal construction of [Map] / [Array] concise:
+//
+//	tree.Map{"Name": tree.V("Alice"), "Age": tree.V(30)}
+func V(v any) Node {
+	return ToValue(v)
+}
+
 // ToValue converts the specified v to a Value as Node.
 // Node.Value() returns converted value.
 func ToValue(v any) Node {

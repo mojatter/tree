@@ -11,8 +11,8 @@ import (
 
 func ExampleMarshalJSON() {
 	group := tree.Map{
-		"ID":     tree.ToValue(1),
-		"Name":   tree.ToValue("Reds"),
+		"ID":     tree.V(1),
+		"Name":   tree.V("Reds"),
 		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 	}
 	b, err := json.Marshal(group)
@@ -104,8 +104,8 @@ func ExampleUnmarshalJSON_combined() {
 
 func ExampleMarshalYAML() {
 	group := tree.Map{
-		"ID":     tree.ToValue(1),
-		"Name":   tree.ToValue("Reds"),
+		"ID":     tree.V(1),
+		"Name":   tree.V("Reds"),
 		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 	}
 	b, err := tree.MarshalYAML(group)
@@ -147,8 +147,8 @@ Name: Reds
 
 func ExampleNode_Get() {
 	group := tree.Map{
-		"ID":     tree.ToValue(1),
-		"Name":   tree.ToValue("Reds"),
+		"ID":     tree.V(1),
+		"Name":   tree.V("Reds"),
 		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 		"Nil":    nil,
 	}
@@ -175,8 +175,8 @@ func ExampleNode_Get() {
 
 func ExampleFind() {
 	group := tree.Map{
-		"ID":     tree.ToValue(1),
-		"Name":   tree.ToValue("Reds"),
+		"ID":     tree.V(1),
+		"Name":   tree.V("Reds"),
 		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 	}
 
@@ -195,8 +195,8 @@ func ExampleFind() {
 
 func ExampleEdit() {
 	var group tree.Node = tree.Map{
-		"ID":     tree.ToValue(1),
-		"Name":   tree.ToValue("Reds"),
+		"ID":     tree.V(1),
+		"Name":   tree.V("Reds"),
 		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 	}
 
