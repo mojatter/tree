@@ -72,7 +72,7 @@ func (n NilValue) Has(keys ...any) bool {
 	return false
 }
 
-// Get returns nil.
+// Get always returns NilValue.
 func (n NilValue) Get(keys ...any) Node {
 	return n
 }
@@ -158,7 +158,7 @@ func (n StringValue) Has(keys ...any) bool {
 	return false
 }
 
-// Get returns nil.
+// Get always returns NilValue.
 func (n StringValue) Get(keys ...any) Node {
 	return Nil
 }
@@ -260,7 +260,7 @@ func (n BoolValue) Has(keys ...any) bool {
 	return false
 }
 
-// Get returns nil.
+// Get always returns NilValue.
 func (n BoolValue) Get(keys ...any) Node {
 	return Nil
 }
@@ -349,7 +349,7 @@ func (n NumberValue) Has(keys ...any) bool {
 	return false
 }
 
-// Get returns nil.
+// Get always returns NilValue.
 func (n NumberValue) Get(keys ...any) Node {
 	return Nil
 }
