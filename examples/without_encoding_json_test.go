@@ -48,8 +48,8 @@ func Example_goJSONUnmarshal_combined() {
 
 func Example_goJSONMarshal() {
 	group := tree.Map{
-		"ID":     tree.ToValue(1),
-		"Name":   tree.ToValue("Reds"),
+		"ID":     tree.V(1),
+		"Name":   tree.V("Reds"),
 		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 	}
 	b, err := gojson.Marshal(group)
@@ -107,8 +107,8 @@ func Example_jsonIteratorMarshal() {
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
 	group := tree.Map{
-		"ID":     tree.ToValue(1),
-		"Name":   tree.ToValue("Reds"),
+		"ID":     tree.V(1),
+		"Name":   tree.V("Reds"),
 		"Colors": tree.ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 	}
 	b, err := json.Marshal(group)
