@@ -155,13 +155,22 @@ func ExampleNode_Get() {
 	fmt.Println(group.Get("Colors").Get(1))
 	fmt.Println(group.Get("Colors", 2))
 	fmt.Println(group.Get("Colors").Get(5).IsNil())
+
+	// Get returns NilValue for both missing keys and nil values.
+	// Use Has to distinguish between the two.
 	fmt.Println(group.Get("Nil").IsNil())
+	fmt.Println(group.Has("Nil"))
+	fmt.Println(group.Get("NoSuchKey").IsNil())
+	fmt.Println(group.Has("NoSuchKey"))
 
 	// Output:
 	// Red
 	// Ruby
 	// true
 	// true
+	// true
+	// true
+	// false
 }
 
 func ExampleFind() {
