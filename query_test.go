@@ -3,6 +3,8 @@ package tree
 import (
 	"reflect"
 	"testing"
+
+	"github.com/mojatter/tree/internal/testdata"
 )
 
 func Test_Query(t *testing.T) {
@@ -316,68 +318,8 @@ func Test_ParseQuery_Errors(t *testing.T) {
 	}
 }
 
-// NOTE: Copy from https://github.com/stedolan/jq/wiki/For-JSONPath-users#illustrative-object
-var testStoreJSON = `{
-  "store": {
-    "book": [
-      {
-        "category": "reference",
-        "author": "Nigel Rees",
-        "authors": ["Nigel Rees"],
-        "title": "Sayings of the Century",
-        "price": 8.95,
-        "tags": [
-          { "name": "genre", "value": "reference" },
-          { "name": "era", "value": "20th century" },
-          { "name": "theme", "value": "quotations" }
-        ]
-      },
-      {
-        "category": "fiction",
-        "author": "Evelyn Waugh",
-        "title": "Sword of Honour",
-        "price": 12.99,
-        "tags": [
-          { "name": "genre", "value": "fiction" },
-          { "name": "era", "value": "20th century" },
-          { "name": "theme", "value": "WWII" }
-        ]
-      },
-      {
-        "category": "fiction",
-        "author": "Herman Melville",
-        "title": "Moby Dick",
-        "isbn": "0-553-21311-3",
-        "price": 8.99,
-        "tags": [
-          { "name": "genre", "value": "fiction" },
-          { "name": "era", "value": "19th century" },
-          { "name": "theme", "value": "whale hunting" }
-        ]
-      },
-      {
-        "category": "fiction",
-        "author": "J. R. R. Tolkien",
-        "title": "The Lord of the Rings",
-        "isbn": "0-395-19395-8",
-        "price": 22.99,
-        "tags": [
-          { "name": "genre", "value": "fantasy" },
-          { "name": "era", "value": "20th century" },
-          { "name": "theme", "value": "good vs evil" }
-        ]
-      }
-    ],
-    "bicycle": {
-      "color": "red",
-      "price": 19.95
-    }
-  }
-}
-`
-
 func TestFind(t *testing.T) {
-	n, err := UnmarshalJSON([]byte(testStoreJSON))
+	n, err := UnmarshalJSON([]byte(testdata.StoreJSON))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -549,25 +491,9 @@ func FuzzParseQuery(f *testing.F) {
 	})
 }
 
-const benchStoreJSON = `{
-  "store": {
-    "bicycle": { "color": "red", "price": 19.95 },
-    "book": [
-      { "author": "Nigel Rees", "category": "reference", "price": 8.95, "title": "Sayings of the Century",
-        "tags": [{"name":"genre","value":"reference"},{"name":"era","value":"20th century"},{"name":"theme","value":"quotations"}] },
-      { "author": "Evelyn Waugh", "category": "fiction", "price": 12.99, "title": "Sword of Honour",
-        "tags": [{"name":"genre","value":"fiction"},{"name":"era","value":"20th century"},{"name":"theme","value":"WWII"}] },
-      { "author": "Herman Melville", "category": "fiction", "isbn": "0-553-21311-3", "price": 8.99, "title": "Moby Dick",
-        "tags": [{"name":"genre","value":"fiction"},{"name":"era","value":"19th century"},{"name":"theme","value":"whale hunting"}] },
-      { "author": "J. R. R. Tolkien", "category": "fiction", "isbn": "0-395-19395-8", "price": 22.99, "title": "The Lord of the Rings",
-        "tags": [{"name":"genre","value":"fantasy"},{"name":"era","value":"20th century"},{"name":"theme","value":"good vs evil"}] }
-    ]
-  }
-}`
-
 func mustBenchNode(b *testing.B) Node {
 	b.Helper()
-	n, err := UnmarshalJSON([]byte(benchStoreJSON))
+	n, err := UnmarshalJSON([]byte(testdata.StoreJSON))
 	if err != nil {
 		b.Fatal(err)
 	}
