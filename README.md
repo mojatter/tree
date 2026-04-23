@@ -427,18 +427,12 @@ brew tap mojatter/tree
 brew install mojatter/tree/tq
 ```
 
-Download binary
+Prebuilt binaries
 
-```sh
-# For macOS (Darwin)
-VERSION=0.10.0 GOOS=Darwin GOARCH=arm64; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
-
-# For Linux x64
-VERSION=0.10.0 GOOS=Linux GOARCH=amd64; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_${GOOS}_${GOARCH}.tar.gz" | tar xz tq && mv tq /usr/local/bin
-
-# For Windows x64
-VERSION=0.10.0; curl -fsSL "https://github.com/mojatter/tree/releases/download/v${VERSION}/tree_${VERSION}_windows_amd64.zip" -o tq.zip && unzip tq.zip tq.exe
-```
+macOS, Linux, and Windows archives are attached to each tag on the
+[Releases page](https://github.com/mojatter/tree/releases/latest).
+Download the archive for your platform, extract `tq` (or `tq.exe`),
+and move it somewhere on `$PATH`.
 
 ### Usage
 
