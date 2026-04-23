@@ -318,8 +318,6 @@ func Test_ParseQuery_Errors(t *testing.T) {
 	}
 }
 
-// NOTE: Copy from https://github.com/stedolan/jq/wiki/For-JSONPath-users#illustrative-object
-
 func TestFind(t *testing.T) {
 	n, err := UnmarshalJSON([]byte(testdata.StoreJSON))
 	if err != nil {
