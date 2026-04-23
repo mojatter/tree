@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
+
+	"github.com/mojatter/tree/internal/testdata"
 )
 
 func Test_MarshalJSON(t *testing.T) {
@@ -283,7 +285,7 @@ func FuzzUnmarshalJSON(f *testing.F) {
 // BenchmarkUnmarshalJSON measures decoding the embedded sample
 // document into a Node tree.
 func BenchmarkUnmarshalJSON(b *testing.B) {
-	data := []byte(benchStoreJSON)
+	data := []byte(testdata.StoreJSON)
 	for i := 0; i < b.N; i++ {
 		if _, err := UnmarshalJSON(data); err != nil {
 			b.Fatal(err)
