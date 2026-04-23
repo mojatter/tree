@@ -7,6 +7,9 @@ package testdata
 // StoreJSON is the "Illustrative Object" from tree's README: a
 // bookstore document with nested arrays and maps. It is the default
 // fixture for query, editing, and validation examples.
+//
+// Adapted from the jq wiki:
+// https://github.com/stedolan/jq/wiki/For-JSONPath-users#illustrative-object
 const StoreJSON = `{
   "store": {
     "book": [
