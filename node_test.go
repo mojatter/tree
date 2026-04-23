@@ -61,6 +61,31 @@ func Test_Type(t *testing.T) {
 	}
 }
 
+func Test_Type_String(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		typ      Type
+		want     string
+	}{
+		{caseName: "array", typ: TypeArray, want: "array"},
+		{caseName: "map", typ: TypeMap, want: "map"},
+		{caseName: "value bitmask", typ: TypeValue, want: "value"},
+		{caseName: "nil", typ: TypeNilValue, want: "nil"},
+		{caseName: "string", typ: TypeStringValue, want: "string"},
+		{caseName: "bool", typ: TypeBoolValue, want: "bool"},
+		{caseName: "number", typ: TypeNumberValue, want: "number"},
+		{caseName: "zero unknown", typ: Type(0), want: "unknown"},
+		{caseName: "unknown bit pattern", typ: Type(0b1111), want: "unknown"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			if got := tc.typ.String(); got != tc.want {
+				t.Errorf("got %q; want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func Test_Node(t *testing.T) {
 	tests := []struct {
 		n         Node

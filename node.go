@@ -55,6 +55,30 @@ func (t Type) IsNumberValue() bool {
 	return t == TypeNumberValue
 }
 
+// String returns a short, lowercase label suitable for use in error
+// messages: "array", "map", "nil", "string", "bool", or "number".
+// The unspecialised "value" bitmask returns "value"; an unknown
+// bit pattern returns "unknown".
+func (t Type) String() string {
+	switch t {
+	case TypeArray:
+		return "array"
+	case TypeMap:
+		return "map"
+	case TypeNilValue:
+		return "nil"
+	case TypeStringValue:
+		return "string"
+	case TypeBoolValue:
+		return "bool"
+	case TypeNumberValue:
+		return "number"
+	case TypeValue:
+		return "value"
+	}
+	return "unknown"
+}
+
 // A Node is an element on the tree.
 type Node interface {
 	// IsNil returns true if this node is nil.
