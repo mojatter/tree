@@ -19,6 +19,7 @@ Tree is a simple structure for dealing with dynamic or unknown JSON/YAML in Go.
   - [Query](#query)
   - [Built-in Methods](#built-in-methods)
 - [Edit](#edit)
+- [Schema](#schema)
 - [tq](#tq)
 - [Contributing](#contributing)
 - [Third-party library licenses](#third-party-library-licenses)
@@ -29,6 +30,7 @@ Tree is a simple structure for dealing with dynamic or unknown JSON/YAML in Go.
 - Syntax similar to Go standard and map and slice.
 - Find function can be specified the [Query](#query) expression with [built-in methods](#built-in-methods).
 - Edit function can be specified the [Edit](#edit) expression.
+- Validate tree.Node against query-keyed rule sets via the [schema](docs/schema.md) subpackage.
 - Bundled 'tq' that is a portable command-line JSON/YAML processor.
 
 ## Road to 1.0
@@ -377,6 +379,31 @@ func ExampleEdit() {
 	//   map[ID:1 Name:Blue]
 }
 ```
+
+## Schema
+
+The [schema](docs/schema.md) subpackage validates tree.Node structures
+against a set of rules keyed by tree queries. Each `(query, rule)`
+entry runs the rule on every matched node; errors from all rules are
+collected and joined.
+
+```go
+err := schema.Validate(doc, schema.QueryRules{
+    ".name": schema.Required(schema.String{}),
+    ".age":  schema.Int{Min: schema.Int64Ptr(0), Max: schema.Int64Ptr(150)},
+})
+```
+
+Rules can also be loaded from YAML or JSON:
+
+```yaml
+".name": { type: string, required: true }
+".age":  { type: int, min: 0, max: 150 }
+```
+
+See [docs/schema.md](docs/schema.md) for a topic index, or the
+[godoc](https://pkg.go.dev/github.com/mojatter/tree/schema) for the
+full reference.
 
 ## tq
 
