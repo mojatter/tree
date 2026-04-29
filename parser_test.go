@@ -108,6 +108,9 @@ func TestParseQuery(t *testing.T) {
 				Expr:  "(.foo)",
 				Query: MapQuery("foo"),
 			},
+		}, {
+			expr: `["foo bar"]`,
+			want: MapQuery("foo bar"),
 		},
 	}
 	for _, tc := range testCases {
