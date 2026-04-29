@@ -88,13 +88,20 @@ func lex(expr string) []token {
 	for i := 0; i < len(expr); {
 		c := expr[i]
 		if c == '"' {
+			var sb strings.Builder
 			end := i + 1
 			for end < len(expr) && expr[end] != '"' {
+				if expr[end] == '\\' && end+1 < len(expr) {
+					sb.WriteByte(expr[end+1])
+					end += 2
+					continue
+				}
+				sb.WriteByte(expr[end])
 				end++
 			}
 			if end < len(expr) {
-				if end > i+1 {
-					out = append(out, token{kind: tkString, text: expr[i+1 : end]})
+				if sb.Len() > 0 {
+					out = append(out, token{kind: tkString, text: sb.String()})
 				}
 				i = end + 1
 				continue
