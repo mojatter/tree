@@ -96,7 +96,7 @@ func TestParseQuery(t *testing.T) {
 		t.Run(tc.expr, func(t *testing.T) {
 			got, err := ParseQuery(tc.expr)
 			if err != nil {
-				t.Fatalf("got err %s", err)
+				t.Fatal(err)
 			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("got %#v; want %#v", got, tc.want)
@@ -105,8 +105,8 @@ func TestParseQuery(t *testing.T) {
 	}
 }
 
-func TestParseQuery_Errors(t *testing.T) {
-	tests := []struct {
+func TestParseQueryErrors(t *testing.T) {
+	testCases := []struct {
 		expr   string
 		errstr string
 	}{
@@ -139,14 +139,16 @@ func TestParseQuery_Errors(t *testing.T) {
 			errstr: `syntax error: invalid array index: ".a[a]"`,
 		},
 	}
-	for i, test := range tests {
-		_, err := ParseQuery(test.expr)
-		if err == nil {
-			t.Fatalf("tests[%d] no error", i)
-		}
-		if err.Error() != test.errstr {
-			t.Errorf("tests[%d] got %s; want %s", i, err.Error(), test.errstr)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.expr, func(t *testing.T) {
+			_, err := ParseQuery(tc.expr)
+			if err == nil {
+				t.Fatal("no error")
+			}
+			if err.Error() != tc.errstr {
+				t.Errorf("got %s; want %s", err.Error(), tc.errstr)
+			}
+		})
 	}
 }
 

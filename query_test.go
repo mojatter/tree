@@ -7,73 +7,89 @@ import (
 	"github.com/mojatter/tree/internal/testdata"
 )
 
-func Test_Query(t *testing.T) {
-	tests := []struct {
-		q      Query
-		n      Node
-		want   []Node
-		errstr string
+func TestQuery(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		q        Query
+		n        Node
+		want     []Node
+		errstr   string
 	}{
 		{
-			q:    NopQuery{},
-			n:    Array{},
-			want: []Node{Array{}},
+			caseName: "nop",
+			q:        NopQuery{},
+			n:        Array{},
+			want:     []Node{Array{}},
 		}, {
-			q:    MapQuery("key"),
-			n:    Map{"key": ToValue("value")},
-			want: []Node{ToValue("value")},
+			caseName: "map: hit",
+			q:        MapQuery("key"),
+			n:        Map{"key": ToValue("value")},
+			want:     []Node{ToValue("value")},
 		}, {
-			q:      MapQuery("key"),
-			n:      ToValue("not map"),
-			errstr: `cannot index array with "key"`,
+			caseName: "map: not map",
+			q:        MapQuery("key"),
+			n:        ToValue("not map"),
+			errstr:   `cannot index array with "key"`,
 		}, {
-			q:    ArrayQuery(0),
-			n:    Array{ToValue(1)},
-			want: []Node{ToValue(1)},
+			caseName: "array: hit",
+			q:        ArrayQuery(0),
+			n:        Array{ToValue(1)},
+			want:     []Node{ToValue(1)},
 		}, {
-			q:      ArrayQuery(0),
-			n:      ToValue("not array"),
-			errstr: `cannot index array with 0`,
+			caseName: "array: not array",
+			q:        ArrayQuery(0),
+			n:        ToValue("not array"),
+			errstr:   `cannot index array with 0`,
 		}, {
-			q:    ArrayRangeQuery{0, 2},
-			n:    Array{ToValue(0), ToValue(1), ToValue(2)},
-			want: []Node{ToValue(0), ToValue(1)},
+			caseName: "range: 0:2",
+			q:        ArrayRangeQuery{0, 2},
+			n:        Array{ToValue(0), ToValue(1), ToValue(2)},
+			want:     []Node{ToValue(0), ToValue(1)},
 		}, {
-			q:    ArrayRangeQuery{1, -1},
-			n:    Array{ToValue(0), ToValue(1), ToValue(2)},
-			want: []Node{ToValue(1), ToValue(2)},
+			caseName: "range: 1:end",
+			q:        ArrayRangeQuery{1, -1},
+			n:        Array{ToValue(0), ToValue(1), ToValue(2)},
+			want:     []Node{ToValue(1), ToValue(2)},
 		}, {
-			q:      ArrayRangeQuery{0, 1, 2},
-			n:      Array{},
-			errstr: `invalid array range [0:1:2]`,
+			caseName: "range: invalid arity",
+			q:        ArrayRangeQuery{0, 1, 2},
+			n:        Array{},
+			errstr:   `invalid array range [0:1:2]`,
 		}, {
-			q:      ArrayRangeQuery{0, 1},
-			n:      Map{},
-			errstr: `cannot index array with range 0:1`,
+			caseName: "range: not array",
+			q:        ArrayRangeQuery{0, 1},
+			n:        Map{},
+			errstr:   `cannot index array with range 0:1`,
 		}, {
-			q:    FilterQuery{MapQuery("key"), ArrayQuery(0)},
-			n:    Map{"key": Array{ToValue(1)}},
-			want: []Node{ToValue(1)},
+			caseName: "filter: hit",
+			q:        FilterQuery{MapQuery("key"), ArrayQuery(0)},
+			n:        Map{"key": Array{ToValue(1)}},
+			want:     []Node{ToValue(1)},
 		}, {
-			q:      FilterQuery{MapQuery("key"), ArrayQuery(0)},
-			n:      Map{"key": ToValue(1)},
-			errstr: `cannot index array with 0`,
+			caseName: "filter: error",
+			q:        FilterQuery{MapQuery("key"), ArrayQuery(0)},
+			n:        Map{"key": ToValue(1)},
+			errstr:   `cannot index array with 0`,
 		}, {
+			caseName: "select: match",
 			q: SelectQuery{And{
 				Comparator{MapQuery("key"), EQ, ValueQuery{ToValue(1)}},
 			}},
 			n:    Array{Map{"key": ToValue(1)}, Map{"key": ToValue(2)}},
 			want: []Node{Map{"key": ToValue(1)}},
 		}, {
-			q:    SelectQuery{},
-			n:    Array{Map{"key": ToValue(1)}, Map{"key": ToValue(2)}},
-			want: []Node{Map{"key": ToValue(1)}, Map{"key": ToValue(2)}},
+			caseName: "select: all",
+			q:        SelectQuery{},
+			n:        Array{Map{"key": ToValue(1)}, Map{"key": ToValue(2)}},
+			want:     []Node{Map{"key": ToValue(1)}, Map{"key": ToValue(2)}},
 		}, {
+			caseName: "select: no match on map",
 			q: SelectQuery{And{
 				Comparator{MapQuery("key"), EQ, ValueQuery{ToValue(1)}},
 			}},
 			n: Map{},
 		}, {
+			caseName: "select: complex",
 			q: SelectQuery{
 				And{
 					Or{
@@ -92,7 +108,8 @@ func Test_Query(t *testing.T) {
 				Map{"key1": ToValue(1), "key2": ToValue("a")},
 			},
 		}, {
-			q: WalkQuery("key1"),
+			caseName: "walk",
+			q:        WalkQuery("key1"),
 			n: Array{
 				Map{"key1": ToValue(1), "key2": ToValue("a")},
 				Map{"key1": ToValue(2), "key2": ToValue("b")},
@@ -101,53 +118,64 @@ func Test_Query(t *testing.T) {
 			want: []Node{ToValue(1), ToValue(2), ToValue(3)},
 		},
 	}
-	for i, test := range tests {
-		got, err := test.q.Exec(test.n)
-		if test.errstr != "" {
-			if err == nil {
-				t.Fatalf("tests[%d] for %v; no error", i, test.q)
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := tc.q.Exec(tc.n)
+			if tc.errstr != "" {
+				if err == nil {
+					t.Fatalf("for %v; no error", tc.q)
+				}
+				if err.Error() != tc.errstr {
+					t.Errorf("for %v; got %s; want %s", tc.q, err.Error(), tc.errstr)
+				}
+				return
 			}
-			if err.Error() != test.errstr {
-				t.Errorf("tests[%d] for %v; got %s; want %s", i, test.q, err.Error(), test.errstr)
+			if err != nil {
+				t.Fatal(err)
 			}
-			continue
-		}
-		if err != nil {
-			t.Fatalf("tests[%d] %v", i, err)
-		}
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf("tests[%d] for %v; got %v; want %v", i, test.q, got, test.want)
-		}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("for %v; got %v; want %v", tc.q, got, tc.want)
+			}
+		})
 	}
 }
 
-func Test_Query_String(t *testing.T) {
-	tests := []struct {
-		q    Query
-		want string
+func TestQueryString(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		q        Query
+		want     string
 	}{
 		{
-			q:    NopQuery{},
-			want: ".",
+			caseName: "nop",
+			q:        NopQuery{},
+			want:     ".",
 		}, {
-			q:    MapQuery("key"),
-			want: ".key",
+			caseName: "map",
+			q:        MapQuery("key"),
+			want:     ".key",
 		}, {
-			q:    ArrayQuery(1),
-			want: "[1]",
+			caseName: "array index",
+			q:        ArrayQuery(1),
+			want:     "[1]",
 		}, {
-			q:    ArrayRangeQuery{0, 2},
-			want: "[0:2]",
+			caseName: "range full",
+			q:        ArrayRangeQuery{0, 2},
+			want:     "[0:2]",
 		}, {
-			q:    ArrayRangeQuery{-1, 2},
-			want: "[:2]",
+			caseName: "range to only",
+			q:        ArrayRangeQuery{-1, 2},
+			want:     "[:2]",
 		}, {
-			q:    SlurpQuery{},
-			want: " | ",
+			caseName: "slurp",
+			q:        SlurpQuery{},
+			want:     " | ",
 		}, {
-			q:    FilterQuery{MapQuery("key1"), ArrayQuery(0), MapQuery("key2")},
-			want: ".key1[0].key2",
+			caseName: "filter",
+			q:        FilterQuery{MapQuery("key1"), ArrayQuery(0), MapQuery("key2")},
+			want:     ".key1[0].key2",
 		}, {
+			caseName: "select complex",
 			q: SelectQuery{
 				And{
 					Or{
@@ -159,18 +187,22 @@ func Test_Query_String(t *testing.T) {
 			},
 			want: `[((.key2 == "a" or .key2 == "b") and .key1 <= 1)]`,
 		}, {
-			q:    WalkQuery("key"),
-			want: "..key",
+			caseName: "walk",
+			q:        WalkQuery("key"),
+			want:     "..key",
 		}, {
-			q:    FilterQuery{MapQuery("key1"), WalkQuery("key2")},
-			want: ".key1..key2",
+			caseName: "filter walk",
+			q:        FilterQuery{MapQuery("key1"), WalkQuery("key2")},
+			want:     ".key1..key2",
 		},
 	}
-	for i, test := range tests {
-		got := test.q.String()
-		if got != test.want {
-			t.Errorf("tests[%d] got %v; want %v", i, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got := tc.q.String()
+			if got != tc.want {
+				t.Errorf("got %v; want %v", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -311,7 +343,7 @@ func TestFind(t *testing.T) {
 		},
 	}
 	for _, tc := range testCases {
-		t.Run("", func(t *testing.T) {
+		t.Run(tc.expr, func(t *testing.T) {
 			got, err := Find(n, tc.expr)
 			if err != nil {
 				t.Fatal(err)
@@ -375,4 +407,3 @@ func (d *testSelectorDelegator) Matches(n Node) (bool, error) {
 func (d *testSelectorDelegator) String() string {
 	return "testSelectorDelegator"
 }
-
