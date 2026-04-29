@@ -11,7 +11,8 @@ import (
 // ParseQuery parses the provided expr to a Query.
 // See https://github.com/mojatter/tree#Query
 func ParseQuery(expr string) (Query, error) {
-	p := &parser{expr: expr, tokens: lex(expr)}
+	l := &lexer{expr: expr}
+	p := &parser{expr: expr, tokens: l.lex()}
 	q, err := p.parseSequence(tkEOF)
 	if err != nil {
 		return nil, err
@@ -80,75 +81,132 @@ type token struct {
 	args string
 }
 
-// lex returns expr into a flat slice of tokens terminated by tkEOF. Bytes
-// that don't form a recognized token (whitespace, stray punctuation like
-// '+' or '\') are silently skipped, preserving legacy behavior.
-func lex(expr string) []token {
-	var out []token
-	for i := 0; i < len(expr); {
-		c := expr[i]
-		if c == '"' || c == '\'' {
-			quote := c
-			var sb strings.Builder
-			end := i + 1
-			for end < len(expr) && expr[end] != quote {
-				if expr[end] == '\\' && end+1 < len(expr) {
-					sb.WriteByte(expr[end+1])
-					end += 2
-					continue
-				}
-				sb.WriteByte(expr[end])
-				end++
-			}
-			if end < len(expr) {
-				if sb.Len() > 0 {
-					out = append(out, token{kind: tkString, text: sb.String()})
-				}
-				i = end + 1
-				continue
-			}
-			i++
+// lexer holds the lex state: the source string and current position.
+type lexer struct {
+	expr string
+	pos  int
+}
+
+// scanQuoted parses the quoted string literal at l.pos and unconditionally
+// advances l.pos: past the closing quote on a terminated literal, or just
+// past the opening quote on an unterminated one. ok=true means the result
+// is worth emitting (terminated and non-empty); empty literals and
+// unterminated ones both return ok=false.
+func (l *lexer) scanQuoted() (tok token, ok bool) {
+	var sb strings.Builder
+	quote := l.expr[l.pos]
+	end := l.pos + 1
+	for end < len(l.expr) && l.expr[end] != quote {
+		if l.expr[end] == '\\' && end+1 < len(l.expr) {
+			sb.WriteByte(l.expr[end+1])
+			end += 2
 			continue
 		}
-		if op := matchOp(expr, i); op != "" {
+		sb.WriteByte(l.expr[end])
+		end++
+	}
+	if end < len(l.expr) {
+		l.pos = end + 1
+		if sb.Len() == 0 {
+			return token{}, false
+		}
+		return token{kind: tkString, text: sb.String()}, true
+	}
+	l.pos++
+	return token{}, false
+}
+
+// scanMethod parses a method-call token (`name(args)`) starting at l.pos
+// (where l.expr[l.pos] is a lowercase letter). On success returns the
+// tkMethod token with name and raw args text, advancing l.pos past the
+// closing `)`. Returns ok=false (and leaves l.pos unchanged) when there
+// is no `(` after the lowercase run, or when the args parenthesis is
+// unterminated; the caller then falls through to plain ident scanning.
+func (l *lexer) scanMethod() (tok token, ok bool) {
+	nameEnd := l.pos + 1
+	for nameEnd < len(l.expr) && isLower(l.expr[nameEnd]) {
+		nameEnd++
+	}
+	if nameEnd >= len(l.expr) || l.expr[nameEnd] != '(' {
+		return token{}, false
+	}
+	closeIdx := nameEnd + 1
+	for closeIdx < len(l.expr) && l.expr[closeIdx] != ')' {
+		if l.expr[closeIdx] == '"' || l.expr[closeIdx] == '\'' {
+			closeIdx = skipQuoted(l.expr, closeIdx)
+			continue
+		}
+		closeIdx++
+	}
+	if closeIdx >= len(l.expr) {
+		return token{}, false
+	}
+	tok = token{
+		kind: tkMethod,
+		text: l.expr[l.pos:nameEnd],
+		args: l.expr[nameEnd+1 : closeIdx],
+	}
+	l.pos = closeIdx + 1
+	return tok, true
+}
+
+// lex returns the source as a flat slice of tokens terminated by tkEOF.
+// Bytes that don't form a recognized token (whitespace, stray punctuation
+// like '+' or '\') are silently skipped, preserving legacy behavior.
+func (l *lexer) lex() []token {
+	var out []token
+	for l.pos < len(l.expr) {
+		c := l.expr[l.pos]
+		if c == '"' || c == '\'' {
+			if tok, ok := l.scanQuoted(); ok {
+				out = append(out, tok)
+			}
+			continue
+		}
+		if op := matchOp(l.expr, l.pos); op != "" {
 			out = append(out, token{kind: cmdKind(op), text: op})
-			i += len(op)
+			l.pos += len(op)
 			continue
 		}
 		if isLower(c) {
-			nameEnd := i + 1
-			for nameEnd < len(expr) && isLower(expr[nameEnd]) {
-				nameEnd++
-			}
-			if nameEnd < len(expr) && expr[nameEnd] == '(' {
-				closeIdx := nameEnd + 1
-				for closeIdx < len(expr) && expr[closeIdx] != ')' {
-					closeIdx++
-				}
-				if closeIdx < len(expr) {
-					out = append(out, token{
-						kind: tkMethod,
-						text: expr[i:nameEnd],
-						args: expr[nameEnd+1 : closeIdx],
-					})
-					i = closeIdx + 1
-					continue
-				}
+			if tok, ok := l.scanMethod(); ok {
+				out = append(out, tok)
+				continue
 			}
 		}
 		if isWord(c) {
-			end := i + 1
-			for end < len(expr) && isWord(expr[end]) {
+			end := l.pos + 1
+			for end < len(l.expr) && isWord(l.expr[end]) {
 				end++
 			}
-			out = append(out, token{kind: tkIdent, text: expr[i:end]})
-			i = end
+			out = append(out, token{kind: tkIdent, text: l.expr[l.pos:end]})
+			l.pos = end
 			continue
 		}
-		i++
+		l.pos++
 	}
 	out = append(out, token{kind: tkEOF})
 	return out
+}
+
+// skipQuoted returns the position past a quoted string literal at expr[p]
+// (where expr[p] is the opening quote). Recognizes the same backslash
+// escape rules as scanQuoted so embedded `\"` / `\'` don't false-terminate.
+// Returns len(expr) for an unterminated literal.
+func skipQuoted(expr string, p int) int {
+	quote := expr[p]
+	p++
+	for p < len(expr) && expr[p] != quote {
+		if expr[p] == '\\' && p+1 < len(expr) {
+			p += 2
+			continue
+		}
+		p++
+	}
+	if p < len(expr) {
+		return p + 1
+	}
+	return p
 }
 
 // matchOp returns the operator, keyword, or punctuation token starting
