@@ -96,6 +96,12 @@ func TestParseQuery(t *testing.T) {
 		}, {
 			expr: `."foo\\bar"`,
 			want: MapQuery(`foo\bar`),
+		}, {
+			expr: `.'with space'`,
+			want: MapQuery("with space"),
+		}, {
+			expr: `.'foo\'bar'`,
+			want: MapQuery(`foo'bar`),
 		},
 	}
 	for _, tc := range testCases {
