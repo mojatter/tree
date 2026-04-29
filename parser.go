@@ -3,6 +3,7 @@ package tree
 import (
 	"encoding/csv"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -10,56 +11,105 @@ import (
 // ParseQuery parses the provided expr to a Query.
 // See https://github.com/mojatter/tree#Query
 func ParseQuery(expr string) (Query, error) {
-	t, err := tokenizeQuery(expr)
+	p := &parser{expr: expr, tokens: lex(expr)}
+	q, err := p.parseSequence(tkEOF)
 	if err != nil {
 		return nil, err
 	}
-	return tokenToQuery(t, expr)
+	if p.peek().kind != tkEOF {
+		return nil, fmt.Errorf("syntax error: no left bracket: %q", expr)
+	}
+	return q, nil
 }
 
-// scannedToken mirrors the capture-group layout of the legacy regex-based
-// scanner so that tokenizeQuery can consume it with the same field access
-// pattern the regex matches used to provide.
-type scannedToken struct {
-	quoted  string
-	cmd     string
-	method  string
-	argsStr string
-	word    string
+// tokenKind is the kind tag attached to each lexer token.
+type tokenKind int
+
+const (
+	tkEOF tokenKind = iota
+	tkDot
+	tkDotDot
+	tkLBrack
+	tkRBrack
+	tkLParen
+	tkRParen
+	tkColon
+	tkPipe
+	tkEQ
+	tkNE
+	tkLT
+	tkLE
+	tkGT
+	tkGE
+	tkRE
+	tkAnd
+	tkOr
+	tkIdent
+	tkString
+	tkMethod
+)
+
+// operator returns the Operator that this tokenKind represents, or the
+// empty Operator if k is not a comparison operator token.
+func (k tokenKind) operator() Operator {
+	switch k {
+	case tkEQ:
+		return EQ
+	case tkNE:
+		return NE
+	case tkLT:
+		return LT
+	case tkLE:
+		return LE
+	case tkGT:
+		return GT
+	case tkGE:
+		return GE
+	case tkRE:
+		return RE
+	}
+	return ""
 }
 
-// scanTokens walks expr left-to-right and yields tokens equivalent to those
-// the legacy tokenRegexp would produce. Bytes that the legacy regex did not
-// match (whitespace, stray punctuation like '+' or '\'', etc.) are silently
-// skipped, preserving the original behavior.
-func scanTokens(expr string) []scannedToken {
-	var out []scannedToken
+// token is a single lexer token. text holds the original source slice (for
+// use in error messages); args is populated only for tkMethod and carries
+// the raw argument string between the parentheses.
+type token struct {
+	kind tokenKind
+	text string
+	args string
+}
+
+// lex returns expr into a flat slice of tokens terminated by tkEOF. Bytes
+// that don't form a recognized token (whitespace, stray punctuation like
+// '+' or '\') are silently skipped, preserving legacy behavior.
+func lex(expr string) []token {
+	var out []token
 	for i := 0; i < len(expr); {
 		c := expr[i]
-
 		if c == '"' {
 			end := i + 1
 			for end < len(expr) && expr[end] != '"' {
 				end++
 			}
 			if end < len(expr) {
-				out = append(out, scannedToken{quoted: expr[i+1 : end]})
+				if end > i+1 {
+					out = append(out, token{kind: tkString, text: expr[i+1 : end]})
+				}
 				i = end + 1
 				continue
 			}
 			i++
 			continue
 		}
-
-		if op := matchScannerOp(expr, i); op != "" {
-			out = append(out, scannedToken{cmd: op})
+		if op := matchOp(expr, i); op != "" {
+			out = append(out, token{kind: cmdKind(op), text: op})
 			i += len(op)
 			continue
 		}
-
-		if c >= 'a' && c <= 'z' {
+		if isLower(c) {
 			nameEnd := i + 1
-			for nameEnd < len(expr) && expr[nameEnd] >= 'a' && expr[nameEnd] <= 'z' {
+			for nameEnd < len(expr) && isLower(expr[nameEnd]) {
 				nameEnd++
 			}
 			if nameEnd < len(expr) && expr[nameEnd] == '(' {
@@ -68,36 +118,35 @@ func scanTokens(expr string) []scannedToken {
 					closeIdx++
 				}
 				if closeIdx < len(expr) {
-					out = append(out, scannedToken{
-						cmd:     expr[i : closeIdx+1],
-						method:  expr[i:nameEnd],
-						argsStr: expr[nameEnd+1 : closeIdx],
+					out = append(out, token{
+						kind: tkMethod,
+						text: expr[i:nameEnd],
+						args: expr[nameEnd+1 : closeIdx],
 					})
 					i = closeIdx + 1
 					continue
 				}
 			}
 		}
-
-		if isWordByte(c) {
+		if isWord(c) {
 			end := i + 1
-			for end < len(expr) && isWordByte(expr[end]) {
+			for end < len(expr) && isWord(expr[end]) {
 				end++
 			}
-			out = append(out, scannedToken{word: expr[i:end]})
+			out = append(out, token{kind: tkIdent, text: expr[i:end]})
 			i = end
 			continue
 		}
-
 		i++
 	}
+	out = append(out, token{kind: tkEOF})
 	return out
 }
 
-// matchScannerOp returns the operator, keyword, or punctuation token starting
+// matchOp returns the operator, keyword, or punctuation token starting
 // at expr[i], or "" if none matches. The probe order mirrors the alternation
 // in the legacy regex so leftmost-first semantics are preserved.
-func matchScannerOp(expr string, i int) string {
+func matchOp(expr string, i int) string {
 	rest := expr[i:]
 	for _, kw := range []string{"and", "or"} {
 		if strings.HasPrefix(rest, kw) {
@@ -116,261 +165,356 @@ func matchScannerOp(expr string, i int) string {
 	return ""
 }
 
-func isWordByte(c byte) bool {
-	return (c >= 'a' && c <= 'z') ||
+func cmdKind(cmd string) tokenKind {
+	switch cmd {
+	case ".":
+		return tkDot
+	case "..":
+		return tkDotDot
+	case "[":
+		return tkLBrack
+	case "]":
+		return tkRBrack
+	case "(":
+		return tkLParen
+	case ")":
+		return tkRParen
+	case ":":
+		return tkColon
+	case "|":
+		return tkPipe
+	case "==":
+		return tkEQ
+	case "!=":
+		return tkNE
+	case "<":
+		return tkLT
+	case "<=":
+		return tkLE
+	case ">":
+		return tkGT
+	case ">=":
+		return tkGE
+	case "~=":
+		return tkRE
+	case "and":
+		return tkAnd
+	case "or":
+		return tkOr
+	}
+	return tkEOF
+}
+
+func isLower(c byte) bool {
+	return c >= 'a' && c <= 'z'
+}
+
+func isWord(c byte) bool {
+	return isLower(c) ||
 		(c >= 'A' && c <= 'Z') ||
 		(c >= '0' && c <= '9') ||
 		c == '_'
 }
 
-type token struct {
-	cmd      string
-	method   string
-	argsStr  string
-	quoted   bool
-	value    string
-	parent   *token
-	children []*token
+// parser holds the recursive-descent state.
+type parser struct {
+	expr   string
+	tokens []token
+	pos    int
 }
 
-// toValue converts a token to a Node value based on its type and content.
-// Handles quoted strings, booleans, numbers, and defaults to string values.
-func (t *token) toValue() Node {
-	if !t.quoted {
-		if t.value == "" {
-			return Nil
-		}
-		if t.value == "true" {
-			return BoolValue(true)
-		}
-		if t.value == "false" {
-			return BoolValue(false)
-		}
-		if n, err := strconv.ParseFloat(t.value, 64); err == nil {
-			return NumberValue(n)
-		}
-	}
-	return StringValue(t.value)
+func (p *parser) peek() token {
+	return p.tokens[p.pos]
 }
 
-// indexOfCmd finds the index of a child token with the specified command.
-// Returns -1 if not found.
-func (t *token) indexOfCmd(cmd string) int {
-	for i, c := range t.children {
-		if c.cmd == cmd {
-			return i
-		}
-	}
-	return -1
+func (p *parser) advance() token {
+	t := p.tokens[p.pos]
+	p.pos++
+	return t
 }
 
-func (t *token) Args() ([]string, error) {
-	if t.argsStr == "" {
-		return nil, nil
-	}
-	r := csv.NewReader(strings.NewReader(t.argsStr))
-	args, err := r.Read()
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse args: %w", err)
-	}
-	return args, nil
-}
-
-// tokenizeQuery walks expr through the hand-written scanner and assembles
-// the resulting tokens into the bracket-aware tree that tokenToQuery
-// consumes.
-func tokenizeQuery(expr string) (*token, error) {
-	current := &token{}
-	for _, st := range scanTokens(expr) {
-		if st.quoted != "" || st.word != "" {
-			value := st.quoted
-			quoted := st.quoted != ""
-			if value == "" {
-				value = st.word
-			}
-			var lastChild *token
-			if len(current.children) > 0 {
-				lastChild = current.children[len(current.children)-1]
-			}
-			if lastChild != nil && (lastChild.cmd == "." || lastChild.cmd == "..") {
-				lastChild.value = value
-				lastChild.quoted = quoted
-				continue
-			}
-			current.children = append(current.children, &token{value: value, quoted: quoted})
-			continue
+// parseSequence consumes 0 or more steps until tkEOF or one of stops is seen.
+// 0 steps yield ValueQuery{Nil}, 1 step is returned bare, multiple steps are
+// wrapped in a FilterQuery.
+func (p *parser) parseSequence(stops ...tokenKind) (Query, error) {
+	var steps []Query
+	for {
+		k := p.peek().kind
+		if k == tkEOF || slices.Contains(stops, k) {
+			break
 		}
-		t := &token{cmd: st.cmd, method: st.method, argsStr: st.argsStr, parent: current}
-		switch st.cmd {
-		case "]", ")":
-			if (st.cmd == "]" && current.cmd != "[") || (st.cmd == ")" && current.cmd != "(") {
-				return nil, fmt.Errorf("syntax error: no left bracket: %q", expr)
-			}
-			current = current.parent
-		case "[", "(":
-			current.children = append(current.children, t)
-			current = t
-		default:
-			current.children = append(current.children, t)
-		}
-	}
-	if current.parent != nil {
-		return nil, fmt.Errorf("syntax error: no right brackets: %q", expr)
-	}
-	return current, nil
-}
-
-// tokenToQuery converts a token tree into a Query object.
-// Recursively processes tokens based on their command type.
-func tokenToQuery(t *token, expr string) (Query, error) {
-	if t.method != "" {
-		args, err := t.Args()
+		step, err := p.parseStep()
 		if err != nil {
 			return nil, err
 		}
-		return NewMethodQuery(t.method, args...)
+		steps = append(steps, step)
 	}
-	child := len(t.children)
-	switch t.cmd {
-	case "":
-		if child == 0 {
-			return ValueQuery{t.toValue()}, nil
+	if len(steps) == 0 {
+		return ValueQuery{Nil}, nil
+	}
+	if len(steps) == 1 {
+		return steps[0], nil
+	}
+	return FilterQuery(steps), nil
+}
+
+// parseStep parses a single path step.
+func (p *parser) parseStep() (Query, error) {
+	t := p.advance()
+	switch t.kind {
+	case tkDot:
+		if next := p.peek(); next.kind == tkIdent || next.kind == tkString {
+			p.advance()
+			return MapQuery(next.text), nil
 		}
-	case "|":
+		return NopQuery{}, nil
+	case tkDotDot:
+		if next := p.peek(); next.kind == tkIdent || next.kind == tkString {
+			p.advance()
+			return WalkQuery(next.text), nil
+		}
+		return NopQuery{}, nil
+	case tkLBrack:
+		return p.parseBracket()
+	case tkLParen:
+		inner, err := p.parseSequence(tkRParen)
+		if err != nil {
+			return nil, err
+		}
+		if p.peek().kind != tkRParen {
+			return nil, fmt.Errorf("syntax error: no right brackets: %q", p.expr)
+		}
+		p.advance()
+		return inner, nil
+	case tkPipe:
 		return SlurpQuery{}, nil
-	case ".":
-		if t.value != "" {
-			return MapQuery(t.value), nil
-		}
-		return NopQuery{}, nil
-	case "..":
-		if t.value != "" {
-			return WalkQuery(t.value), nil
-		}
-		return NopQuery{}, nil
-	case "[":
-		if child == 0 {
-			return SelectQuery{}, nil
-		}
-		if child == 1 {
-			i, err := strconv.Atoi(t.children[0].value)
+	case tkMethod:
+		var args []string
+		if t.args != "" {
+			r := csv.NewReader(strings.NewReader(t.args))
+			var err error
+			args, err = r.Read()
 			if err != nil {
-				return nil, fmt.Errorf("syntax error: invalid array index: %q", expr)
+				return nil, fmt.Errorf("failed to parse args: %w", err)
 			}
-			return ArrayQuery(i), nil
 		}
-		if i := t.indexOfCmd(":"); i != -1 {
-			return tokensToArrayRangeQuery(t.children, i, expr)
-		}
-		selector, err := tokensToSelector(t.children, expr)
-		if err != nil {
-			return nil, err
-		}
-		return SelectQuery{selector}, nil
+		return NewMethodQuery(t.text, args...)
+	case tkIdent:
+		return ValueQuery{wordValue(t.text)}, nil
+	case tkString:
+		return ValueQuery{StringValue(t.text)}, nil
+	case tkRBrack, tkRParen:
+		return nil, fmt.Errorf("syntax error: no left bracket: %q", p.expr)
+	default:
+		return nil, fmt.Errorf("syntax error: invalid token %s: %q", t.text, p.expr)
 	}
-	if child == 0 {
-		return nil, fmt.Errorf("syntax error: invalid token %s: %q", t.cmd, expr)
-	}
-	if child == 1 {
-		return tokenToQuery(t.children[0], expr)
-	}
-	var fq FilterQuery
-	for _, c := range t.children {
-		q, err := tokenToQuery(c, expr)
-		if err != nil {
-			return nil, err
-		}
-		fq = append(fq, q)
-	}
-	return fq, nil
 }
 
-// tokensToArrayRangeQuery creates an ArrayRangeQuery from tokens.
-// Handles array slice notation like [from:to].
-func tokensToArrayRangeQuery(ts []*token, i int, expr string) (Query, error) {
+// parseBracket parses the contents of `[...]`. The leading `[` is already
+// consumed; this function consumes through the matching `]`.
+func (p *parser) parseBracket() (Query, error) {
+	if p.peek().kind == tkRBrack {
+		p.advance()
+		return SelectQuery{}, nil
+	}
+
+	if p.peek().kind == tkIdent &&
+		p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].kind == tkRBrack {
+		text := p.peek().text
+		i, err := strconv.Atoi(text)
+		if err != nil {
+			return nil, fmt.Errorf("syntax error: invalid array index: %q", p.expr)
+		}
+		p.advance()
+		p.advance()
+		return ArrayQuery(i), nil
+	}
+
+	if p.bracketHasColon() {
+		return p.parseArrayRange()
+	}
+
+	sel, err := p.parseSelector()
+	if err != nil {
+		return nil, err
+	}
+	if p.peek().kind != tkRBrack {
+		return nil, fmt.Errorf("syntax error: no right brackets: %q", p.expr)
+	}
+	p.advance()
+	return SelectQuery{Selector: sel}, nil
+}
+
+// bracketHasColon reports whether a `:` appears at the bracket's top level
+// (i.e. with balanced sub-brackets/parens) before the matching `]`.
+func (p *parser) bracketHasColon() bool {
+	depth := 0
+	for i := p.pos; i < len(p.tokens); i++ {
+		switch p.tokens[i].kind {
+		case tkLBrack, tkLParen:
+			depth++
+		case tkRBrack:
+			if depth == 0 {
+				return false
+			}
+			depth--
+		case tkRParen:
+			depth--
+		case tkColon:
+			if depth == 0 {
+				return true
+			}
+		case tkEOF:
+			return false
+		}
+	}
+	return false
+}
+
+// parseArrayRange parses `[from? : to?]`. The leading `[` is already consumed.
+func (p *parser) parseArrayRange() (Query, error) {
 	from := -1
+	if p.peek().kind != tkColon {
+		if p.peek().kind != tkIdent {
+			return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
+		}
+		i, err := strconv.Atoi(p.peek().text)
+		if err != nil {
+			return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
+		}
+		from = i
+		p.advance()
+	}
+	if p.peek().kind != tkColon {
+		return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
+	}
+	p.advance()
 	to := -1
-	if j := i - 1; j >= 0 {
-		var err error
-		from, err = strconv.Atoi(ts[j].value)
-		if err != nil {
-			return nil, fmt.Errorf("syntax error: invalid array range: %q", expr)
+	if p.peek().kind != tkRBrack {
+		if p.peek().kind != tkIdent {
+			return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
 		}
-	}
-	if j := i + 1; j < len(ts) {
-		var err error
-		to, err = strconv.Atoi(ts[j].value)
+		i, err := strconv.Atoi(p.peek().text)
 		if err != nil {
-			return nil, fmt.Errorf("syntax error: invalid array range: %q", expr)
+			return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
 		}
+		to = i
+		p.advance()
 	}
+	if p.peek().kind != tkRBrack {
+		return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
+	}
+	p.advance()
 	return ArrayRangeQuery{from, to}, nil
 }
 
-// tokensToSelector converts tokens into a Selector for filtering operations.
-// Handles logical operators (and/or) and comparison operators.
-func tokensToSelector(ts []*token, expr string) (Selector, error) {
-	andOr := ""
-	var groups [][]*token
-	off := 0
-	for i, t := range ts {
-		switch t.cmd {
-		case "and", "or":
-			if andOr != "" && andOr != t.cmd {
-				return nil, fmt.Errorf("syntax error: mixed and|or: %q", expr)
-			}
-			andOr = t.cmd
-			groups = append(groups, ts[off:i])
-			off = i + 1
-		case "(":
-			groups = append(groups, ts[off:i])
-			groups = append(groups, []*token{t})
-			off = i + 1
-		}
+// parseSelector parses a complete selector expression. The result is always
+// wrapped in And or Or at the top level so that callers see the same shape
+// the legacy parser produced.
+func (p *parser) parseSelector() (Selector, error) {
+	sel, err := p.parseOrExpr()
+	if err != nil {
+		return nil, err
 	}
-	groups = append(groups, ts[off:])
+	switch sel.(type) {
+	case Or, And:
+		return sel, nil
+	}
+	return And{sel}, nil
+}
 
-	var ss []Selector
-	for _, group := range groups {
-		op := -1
-	GROUP:
-		for i, t := range group {
-			if t.cmd == "(" {
-				sss, err := tokensToSelector(t.children, expr)
-				if err != nil {
-					return nil, err
-				}
-				ss = append(ss, sss)
-				break
-			}
-			switch Operator(t.cmd) {
-			case EQ, GT, GE, LT, LE, NE, RE:
-				op = i
-				break GROUP
-			}
-		}
-		if op == -1 {
-			if len(groups) == 1 && len(group) > 0 {
-				q, err := tokenToQuery(&token{children: group}, expr)
-				if err != nil {
-					return nil, err
-				}
-				ss = append(ss, Evaluator{Query: q})
-			}
-			continue
-		}
-		left, err := tokenToQuery(&token{children: group[0:op]}, expr)
+func (p *parser) parseOrExpr() (Selector, error) {
+	first, err := p.parseAndExpr()
+	if err != nil {
+		return nil, err
+	}
+	if p.peek().kind != tkOr {
+		return first, nil
+	}
+	sels := []Selector{first}
+	for p.peek().kind == tkOr {
+		p.advance()
+		next, err := p.parseAndExpr()
 		if err != nil {
 			return nil, err
 		}
-		right, err := tokenToQuery(&token{children: group[op+1:]}, expr)
+		sels = append(sels, next)
+	}
+	return Or(sels), nil
+}
+
+func (p *parser) parseAndExpr() (Selector, error) {
+	first, err := p.parseCompExpr()
+	if err != nil {
+		return nil, err
+	}
+	if p.peek().kind != tkAnd {
+		return first, nil
+	}
+	sels := []Selector{first}
+	for p.peek().kind == tkAnd {
+		p.advance()
+		next, err := p.parseCompExpr()
 		if err != nil {
 			return nil, err
 		}
-		ss = append(ss, Comparator{left, Operator(group[op].cmd), right})
+		sels = append(sels, next)
 	}
-	if andOr == "or" {
-		return Or(ss), nil
+	return And(sels), nil
+}
+
+func (p *parser) parseCompExpr() (Selector, error) {
+	if p.peek().kind == tkLParen {
+		p.advance()
+		inner, err := p.parseOrExpr()
+		if err != nil {
+			return nil, err
+		}
+		if p.peek().kind != tkRParen {
+			return nil, fmt.Errorf("syntax error: no right brackets: %q", p.expr)
+		}
+		p.advance()
+		return inner, nil
 	}
-	return And(ss), nil
+	left, err := p.parseSelectorOperand()
+	if err != nil {
+		return nil, err
+	}
+	op := p.peek().kind.operator()
+	if op == "" {
+		return Evaluator{Query: left}, nil
+	}
+	p.advance()
+	right, err := p.parseSelectorOperand()
+	if err != nil {
+		return nil, err
+	}
+	return Comparator{Left: left, Op: op, Right: right}, nil
+}
+
+// parseSelectorOperand parses the LHS or RHS of a comparator: a sequence of
+// path steps that stops at any selector-level structural token.
+func (p *parser) parseSelectorOperand() (Query, error) {
+	return p.parseSequence(
+		tkAnd, tkOr,
+		tkEQ, tkNE, tkLT, tkLE, tkGT, tkGE, tkRE,
+		tkRParen, tkRBrack,
+	)
+}
+
+// wordValue parses an unquoted bare word into a literal Node.
+func wordValue(s string) Node {
+	if s == "" {
+		return Nil
+	}
+	if s == "true" {
+		return BoolValue(true)
+	}
+	if s == "false" {
+		return BoolValue(false)
+	}
+	if n, err := strconv.ParseFloat(s, 64); err == nil {
+		return NumberValue(n)
+	}
+	return StringValue(s)
 }
