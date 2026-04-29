@@ -87,10 +87,11 @@ func lex(expr string) []token {
 	var out []token
 	for i := 0; i < len(expr); {
 		c := expr[i]
-		if c == '"' {
+		if c == '"' || c == '\'' {
+			quote := c
 			var sb strings.Builder
 			end := i + 1
-			for end < len(expr) && expr[end] != '"' {
+			for end < len(expr) && expr[end] != quote {
 				if expr[end] == '\\' && end+1 < len(expr) {
 					sb.WriteByte(expr[end+1])
 					end += 2
