@@ -90,6 +90,12 @@ func TestParseQuery(t *testing.T) {
 				SlurpQuery{},
 				ArrayQuery(0),
 			},
+		}, {
+			expr: `."foo\"bar"`,
+			want: MapQuery(`foo"bar`),
+		}, {
+			expr: `."foo\\bar"`,
+			want: MapQuery(`foo\bar`),
 		},
 	}
 	for _, tc := range testCases {
