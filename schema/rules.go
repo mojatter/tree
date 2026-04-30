@@ -24,18 +24,20 @@ func Required(r Rule) Rule {
 	return And{Require{}, r}
 }
 
-// IntPtr, Int64Ptr, and Float64Ptr return a pointer to v. They are
-// convenience helpers for constructing pointer-valued rule fields
-// (String.MinLen, Int.Min, Float.Max, etc.) inline.
-
 // IntPtr returns a pointer to v.
-func IntPtr(v int) *int { return &v }
+//
+// Deprecated: Use [tree.IntPtr].
+func IntPtr(v int) *int { return tree.IntPtr(v) }
 
 // Int64Ptr returns a pointer to v.
-func Int64Ptr(v int64) *int64 { return &v }
+//
+// Deprecated: Use [tree.Int64Ptr].
+func Int64Ptr(v int64) *int64 { return tree.Int64Ptr(v) }
 
 // Float64Ptr returns a pointer to v.
-func Float64Ptr(v float64) *float64 { return &v }
+//
+// Deprecated: Use [tree.Float64Ptr].
+func Float64Ptr(v float64) *float64 { return tree.Float64Ptr(v) }
 
 // Require fires an error when the node is tree.Nil (query matched
 // nothing). It is the only rule that treats Nil as a violation.
