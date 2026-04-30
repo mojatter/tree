@@ -183,6 +183,21 @@ func TestParseQuery(t *testing.T) {
 					Comparator{MapQuery("x"), EQ, ValueQuery{NumberValue(-0.001)}},
 				},
 			},
+		}, {
+			expr: `[-3:5]`,
+			want: ArrayRangeQuery{From: IntPtr(-3), To: IntPtr(5)},
+		}, {
+			expr: `[-3:]`,
+			want: ArrayRangeQuery{From: IntPtr(-3), To: nil},
+		}, {
+			expr: `[1:-1]`,
+			want: ArrayRangeQuery{From: IntPtr(1), To: IntPtr(-1)},
+		}, {
+			expr: `[-3:-1]`,
+			want: ArrayRangeQuery{From: IntPtr(-3), To: IntPtr(-1)},
+		}, {
+			expr: `[:-1]`,
+			want: ArrayRangeQuery{From: nil, To: IntPtr(-1)},
 		},
 	}
 	for _, tc := range testCases {

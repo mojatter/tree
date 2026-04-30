@@ -65,6 +65,30 @@ func TestQuery(t *testing.T) {
 			n:        Map{},
 			errstr:   `cannot index array with range [0:1]`,
 		}, {
+			caseName: "range: negative from to end",
+			q:        ArrayRangeQuery{From: IntPtr(-3), To: nil},
+			n:        Array{ToValue(0), ToValue(1), ToValue(2), ToValue(3), ToValue(4)},
+			want:     []Node{ToValue(2), ToValue(3), ToValue(4)},
+		}, {
+			caseName: "range: 1 to negative",
+			q:        ArrayRangeQuery{From: IntPtr(1), To: IntPtr(-1)},
+			n:        Array{ToValue(0), ToValue(1), ToValue(2), ToValue(3), ToValue(4)},
+			want:     []Node{ToValue(1), ToValue(2), ToValue(3)},
+		}, {
+			caseName: "range: both negative",
+			q:        ArrayRangeQuery{From: IntPtr(-3), To: IntPtr(-1)},
+			n:        Array{ToValue(0), ToValue(1), ToValue(2), ToValue(3), ToValue(4)},
+			want:     []Node{ToValue(2), ToValue(3)},
+		}, {
+			caseName: "range: clamp from below 0",
+			q:        ArrayRangeQuery{From: IntPtr(-100), To: IntPtr(2)},
+			n:        Array{ToValue(0), ToValue(1), ToValue(2)},
+			want:     []Node{ToValue(0), ToValue(1)},
+		}, {
+			caseName: "range: low greater than high yields empty",
+			q:        ArrayRangeQuery{From: IntPtr(2), To: IntPtr(1)},
+			n:        Array{ToValue(0), ToValue(1), ToValue(2)},
+		}, {
 			caseName: "filter: hit",
 			q:        FilterQuery{MapQuery("key"), ArrayQuery(0)},
 			n:        Map{"key": Array{ToValue(1)}},
