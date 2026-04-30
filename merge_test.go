@@ -1,254 +1,290 @@
 package tree
 
 import (
-	"reflect"
 	"testing"
 )
 
 func TestMergeOption(t *testing.T) {
-	tests := []struct {
-		is   func() bool
-		want bool
+	overrideMapAppend := MergeOptionOverrideMap | MergeOptionAppend
+
+	testCases := []struct {
+		caseName string
+		is       func() bool
+		want     bool
 	}{
-		{is: MergeOptionDefault.isOverrideMap, want: false},
-		{is: MergeOptionDefault.isOverrideArray, want: false},
-		{is: MergeOptionDefault.isOverrideValue, want: false},
-		{is: MergeOptionDefault.isReplaceMap, want: false},
-		{is: MergeOptionDefault.isReplaceArray, want: false},
-		{is: MergeOptionDefault.isReplaceValue, want: false},
-		{is: MergeOptionDefault.isAppend, want: false},
-		{is: MergeOptionDefault.isSlurp, want: false},
-		{is: MergeOptionOverrideMap.isOverrideMap, want: true},
-		{is: MergeOptionOverrideMap.isOverrideArray, want: false},
-		{is: MergeOptionOverrideMap.isOverrideValue, want: true},
-		{is: MergeOptionOverrideMap.isReplaceMap, want: false},
-		{is: MergeOptionOverrideMap.isReplaceArray, want: false},
-		{is: MergeOptionOverrideMap.isReplaceValue, want: false},
-		{is: MergeOptionOverrideMap.isAppend, want: false},
-		{is: MergeOptionOverrideMap.isSlurp, want: false},
-		{is: MergeOptionOverrideArray.isOverrideMap, want: false},
-		{is: MergeOptionOverrideArray.isOverrideArray, want: true},
-		{is: MergeOptionOverrideArray.isOverrideValue, want: true},
-		{is: MergeOptionOverrideArray.isReplaceMap, want: false},
-		{is: MergeOptionOverrideArray.isReplaceArray, want: false},
-		{is: MergeOptionOverrideArray.isReplaceValue, want: false},
-		{is: MergeOptionOverrideArray.isAppend, want: false},
-		{is: MergeOptionOverrideArray.isSlurp, want: false},
-		{is: MergeOptionOverride.isOverrideMap, want: true},
-		{is: MergeOptionOverride.isOverrideArray, want: true},
-		{is: MergeOptionOverride.isOverrideValue, want: true},
-		{is: MergeOptionOverride.isReplaceMap, want: false},
-		{is: MergeOptionOverride.isReplaceArray, want: false},
-		{is: MergeOptionOverride.isReplaceValue, want: false},
-		{is: MergeOptionOverride.isAppend, want: false},
-		{is: MergeOptionOverride.isSlurp, want: false},
-		{is: MergeOptionReplaceMap.isOverrideMap, want: false},
-		{is: MergeOptionReplaceMap.isOverrideArray, want: false},
-		{is: MergeOptionReplaceMap.isOverrideValue, want: false},
-		{is: MergeOptionReplaceMap.isReplaceMap, want: true},
-		{is: MergeOptionReplaceMap.isReplaceArray, want: false},
-		{is: MergeOptionReplaceMap.isReplaceValue, want: true},
-		{is: MergeOptionReplaceMap.isAppend, want: false},
-		{is: MergeOptionReplaceMap.isSlurp, want: false},
-		{is: MergeOptionReplaceArray.isOverrideMap, want: false},
-		{is: MergeOptionReplaceArray.isOverrideArray, want: false},
-		{is: MergeOptionReplaceArray.isOverrideValue, want: false},
-		{is: MergeOptionReplaceArray.isReplaceMap, want: false},
-		{is: MergeOptionReplaceArray.isReplaceArray, want: true},
-		{is: MergeOptionReplaceArray.isReplaceValue, want: true},
-		{is: MergeOptionReplaceArray.isAppend, want: false},
-		{is: MergeOptionReplaceArray.isSlurp, want: false},
-		{is: MergeOptionReplace.isOverrideMap, want: false},
-		{is: MergeOptionReplace.isOverrideArray, want: false},
-		{is: MergeOptionReplace.isOverrideValue, want: false},
-		{is: MergeOptionReplace.isReplaceMap, want: true},
-		{is: MergeOptionReplace.isReplaceArray, want: true},
-		{is: MergeOptionReplace.isReplaceValue, want: true},
-		{is: MergeOptionReplace.isAppend, want: false},
-		{is: MergeOptionReplace.isSlurp, want: false},
-		{is: MergeOptionAppend.isOverrideMap, want: false},
-		{is: MergeOptionAppend.isOverrideArray, want: false},
-		{is: MergeOptionAppend.isOverrideValue, want: false},
-		{is: MergeOptionAppend.isReplaceMap, want: false},
-		{is: MergeOptionAppend.isReplaceArray, want: false},
-		{is: MergeOptionAppend.isReplaceValue, want: false},
-		{is: MergeOptionAppend.isAppend, want: true},
-		{is: MergeOptionAppend.isSlurp, want: false},
-		{is: MergeOptionSlurp.isOverrideMap, want: false},
-		{is: MergeOptionSlurp.isOverrideArray, want: false},
-		{is: MergeOptionSlurp.isOverrideValue, want: false},
-		{is: MergeOptionSlurp.isReplaceMap, want: false},
-		{is: MergeOptionSlurp.isReplaceArray, want: false},
-		{is: MergeOptionSlurp.isReplaceValue, want: false},
-		{is: MergeOptionSlurp.isAppend, want: false},
-		{is: MergeOptionSlurp.isSlurp, want: true},
-		{is: (MergeOptionOverrideMap | MergeOptionAppend).isOverrideMap, want: true},
-		{is: (MergeOptionOverrideMap | MergeOptionAppend).isOverrideArray, want: false},
-		{is: (MergeOptionOverrideMap | MergeOptionAppend).isOverrideValue, want: true},
-		{is: (MergeOptionOverrideMap | MergeOptionAppend).isReplaceMap, want: false},
-		{is: (MergeOptionOverrideMap | MergeOptionAppend).isReplaceArray, want: false},
-		{is: (MergeOptionOverrideMap | MergeOptionAppend).isReplaceValue, want: false},
-		{is: (MergeOptionOverrideMap | MergeOptionAppend).isAppend, want: true},
-		{is: (MergeOptionOverrideMap | MergeOptionAppend).isSlurp, want: false},
+		{"Default.isOverrideMap", MergeOptionDefault.isOverrideMap, false},
+		{"Default.isOverrideArray", MergeOptionDefault.isOverrideArray, false},
+		{"Default.isOverrideValue", MergeOptionDefault.isOverrideValue, false},
+		{"Default.isReplaceMap", MergeOptionDefault.isReplaceMap, false},
+		{"Default.isReplaceArray", MergeOptionDefault.isReplaceArray, false},
+		{"Default.isReplaceValue", MergeOptionDefault.isReplaceValue, false},
+		{"Default.isAppend", MergeOptionDefault.isAppend, false},
+		{"Default.isSlurp", MergeOptionDefault.isSlurp, false},
+		{"OverrideMap.isOverrideMap", MergeOptionOverrideMap.isOverrideMap, true},
+		{"OverrideMap.isOverrideArray", MergeOptionOverrideMap.isOverrideArray, false},
+		{"OverrideMap.isOverrideValue", MergeOptionOverrideMap.isOverrideValue, true},
+		{"OverrideMap.isReplaceMap", MergeOptionOverrideMap.isReplaceMap, false},
+		{"OverrideMap.isReplaceArray", MergeOptionOverrideMap.isReplaceArray, false},
+		{"OverrideMap.isReplaceValue", MergeOptionOverrideMap.isReplaceValue, false},
+		{"OverrideMap.isAppend", MergeOptionOverrideMap.isAppend, false},
+		{"OverrideMap.isSlurp", MergeOptionOverrideMap.isSlurp, false},
+		{"OverrideArray.isOverrideMap", MergeOptionOverrideArray.isOverrideMap, false},
+		{"OverrideArray.isOverrideArray", MergeOptionOverrideArray.isOverrideArray, true},
+		{"OverrideArray.isOverrideValue", MergeOptionOverrideArray.isOverrideValue, true},
+		{"OverrideArray.isReplaceMap", MergeOptionOverrideArray.isReplaceMap, false},
+		{"OverrideArray.isReplaceArray", MergeOptionOverrideArray.isReplaceArray, false},
+		{"OverrideArray.isReplaceValue", MergeOptionOverrideArray.isReplaceValue, false},
+		{"OverrideArray.isAppend", MergeOptionOverrideArray.isAppend, false},
+		{"OverrideArray.isSlurp", MergeOptionOverrideArray.isSlurp, false},
+		{"Override.isOverrideMap", MergeOptionOverride.isOverrideMap, true},
+		{"Override.isOverrideArray", MergeOptionOverride.isOverrideArray, true},
+		{"Override.isOverrideValue", MergeOptionOverride.isOverrideValue, true},
+		{"Override.isReplaceMap", MergeOptionOverride.isReplaceMap, false},
+		{"Override.isReplaceArray", MergeOptionOverride.isReplaceArray, false},
+		{"Override.isReplaceValue", MergeOptionOverride.isReplaceValue, false},
+		{"Override.isAppend", MergeOptionOverride.isAppend, false},
+		{"Override.isSlurp", MergeOptionOverride.isSlurp, false},
+		{"ReplaceMap.isOverrideMap", MergeOptionReplaceMap.isOverrideMap, false},
+		{"ReplaceMap.isOverrideArray", MergeOptionReplaceMap.isOverrideArray, false},
+		{"ReplaceMap.isOverrideValue", MergeOptionReplaceMap.isOverrideValue, false},
+		{"ReplaceMap.isReplaceMap", MergeOptionReplaceMap.isReplaceMap, true},
+		{"ReplaceMap.isReplaceArray", MergeOptionReplaceMap.isReplaceArray, false},
+		{"ReplaceMap.isReplaceValue", MergeOptionReplaceMap.isReplaceValue, true},
+		{"ReplaceMap.isAppend", MergeOptionReplaceMap.isAppend, false},
+		{"ReplaceMap.isSlurp", MergeOptionReplaceMap.isSlurp, false},
+		{"ReplaceArray.isOverrideMap", MergeOptionReplaceArray.isOverrideMap, false},
+		{"ReplaceArray.isOverrideArray", MergeOptionReplaceArray.isOverrideArray, false},
+		{"ReplaceArray.isOverrideValue", MergeOptionReplaceArray.isOverrideValue, false},
+		{"ReplaceArray.isReplaceMap", MergeOptionReplaceArray.isReplaceMap, false},
+		{"ReplaceArray.isReplaceArray", MergeOptionReplaceArray.isReplaceArray, true},
+		{"ReplaceArray.isReplaceValue", MergeOptionReplaceArray.isReplaceValue, true},
+		{"ReplaceArray.isAppend", MergeOptionReplaceArray.isAppend, false},
+		{"ReplaceArray.isSlurp", MergeOptionReplaceArray.isSlurp, false},
+		{"Replace.isOverrideMap", MergeOptionReplace.isOverrideMap, false},
+		{"Replace.isOverrideArray", MergeOptionReplace.isOverrideArray, false},
+		{"Replace.isOverrideValue", MergeOptionReplace.isOverrideValue, false},
+		{"Replace.isReplaceMap", MergeOptionReplace.isReplaceMap, true},
+		{"Replace.isReplaceArray", MergeOptionReplace.isReplaceArray, true},
+		{"Replace.isReplaceValue", MergeOptionReplace.isReplaceValue, true},
+		{"Replace.isAppend", MergeOptionReplace.isAppend, false},
+		{"Replace.isSlurp", MergeOptionReplace.isSlurp, false},
+		{"Append.isOverrideMap", MergeOptionAppend.isOverrideMap, false},
+		{"Append.isOverrideArray", MergeOptionAppend.isOverrideArray, false},
+		{"Append.isOverrideValue", MergeOptionAppend.isOverrideValue, false},
+		{"Append.isReplaceMap", MergeOptionAppend.isReplaceMap, false},
+		{"Append.isReplaceArray", MergeOptionAppend.isReplaceArray, false},
+		{"Append.isReplaceValue", MergeOptionAppend.isReplaceValue, false},
+		{"Append.isAppend", MergeOptionAppend.isAppend, true},
+		{"Append.isSlurp", MergeOptionAppend.isSlurp, false},
+		{"Slurp.isOverrideMap", MergeOptionSlurp.isOverrideMap, false},
+		{"Slurp.isOverrideArray", MergeOptionSlurp.isOverrideArray, false},
+		{"Slurp.isOverrideValue", MergeOptionSlurp.isOverrideValue, false},
+		{"Slurp.isReplaceMap", MergeOptionSlurp.isReplaceMap, false},
+		{"Slurp.isReplaceArray", MergeOptionSlurp.isReplaceArray, false},
+		{"Slurp.isReplaceValue", MergeOptionSlurp.isReplaceValue, false},
+		{"Slurp.isAppend", MergeOptionSlurp.isAppend, false},
+		{"Slurp.isSlurp", MergeOptionSlurp.isSlurp, true},
+		{"OverrideMap|Append.isOverrideMap", overrideMapAppend.isOverrideMap, true},
+		{"OverrideMap|Append.isOverrideArray", overrideMapAppend.isOverrideArray, false},
+		{"OverrideMap|Append.isOverrideValue", overrideMapAppend.isOverrideValue, true},
+		{"OverrideMap|Append.isReplaceMap", overrideMapAppend.isReplaceMap, false},
+		{"OverrideMap|Append.isReplaceArray", overrideMapAppend.isReplaceArray, false},
+		{"OverrideMap|Append.isReplaceValue", overrideMapAppend.isReplaceValue, false},
+		{"OverrideMap|Append.isAppend", overrideMapAppend.isAppend, true},
+		{"OverrideMap|Append.isSlurp", overrideMapAppend.isSlurp, false},
 	}
-	for i, test := range tests {
-		if got := test.is(); got != test.want {
-			t.Errorf("tests[%d] got %v; want %v", i, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			if got := tc.is(); got != tc.want {
+				t.Errorf("got %v; want %v", got, tc.want)
+			}
+		})
 	}
 }
 
 func TestMerge(t *testing.T) {
-	tests := []struct {
-		a    Node
-		b    Node
-		opts MergeOption
-		want Node
+	testCases := []struct {
+		caseName string
+		a        Node
+		b        Node
+		opts     MergeOption
+		want     Node
 	}{
 		{
-			a:    Map{"a": ToValue(1), "b": ToValue(2)},
-			b:    Map{"a": ToValue(3), "c": ToValue(4)},
-			want: Map{"a": ToValue(1), "b": ToValue(2), "c": ToValue(4)},
+			caseName: "Default Map merges new key",
+			a:        Map{"a": ToValue(1), "b": ToValue(2)},
+			b:        Map{"a": ToValue(3), "c": ToValue(4)},
+			want:     Map{"a": ToValue(1), "b": ToValue(2), "c": ToValue(4)},
 		}, {
-			a:    Map{"a": ToValue(1), "b": ToValue(2)},
-			b:    Nil,
-			want: Map{"a": ToValue(1), "b": ToValue(2)},
+			caseName: "Default Map vs Nil keeps a",
+			a:        Map{"a": ToValue(1), "b": ToValue(2)},
+			b:        Nil,
+			want:     Map{"a": ToValue(1), "b": ToValue(2)},
 		}, {
-			a:    ToArrayValues(1, 2),
-			b:    ToArrayValues(3, 4, 5),
-			want: ToArrayValues(1, 2, 5),
+			caseName: "Default Array overlays trailing",
+			a:        ToArrayValues(1, 2),
+			b:        ToArrayValues(3, 4, 5),
+			want:     ToArrayValues(1, 2, 5),
 		}, {
-			a:    ToArrayValues(1, 2, 3),
-			b:    ToArrayValues(4, 5),
-			want: ToArrayValues(1, 2, 3),
+			caseName: "Default Array longer a",
+			a:        ToArrayValues(1, 2, 3),
+			b:        ToArrayValues(4, 5),
+			want:     ToArrayValues(1, 2, 3),
 		}, {
-			a:    ToValue("a"),
-			b:    ToValue("b"),
-			want: ToValue("a"),
+			caseName: "Default Value keeps a",
+			a:        ToValue("a"),
+			b:        ToValue("b"),
+			want:     ToValue("a"),
 		}, {
-			a:    Map{"a": ToValue(1), "b": ToValue(2)},
-			b:    ToValue("c"),
-			want: Map{"a": ToValue(1), "b": ToValue(2)},
+			caseName: "Default Map vs Value keeps a",
+			a:        Map{"a": ToValue(1), "b": ToValue(2)},
+			b:        ToValue("c"),
+			want:     Map{"a": ToValue(1), "b": ToValue(2)},
 		}, {
-			a:    ToArrayValues("a"),
-			b:    ToValue("b"),
-			want: ToArrayValues("a"),
+			caseName: "Default Array vs Value keeps a",
+			a:        ToArrayValues("a"),
+			b:        ToValue("b"),
+			want:     ToArrayValues("a"),
 		}, {
-			a:    Map{"a": ToValue(1), "b": ToValue(2)},
-			b:    Map{"a": ToValue(3)},
-			opts: MergeOptionOverrideMap,
-			want: Map{"a": ToValue(3), "b": ToValue(2)},
+			caseName: "OverrideMap Map overlays existing key",
+			a:        Map{"a": ToValue(1), "b": ToValue(2)},
+			b:        Map{"a": ToValue(3)},
+			opts:     MergeOptionOverrideMap,
+			want:     Map{"a": ToValue(3), "b": ToValue(2)},
 		}, {
-			a:    Map{"a": ToValue(1), "b": ToValue(2)},
-			b:    Nil,
-			opts: MergeOptionOverrideMap,
-			want: Nil,
+			caseName: "OverrideMap Map vs Nil",
+			a:        Map{"a": ToValue(1), "b": ToValue(2)},
+			b:        Nil,
+			opts:     MergeOptionOverrideMap,
+			want:     Nil,
 		}, {
-			a:    ToValue("a"),
-			b:    ToValue("b"),
-			opts: MergeOptionOverrideMap,
-			want: ToValue("b"),
+			caseName: "OverrideMap Value override",
+			a:        ToValue("a"),
+			b:        ToValue("b"),
+			opts:     MergeOptionOverrideMap,
+			want:     ToValue("b"),
 		}, {
-			a:    Map{"a": ToValue(1), "b": ToValue(2), "c": ToValue(3)},
-			b:    Map{"a": ToValue(4), "b": ToArrayValues(5, 6), "d": ToValue(7)},
-			opts: MergeOptionOverrideMap,
-			want: Map{"a": ToValue(4), "b": ToArrayValues(5, 6), "c": ToValue(3), "d": ToValue(7)},
+			caseName: "OverrideMap mixed types",
+			a:        Map{"a": ToValue(1), "b": ToValue(2), "c": ToValue(3)},
+			b:        Map{"a": ToValue(4), "b": ToArrayValues(5, 6), "d": ToValue(7)},
+			opts:     MergeOptionOverrideMap,
+			want:     Map{"a": ToValue(4), "b": ToArrayValues(5, 6), "c": ToValue(3), "d": ToValue(7)},
 		}, {
-			a:    ToArrayValues(1, 2, 3),
-			b:    ToArrayValues(4, 5),
-			opts: MergeOptionOverrideArray,
-			want: ToArrayValues(4, 5, 3),
+			caseName: "OverrideArray shorter b",
+			a:        ToArrayValues(1, 2, 3),
+			b:        ToArrayValues(4, 5),
+			opts:     MergeOptionOverrideArray,
+			want:     ToArrayValues(4, 5, 3),
 		}, {
-			a:    ToArrayValues(1, 2, 3),
-			b:    ToArrayValues(4, 5, 6, 7),
-			opts: MergeOptionOverrideArray,
-			want: ToArrayValues(4, 5, 6, 7),
+			caseName: "OverrideArray longer b",
+			a:        ToArrayValues(1, 2, 3),
+			b:        ToArrayValues(4, 5, 6, 7),
+			opts:     MergeOptionOverrideArray,
+			want:     ToArrayValues(4, 5, 6, 7),
 		}, {
-			a:    ToValue("a"),
-			b:    ToValue("b"),
-			opts: MergeOptionOverrideArray,
-			want: ToValue("b"),
+			caseName: "OverrideArray Value override",
+			a:        ToValue("a"),
+			b:        ToValue("b"),
+			opts:     MergeOptionOverrideArray,
+			want:     ToValue("b"),
 		}, {
-			a:    Map{"a": ToValue(1), "b": ToValue(2)},
-			b:    Map{"a": ToValue(3)},
-			opts: MergeOptionOverride,
-			want: Map{"a": ToValue(3), "b": ToValue(2)},
+			caseName: "Override Map",
+			a:        Map{"a": ToValue(1), "b": ToValue(2)},
+			b:        Map{"a": ToValue(3)},
+			opts:     MergeOptionOverride,
+			want:     Map{"a": ToValue(3), "b": ToValue(2)},
 		}, {
-			a:    ToArrayValues(1, 2, 3),
-			b:    ToArrayValues(4, 5),
-			opts: MergeOptionOverride,
-			want: ToArrayValues(4, 5, 3),
+			caseName: "Override Array",
+			a:        ToArrayValues(1, 2, 3),
+			b:        ToArrayValues(4, 5),
+			opts:     MergeOptionOverride,
+			want:     ToArrayValues(4, 5, 3),
 		}, {
-			a:    ToValue("a"),
-			b:    ToValue("b"),
-			opts: MergeOptionOverride,
-			want: ToValue("b"),
+			caseName: "Override Value",
+			a:        ToValue("a"),
+			b:        ToValue("b"),
+			opts:     MergeOptionOverride,
+			want:     ToValue("b"),
 		}, {
-			a:    Map{"a": ToValue(1), "b": ToValue(2)},
-			b:    Map{"a": ToValue(3)},
-			opts: MergeOptionReplaceMap,
-			want: Map{"a": ToValue(3)},
+			caseName: "ReplaceMap Map",
+			a:        Map{"a": ToValue(1), "b": ToValue(2)},
+			b:        Map{"a": ToValue(3)},
+			opts:     MergeOptionReplaceMap,
+			want:     Map{"a": ToValue(3)},
 		}, {
-			a:    ToValue("a"),
-			b:    ToValue("b"),
-			opts: MergeOptionReplaceMap,
-			want: ToValue("b"),
+			caseName: "ReplaceMap Value first",
+			a:        ToValue("a"),
+			b:        ToValue("b"),
+			opts:     MergeOptionReplaceMap,
+			want:     ToValue("b"),
 		}, {
-			a:    ToValue("a"),
-			b:    ToValue("b"),
-			opts: MergeOptionReplaceMap,
-			want: ToValue("b"),
+			caseName: "ReplaceMap Value second",
+			a:        ToValue("a"),
+			b:        ToValue("b"),
+			opts:     MergeOptionReplaceMap,
+			want:     ToValue("b"),
 		}, {
-			a:    ToArrayValues(1, 2, 3),
-			b:    ToArrayValues(4, 5),
-			opts: MergeOptionReplaceArray,
-			want: ToArrayValues(4, 5),
+			caseName: "ReplaceArray Array",
+			a:        ToArrayValues(1, 2, 3),
+			b:        ToArrayValues(4, 5),
+			opts:     MergeOptionReplaceArray,
+			want:     ToArrayValues(4, 5),
 		}, {
-			a:    ToValue("a"),
-			b:    ToValue("b"),
-			opts: MergeOptionReplaceArray,
-			want: ToValue("b"),
+			caseName: "ReplaceArray Value",
+			a:        ToValue("a"),
+			b:        ToValue("b"),
+			opts:     MergeOptionReplaceArray,
+			want:     ToValue("b"),
 		}, {
-			a:    ToValue("a"),
-			b:    ToValue("b"),
-			opts: MergeOptionReplace,
-			want: ToValue("b"),
+			caseName: "Replace Value",
+			a:        ToValue("a"),
+			b:        ToValue("b"),
+			opts:     MergeOptionReplace,
+			want:     ToValue("b"),
 		}, {
-			a:    ToArrayValues(1, 2, 3),
-			b:    ToArrayValues(4, 5),
-			opts: MergeOptionReplace,
-			want: ToArrayValues(4, 5),
+			caseName: "Replace Array",
+			a:        ToArrayValues(1, 2, 3),
+			b:        ToArrayValues(4, 5),
+			opts:     MergeOptionReplace,
+			want:     ToArrayValues(4, 5),
 		}, {
-			a:    ToValue("a"),
-			b:    ToValue("b"),
-			opts: MergeOptionReplace,
-			want: ToValue("b"),
+			caseName: "Replace Value second",
+			a:        ToValue("a"),
+			b:        ToValue("b"),
+			opts:     MergeOptionReplace,
+			want:     ToValue("b"),
 		}, {
-			a:    ToArrayValues(1, 2, 3),
-			b:    ToArrayValues(4, 5),
-			opts: MergeOptionAppend,
-			want: ToArrayValues(1, 2, 3, 4, 5),
+			caseName: "Append Array",
+			a:        ToArrayValues(1, 2, 3),
+			b:        ToArrayValues(4, 5),
+			opts:     MergeOptionAppend,
+			want:     ToArrayValues(1, 2, 3, 4, 5),
 		}, {
-			a:    ToArrayValues(1, 2, 3),
-			b:    ToArrayValues(4, 5),
-			opts: MergeOptionSlurp,
-			want: ToArrayValues(1, 2, 3, 4, 5),
+			caseName: "Slurp Array Array",
+			a:        ToArrayValues(1, 2, 3),
+			b:        ToArrayValues(4, 5),
+			opts:     MergeOptionSlurp,
+			want:     ToArrayValues(1, 2, 3, 4, 5),
 		}, {
-			a:    ToArrayValues(1, 2, 3),
-			b:    ToValue(4),
-			opts: MergeOptionSlurp,
-			want: ToArrayValues(1, 2, 3, 4),
+			caseName: "Slurp Array Value",
+			a:        ToArrayValues(1, 2, 3),
+			b:        ToValue(4),
+			opts:     MergeOptionSlurp,
+			want:     ToArrayValues(1, 2, 3, 4),
 		}, {
-			a:    ToValue(1),
-			b:    ToValue(2),
-			opts: MergeOptionSlurp,
-			want: ToArrayValues(1, 2),
+			caseName: "Slurp Value Value",
+			a:        ToValue(1),
+			b:        ToValue(2),
+			opts:     MergeOptionSlurp,
+			want:     ToArrayValues(1, 2),
 		}, {
-			a:    Map{"a": ToValue(1)},
-			b:    Map{"a": ToValue(2)},
-			opts: MergeOptionSlurp,
-			want: Map{"a": ToArrayValues(1, 2)},
+			caseName: "Slurp Map Map",
+			a:        Map{"a": ToValue(1)},
+			b:        Map{"a": ToValue(2)},
+			opts:     MergeOptionSlurp,
+			want:     Map{"a": ToArrayValues(1, 2)},
 		}, {
+			caseName: "OverrideMap|Append nested",
 			a: Map{
 				"map":          Map{"a": ToValue(1), "b": ToValue(2)},
 				"array":        ToArrayValues(3, 4, 5),
@@ -266,6 +302,7 @@ func TestMerge(t *testing.T) {
 				"arrayOrValue": ToValue(12),
 			},
 		}, {
+			caseName: "Append|Slurp nested",
 			a: Map{
 				"map":          Map{"a": ToValue(1), "b": ToValue(2)},
 				"array":        ToArrayValues(3, 4, 5),
@@ -283,6 +320,7 @@ func TestMerge(t *testing.T) {
 				"arrayOrValue": ToArrayValues(6, 7, 8, 12),
 			},
 		}, {
+			caseName: "ReplaceMap|Append nested",
 			a: Map{
 				"map":   Map{"a": ToValue(1), "b": ToValue(2)},
 				"array": ToArrayValues(3, 4, 5),
@@ -298,17 +336,19 @@ func TestMerge(t *testing.T) {
 			},
 		},
 	}
-	for i, test := range tests {
-		a, b := CloneDeep(test.a), CloneDeep(test.b)
-		got := Merge(CloneDeep(test.a), CloneDeep(test.b), test.opts)
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf(`tests[%d]: unexpected %v; want %v`, i, got, test.want)
-		}
-		if !reflect.DeepEqual(a, test.a) {
-			t.Errorf(`tests[%d]: unexpected %v; want %v`, i, got, test.want)
-		}
-		if !reflect.DeepEqual(b, test.b) {
-			t.Errorf(`tests[%d]: unexpected %v; want %v`, i, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			a, b := CloneDeep(tc.a), CloneDeep(tc.b)
+			got := Merge(CloneDeep(tc.a), CloneDeep(tc.b), tc.opts)
+			if !Equal(got, tc.want) {
+				t.Errorf("unexpected %v; want %v", got, tc.want)
+			}
+			if !Equal(a, tc.a) {
+				t.Errorf("a was mutated: %v; want %v", a, tc.a)
+			}
+			if !Equal(b, tc.b) {
+				t.Errorf("b was mutated: %v; want %v", b, tc.b)
+			}
+		})
 	}
 }

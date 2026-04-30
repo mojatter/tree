@@ -7,40 +7,33 @@ import (
 )
 
 func TestOutputColorJSON(t *testing.T) {
-	tests := []struct {
-		n    Node
-		want string
-	}{
-		{
-			n: Map{
-				"num":  ToValue(1),
-				"str":  ToValue("2"),
-				"bool": ToValue(true),
-				"null": Nil,
-			},
-			want: "{\n  \x1b[1;34m\"bool\"\x1b[0m: true,\n  \x1b[1;34m\"null\"\x1b[0m: \x1b[1;30mnull\x1b[0m,\n  \x1b[1;34m\"num\"\x1b[0m: 1,\n  \x1b[1;34m\"str\"\x1b[0m: \x1b[0;32m\"2\"\x1b[0m\n}\n",
-		},
+	n := Map{
+		"num":  ToValue(1),
+		"str":  ToValue("2"),
+		"bool": ToValue(true),
+		"null": Nil,
 	}
-	for i, test := range tests {
-		out := new(bytes.Buffer)
-		err := OutputColorJSON(out, test.n)
-		if err != nil {
-			t.Fatalf("tests[%d] %v", i, err)
-		}
-		if got := out.String(); got != test.want {
-			t.Errorf("tests[%d] got %q; want %q\n%s", i, got, test.want, test.want)
-		}
+	want := "{\n  \x1b[1;34m\"bool\"\x1b[0m: true,\n  \x1b[1;34m\"null\"\x1b[0m: \x1b[1;30mnull\x1b[0m,\n  \x1b[1;34m\"num\"\x1b[0m: 1,\n  \x1b[1;34m\"str\"\x1b[0m: \x1b[0;32m\"2\"\x1b[0m\n}\n"
+
+	out := new(bytes.Buffer)
+	if err := OutputColorJSON(out, n); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != want {
+		t.Errorf("got %q; want %q\n%s", got, want, want)
 	}
 }
 
 func TestEncodeJSON(t *testing.T) {
-	tests := []struct {
-		e    *ColorEncoder
-		n    Node
-		want string
+	testCases := []struct {
+		caseName string
+		e        *ColorEncoder
+		n        Node
+		want     string
 	}{
 		{
-			e: &ColorEncoder{IndentSize: 4, NoColor: true},
+			caseName: "Map with Array, Nil and nil",
+			e:        &ColorEncoder{IndentSize: 4, NoColor: true},
 			n: Map{
 				"a": ToValue(1),
 				"b": Array{
@@ -61,59 +54,54 @@ func TestEncodeJSON(t *testing.T) {
 }
 `,
 		}, {
-			e:    &ColorEncoder{IndentSize: 2, NoColor: true},
-			n:    ToValue("\"\n\r\t"),
-			want: "\"\\\"\\n\\r\\t\"\n",
+			caseName: "string with control char escapes",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        ToValue("\"\n\r\t"),
+			want:     "\"\\\"\\n\\r\\t\"\n",
 		},
 	}
-	for i, test := range tests {
-		out := new(bytes.Buffer)
-		test.e.Out = out
-		err := test.e.EncodeJSON(test.n)
-		if err != nil {
-			t.Fatalf("tests[%d] %v", i, err)
-		}
-		if got := out.String(); got != test.want {
-			t.Errorf("tests[%d] got %q; want %q\n%s", i, got, test.want, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			out := new(bytes.Buffer)
+			tc.e.Out = out
+			if err := tc.e.EncodeJSON(tc.n); err != nil {
+				t.Fatal(err)
+			}
+			if got := out.String(); got != tc.want {
+				t.Errorf("got %q; want %q\n%s", got, tc.want, tc.want)
+			}
+		})
 	}
 }
 
 func TestOutputColorYAML(t *testing.T) {
-	tests := []struct {
-		n    Node
-		want string
-	}{
-		{
-			n: Map{
-				"num":  ToValue(1),
-				"str":  ToValue("2"),
-				"bool": ToValue(true),
-				"null": Nil,
-			},
-			want: "\x1b[1;34mbool\x1b[0m: true\n\x1b[1;34mnull\x1b[0m: \x1b[1;30mnull\x1b[0m\n\x1b[1;34mnum\x1b[0m: 1\n\x1b[1;34mstr\x1b[0m: \x1b[0;32m\"2\"\x1b[0m\n",
-		},
+	n := Map{
+		"num":  ToValue(1),
+		"str":  ToValue("2"),
+		"bool": ToValue(true),
+		"null": Nil,
 	}
-	for i, test := range tests {
-		out := new(bytes.Buffer)
-		err := OutputColorYAML(out, test.n)
-		if err != nil {
-			t.Fatalf("tests[%d] %v", i, err)
-		}
-		if got := out.String(); got != test.want {
-			t.Errorf("tests[%d] got %q; want %q\n%s", i, got, test.want, test.want)
-		}
+	want := "\x1b[1;34mbool\x1b[0m: true\n\x1b[1;34mnull\x1b[0m: \x1b[1;30mnull\x1b[0m\n\x1b[1;34mnum\x1b[0m: 1\n\x1b[1;34mstr\x1b[0m: \x1b[0;32m\"2\"\x1b[0m\n"
+
+	out := new(bytes.Buffer)
+	if err := OutputColorYAML(out, n); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != want {
+		t.Errorf("got %q; want %q\n%s", got, want, want)
 	}
 }
 
 func TestEncodeYAML(t *testing.T) {
-	tests := []struct {
-		e    *ColorEncoder
-		n    Node
-		want string
+	testCases := []struct {
+		caseName string
+		e        *ColorEncoder
+		n        Node
+		want     string
 	}{
 		{
-			e: &ColorEncoder{IndentSize: 2, NoColor: true},
+			caseName: "Map with Array, Nil and nil",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
 			n: Map{
 				"a": ToValue(1),
 				"b": Array{
@@ -131,7 +119,8 @@ c: null
 d: null
 `,
 		}, {
-			e: &ColorEncoder{IndentSize: 2, NoColor: true},
+			caseName: "trailing newline triggers literal block",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
 			n: Map{
 				"a": ToValue("line1\nline2\n"),
 			},
@@ -140,7 +129,8 @@ d: null
   line2
 `,
 		}, {
-			e: &ColorEncoder{IndentSize: 2, NoColor: true},
+			caseName: "no trailing newline uses literal strip",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
 			n: Map{
 				"a": ToValue("line1\nline2"),
 			},
@@ -149,7 +139,8 @@ d: null
   line2
 `,
 		}, {
-			e: &ColorEncoder{IndentSize: 2, NoColor: true},
+			caseName: "Array of mixed types",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
 			n: Array{
 				ToValue(1),
 				Map{
@@ -170,16 +161,17 @@ d: null
 `,
 		},
 	}
-	for i, test := range tests {
-		out := new(bytes.Buffer)
-		test.e.Out = out
-		err := test.e.EncodeYAML(test.n)
-		if err != nil {
-			t.Fatalf("tests[%d] %v", i, err)
-		}
-		if got := out.String(); got != test.want {
-			t.Errorf("tests[%d] got %q; want %q\n%s", i, got, test.want, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			out := new(bytes.Buffer)
+			tc.e.Out = out
+			if err := tc.e.EncodeYAML(tc.n); err != nil {
+				t.Fatal(err)
+			}
+			if got := out.String(); got != tc.want {
+				t.Errorf("got %q; want %q\n%s", got, tc.want, tc.want)
+			}
+		})
 	}
 }
 

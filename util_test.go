@@ -5,112 +5,102 @@ import (
 	"testing"
 )
 
-func Test_V(t *testing.T) {
+func TestV(t *testing.T) {
 	// V is a thin alias for ToValue; sample a few representative
 	// inputs to confirm they yield identical results.
-	inputs := []any{nil, "s", true, 1, int64(2), 3.5}
-	for _, in := range inputs {
-		if got, want := V(in), ToValue(in); got != want {
-			t.Errorf("V(%v) = %#v; want %#v", in, got, want)
-		}
+	testCases := []struct {
+		caseName string
+		in       any
+	}{
+		{caseName: "nil", in: nil},
+		{caseName: "string", in: "s"},
+		{caseName: "bool", in: true},
+		{caseName: "int", in: 1},
+		{caseName: "int64", in: int64(2)},
+		{caseName: "float64", in: 3.5},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			if got, want := V(tc.in), ToValue(tc.in); got != want {
+				t.Errorf("V(%v) = %#v; want %#v", tc.in, got, want)
+			}
+		})
 	}
 }
 
-func Test_A(t *testing.T) {
+func TestA(t *testing.T) {
 	// A is a thin alias for ToArrayValues.
 	got := A("a", 1, true)
 	want := ToArrayValues("a", 1, true)
-	if !reflect.DeepEqual(got, want) {
+	if !Equal(got, want) {
 		t.Errorf("A(...) = %#v; want %#v", got, want)
 	}
 }
 
-func Test_ToValue(t *testing.T) {
-	tests := []struct {
-		v    any
-		want Node
+func TestToValue(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		v        any
+		want     Node
 	}{
-		{
-			v:    nil,
-			want: Nil,
-		}, {
-			v:    "string",
-			want: StringValue("string"),
-		}, {
-			v:    true,
-			want: BoolValue(true),
-		}, {
-			v:    1,
-			want: NumberValue(1),
-		}, {
-			v:    int64(2),
-			want: NumberValue(2),
-		}, {
-			v:    int32(3),
-			want: NumberValue(3),
-		}, {
-			v:    float64(4.4),
-			want: NumberValue(4.4),
-		}, {
-			v:    float32(5.5),
-			want: NumberValue(5.5),
-		}, {
-			v:    uint64(6),
-			want: NumberValue(uint64(6)),
-		}, {
-			v:    uint32(7),
-			want: NumberValue(uint32(7)),
-		}, {
-			v:    BoolValue(true),
-			want: BoolValue(true),
-		}, {
-			v:    struct{}{},
-			want: StringValue("struct {}{}"),
-		},
+		{caseName: "nil", v: nil, want: Nil},
+		{caseName: "string", v: "string", want: StringValue("string")},
+		{caseName: "bool", v: true, want: BoolValue(true)},
+		{caseName: "int", v: 1, want: NumberValue(1)},
+		{caseName: "int64", v: int64(2), want: NumberValue(2)},
+		{caseName: "int32", v: int32(3), want: NumberValue(3)},
+		{caseName: "float64", v: float64(4.4), want: NumberValue(4.4)},
+		{caseName: "float32", v: float32(5.5), want: NumberValue(5.5)},
+		{caseName: "uint64", v: uint64(6), want: NumberValue(uint64(6))},
+		{caseName: "uint32", v: uint32(7), want: NumberValue(uint32(7))},
+		{caseName: "BoolValue passthrough", v: BoolValue(true), want: BoolValue(true)},
+		{caseName: "unknown struct fallback", v: struct{}{}, want: StringValue("struct {}{}")},
 	}
-	for i, test := range tests {
-		got := ToValue(test.v)
-		if got != test.want {
-			t.Errorf("tests[%d] for %v; got %#v; want %#v", i, test.v, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			if got := ToValue(tc.v); !Equal(got, tc.want) {
+				t.Errorf("for %v; got %#v; want %#v", tc.v, got, tc.want)
+			}
+		})
 	}
 }
 
-func Test_ToNode(t *testing.T) {
-	tests := []struct {
-		v    any
-		want Node
+func TestToNode(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		v        any
+		want     Node
 	}{
+		{caseName: "nil", v: nil, want: Nil},
+		{caseName: "StringValue", v: StringValue("a"), want: StringValue("a")},
 		{
-			v:    nil,
-			want: Nil,
-		}, {
-			v:    StringValue("a"),
-			want: StringValue("a"),
-		}, {
-			v:    map[string]any{"a": 1, "b": true},
-			want: Map{"a": NumberValue(1), "b": BoolValue(true)},
-		}, {
-			v:    []any{"a", true, 1},
-			want: Array{StringValue("a"), BoolValue(true), NumberValue(1)},
+			caseName: "map",
+			v:        map[string]any{"a": 1, "b": true},
+			want:     Map{"a": NumberValue(1), "b": BoolValue(true)},
+		},
+		{
+			caseName: "slice",
+			v:        []any{"a", true, 1},
+			want:     Array{StringValue("a"), BoolValue(true), NumberValue(1)},
 		},
 	}
-	for i, test := range tests {
-		got := ToNode(test.v)
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf("tests[%d] for %v; got %v; want %v", i, test.v, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			if got := ToNode(tc.v); !Equal(got, tc.want) {
+				t.Errorf("for %v; got %v; want %v", tc.v, got, tc.want)
+			}
+		})
 	}
 }
 
-func Test_Walk(t *testing.T) {
+func TestWalk(t *testing.T) {
 	root := Array{
 		Map{"ID": ToValue(1)},
 		Map{"ID": ToValue(2), "Sub": Array{Map{"ID": ToValue(20)}}},
 		Map{"ID": ToValue(3), "Sub": Array{Map{"ID": ToValue(30)}}},
 	}
 
-	tests := []struct {
+	expected := []struct {
 		n    Node
 		keys []any
 		skip bool
@@ -148,20 +138,20 @@ func Test_Walk(t *testing.T) {
 
 	i := 0
 	err := Walk(root, func(n Node, keys []any) error {
-		if i >= len(tests) {
+		if i >= len(expected) {
 			t.Fatalf("fn is called too many times %d", i)
 			return nil
 		}
-		test := tests[i]
+		want := expected[i]
 		i++
 
-		if !reflect.DeepEqual(n, test.n) {
-			t.Errorf("walk[%d] got %#v; want %#v", i, n, test.n)
+		if !Equal(n, want.n) {
+			t.Errorf("walk[%d] got %#v; want %#v", i, n, want.n)
 		}
-		if !reflect.DeepEqual(keys, test.keys) {
-			t.Errorf("walk[%d] got %#v; want %#v", i, keys, test.n)
+		if !reflect.DeepEqual(keys, want.keys) {
+			t.Errorf("walk[%d] got %#v; want %#v", i, keys, want.keys)
 		}
-		if test.skip {
+		if want.skip {
 			return SkipWalk
 		}
 		return nil
@@ -169,103 +159,116 @@ func Test_Walk(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tests) != i {
-		t.Errorf("fn is called %d times; want %d", i, len(tests))
+	if len(expected) != i {
+		t.Errorf("fn is called %d times; want %d", i, len(expected))
 	}
 }
 
-func Test_regexpMatchString(t *testing.T) {
-	tests := []struct {
-		expr   string
-		value  string
-		want   bool
-		errstr string
+func TestRegexpMatchString(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		expr     string
+		value    string
+		want     bool
+		errstr   string
 	}{
 		{
-			expr:  `a`,
-			value: "abc",
-			want:  true,
+			caseName: "substring match",
+			expr:     `a`,
+			value:    "abc",
+			want:     true,
 		}, {
-			expr:  `^[a-z]+$`,
-			value: "abc",
-			want:  true,
+			caseName: "anchored full match",
+			expr:     `^[a-z]+$`,
+			value:    "abc",
+			want:     true,
 		}, {
-			expr:  `x`,
-			value: "abc",
-			want:  false,
+			caseName: "no match",
+			expr:     `x`,
+			value:    "abc",
+			want:     false,
 		}, {
-			expr:   `(`,
-			value:  "abc",
-			errstr: "error parsing regexp: missing closing ): `(`",
+			caseName: "invalid regex",
+			expr:     `(`,
+			value:    "abc",
+			errstr:   "error parsing regexp: missing closing ): `(`",
 		},
 	}
-	for i, test := range tests {
-		got, err := regexpMatchString(test.expr, test.value)
-		if test.errstr != "" {
-			if err == nil {
-				t.Fatalf("tests[%d] for %v; no error", i, test.expr)
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := regexpMatchString(tc.expr, tc.value)
+			if tc.errstr != "" {
+				if err == nil {
+					t.Fatalf("for %v; no error", tc.expr)
+				}
+				if err.Error() != tc.errstr {
+					t.Errorf("for %v; got %v want %v", tc.expr, err.Error(), tc.errstr)
+				}
+				return
 			}
-			if err.Error() != test.errstr {
-				t.Errorf(`tests[%d] for %v; got %v want %v`, i, test.expr, err.Error(), test.errstr)
+			if err != nil {
+				t.Fatalf("for %v; %+v", tc.expr, err)
 			}
-			continue
-		}
-		if err != nil {
-			t.Fatalf("tests[%d] for %v; %+v", i, test.expr, err)
-		}
-		if got != test.want {
-			t.Errorf("tests[%d] for %v; got %v; want %v", i, test.expr, got, test.want)
-		}
+			if got != tc.want {
+				t.Errorf("for %v; got %v; want %v", tc.expr, got, tc.want)
+			}
+		})
 	}
 }
 
 func TestClone(t *testing.T) {
-	tests := []struct {
-		n    Node
-		want Node
+	testCases := []struct {
+		caseName string
+		n        Node
+		want     Node
 	}{
+		{caseName: "Value", n: ToValue(1), want: ToValue(1)},
 		{
-			n:    ToValue(1),
-			want: ToValue(1),
-		}, {
-			n:    Map{"a": ToValue(1), "b": ToValue(2)},
-			want: Map{"a": ToValue(1), "b": ToValue(2)},
+			caseName: "Map",
+			n:        Map{"a": ToValue(1), "b": ToValue(2)},
+			want:     Map{"a": ToValue(1), "b": ToValue(2)},
 		},
 	}
-	for i, test := range tests {
-		got := Clone(test.n)
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf(`tests[%d]: unexpected %v; want %v`, i, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			if got := Clone(tc.n); !Equal(got, tc.want) {
+				t.Errorf("unexpected %v; want %v", got, tc.want)
+			}
+		})
 	}
 }
 
 func TestCloneDeep(t *testing.T) {
-	tests := []struct {
-		n      Node
-		want   Node
-		update func(n Node)
+	testCases := []struct {
+		caseName string
+		n        Node
+		want     Node
+		update   func(n Node)
 	}{
 		{
-			n:      ToValue(1),
-			want:   ToValue(1),
-			update: func(n Node) {},
+			caseName: "Value",
+			n:        ToValue(1),
+			want:     ToValue(1),
+			update:   func(n Node) {},
 		}, {
-			n:    Map{"a": ToArrayValues(1, 2), "b": ToArrayValues(3, 4)},
-			want: Map{"a": ToArrayValues(1, 2), "b": ToArrayValues(3, 4)},
+			caseName: "Map of Arrays mutated post-clone",
+			n:        Map{"a": ToArrayValues(1, 2), "b": ToArrayValues(3, 4)},
+			want:     Map{"a": ToArrayValues(1, 2), "b": ToArrayValues(3, 4)},
 			update: func(n Node) {
 				n.Map().Get("a").Array()[0] = ToValue(5)
 			},
 		},
 	}
-	for i, test := range tests {
-		got := CloneDeep(test.n)
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf(`tests[%d]: unexpected %v; want %v`, i, got, test.want)
-		}
-		test.update(test.n)
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf(`tests[%d]: unexpected %v; want %v`, i, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got := CloneDeep(tc.n)
+			if !Equal(got, tc.want) {
+				t.Errorf("unexpected %v; want %v", got, tc.want)
+			}
+			tc.update(tc.n)
+			if !Equal(got, tc.want) {
+				t.Errorf("after update unexpected %v; want %v", got, tc.want)
+			}
+		})
 	}
 }

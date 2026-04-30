@@ -9,7 +9,7 @@ import (
 	"github.com/mojatter/tree/internal/testdata"
 )
 
-func Test_MarshalJSON(t *testing.T) {
+func TestMarshalJSON(t *testing.T) {
 	want := `{"a":["1",2,true,null,null]}`
 	n := Map{
 		"a": Array{
@@ -29,75 +29,89 @@ func Test_MarshalJSON(t *testing.T) {
 	}
 }
 
-func Test_Map_MarshalJSON(t *testing.T) {
-	want := `{"a":["1",2,true]}`
-	n := Map{
-		"a": Array{
-			StringValue("1"),
-			NumberValue(2),
-			BoolValue(true),
-		},
-	}
-	got, err := json.Marshal(n)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != want {
-		t.Errorf("got %s; want %s", string(got), want)
-	}
-}
-
-func Test_Array_MarshalJSON(t *testing.T) {
-	want := `["1",2,true]`
-	n := Array{
-		StringValue("1"),
-		NumberValue(2),
-		BoolValue(true),
-	}
-	got, err := json.Marshal(n)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != want {
-		t.Errorf("got %s; want %s", string(got), want)
-	}
-}
-
-func Test_DecodeJSON_Errors(t *testing.T) {
-	tests := []struct {
-		data   []byte
-		errstr string
+func TestNodeMarshalJSON(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		n        Node
+		want     string
 	}{
 		{
-			data:   []byte(`"`),
-			errstr: "unexpected EOF",
-		}, {
-			data:   []byte(`}`),
-			errstr: "invalid character '}' looking for beginning of value",
-		}, {
-			data:   []byte("{\n1"),
-			errstr: `invalid character '1'`,
+			caseName: "Map",
+			n: Map{
+				"a": Array{
+					StringValue("1"),
+					NumberValue(2),
+					BoolValue(true),
+				},
+			},
+			want: `{"a":["1",2,true]}`,
+		},
+		{
+			caseName: "Array",
+			n: Array{
+				StringValue("1"),
+				NumberValue(2),
+				BoolValue(true),
+			},
+			want: `["1",2,true]`,
 		},
 	}
-	for i, test := range tests {
-		dec := json.NewDecoder(bytes.NewReader(test.data))
-		_, err := DecodeJSON(dec)
-		if err == nil {
-			t.Fatalf("tests[%d] no error", i)
-		}
-		if err.Error() != test.errstr {
-			t.Errorf("tests[%d] got %s; want %s", i, err.Error(), test.errstr)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := json.Marshal(tc.n)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != tc.want {
+				t.Errorf("got %s; want %s", string(got), tc.want)
+			}
+		})
 	}
 }
 
-func Test_UnmarshalJSON(t *testing.T) {
-	tests := []struct {
-		want Node
-		data string
+func TestDecodeJSONErrors(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		data     []byte
+		errstr   string
 	}{
 		{
-			data: `{"a":1,"b":true,"c":null,"d":["1",2,true],"e":{"x":"x"}}`,
+			caseName: "unterminated string",
+			data:     []byte(`"`),
+			errstr:   "unexpected EOF",
+		}, {
+			caseName: "stray closing brace",
+			data:     []byte(`}`),
+			errstr:   "invalid character '}' looking for beginning of value",
+		}, {
+			caseName: "invalid character after open brace",
+			data:     []byte("{\n1"),
+			errstr:   `invalid character '1'`,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			dec := json.NewDecoder(bytes.NewReader(tc.data))
+			_, err := DecodeJSON(dec)
+			if err == nil {
+				t.Fatal("no error")
+			}
+			if err.Error() != tc.errstr {
+				t.Errorf("got %s; want %s", err.Error(), tc.errstr)
+			}
+		})
+	}
+}
+
+func TestUnmarshalJSON(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		data     string
+		want     Node
+	}{
+		{
+			caseName: "Map with nested Array and Map",
+			data:     `{"a":1,"b":true,"c":null,"d":["1",2,true],"e":{"x":"x"}}`,
 			want: Map{
 				"a": NumberValue(1),
 				"b": BoolValue(true),
@@ -112,7 +126,8 @@ func Test_UnmarshalJSON(t *testing.T) {
 				},
 			},
 		}, {
-			data: `["1",2,true,null,{"a":1,"b":true,"c":null},["x"]]`,
+			caseName: "Array with nested Map and Array",
+			data:     `["1",2,true,null,{"a":1,"b":true,"c":null},["x"]]`,
 			want: Array{
 				StringValue("1"),
 				NumberValue(2),
@@ -127,32 +142,26 @@ func Test_UnmarshalJSON(t *testing.T) {
 					StringValue("x"),
 				},
 			},
-		}, {
-			data: `1`,
-			want: NumberValue(1),
-		}, {
-			data: `"str"`,
-			want: StringValue("str"),
-		}, {
-			data: `true`,
-			want: BoolValue(true),
-		}, {
-			data: `null`,
-			want: Nil,
 		},
+		{caseName: "NumberValue", data: `1`, want: NumberValue(1)},
+		{caseName: "StringValue", data: `"str"`, want: StringValue("str")},
+		{caseName: "BoolValue", data: `true`, want: BoolValue(true)},
+		{caseName: "Nil", data: `null`, want: Nil},
 	}
-	for i, test := range tests {
-		got, err := UnmarshalJSON([]byte(test.data))
-		if err != nil {
-			t.Fatalf("tests[%d] %v", i, err)
-		}
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf("tests[%d] got %#v; want %#v", i, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := UnmarshalJSON([]byte(tc.data))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !Equal(got, tc.want) {
+				t.Errorf("got %#v; want %#v", got, tc.want)
+			}
+		})
 	}
 }
 
-func Test_Map_UnmarshalJSON(t *testing.T) {
+func TestMapUnmarshalJSON(t *testing.T) {
 	want := Map{
 		"a": NumberValue(1),
 		"b": BoolValue(true),
@@ -163,12 +172,12 @@ func Test_Map_UnmarshalJSON(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got, want) {
+	if !Equal(got, want) {
 		t.Errorf("got %#v; want %#v", got, want)
 	}
 }
 
-func Test_Array_UnmarshalJSON(t *testing.T) {
+func TestArrayUnmarshalJSON(t *testing.T) {
 	want := Array{
 		StringValue("1"),
 		NumberValue(2),
@@ -179,17 +188,19 @@ func Test_Array_UnmarshalJSON(t *testing.T) {
 	if err := json.Unmarshal(data, &got); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got, want) {
+	if !Equal(got, want) {
 		t.Errorf("got %#v; want %#v", got, want)
 	}
 }
 
-func Test_MarshalViaJSON(t *testing.T) {
-	tests := []struct {
-		v    any
-		want Node
+func TestMarshalViaJSON(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		v        any
+		want     Node
 	}{
 		{
+			caseName: "struct",
 			v: struct {
 				ID     int      `json:"id"`
 				Name   string   `json:"name"`
@@ -204,36 +215,27 @@ func Test_MarshalViaJSON(t *testing.T) {
 				"name":   ToValue("Reds"),
 				"colors": ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 			},
-		}, {
-			v:    "str",
-			want: StringValue("str"),
-		}, {
-			v:    true,
-			want: BoolValue(true),
-		}, {
-			v:    1,
-			want: NumberValue(1),
-		}, {
-			v:    nil,
-			want: Nil,
-		}, {
-			v:    BoolValue(true),
-			want: BoolValue(true),
 		},
+		{caseName: "string", v: "str", want: StringValue("str")},
+		{caseName: "bool", v: true, want: BoolValue(true)},
+		{caseName: "int", v: 1, want: NumberValue(1)},
+		{caseName: "nil", v: nil, want: Nil},
+		{caseName: "BoolValue passthrough", v: BoolValue(true), want: BoolValue(true)},
 	}
-
-	for i, test := range tests {
-		got, err := MarshalViaJSON(test.v)
-		if err != nil {
-			t.Fatalf("tests[%d] %v", i, err)
-		}
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf("tests[%d] got %#v; want %#v", i, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := MarshalViaJSON(tc.v)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !Equal(got, tc.want) {
+				t.Errorf("got %#v; want %#v", got, tc.want)
+			}
+		})
 	}
 }
 
-func Test_UnmarshalViaJSON(t *testing.T) {
+func TestUnmarshalViaJSON(t *testing.T) {
 	m := Map{
 		"id":     ToValue(1),
 		"name":   ToValue("Reds"),

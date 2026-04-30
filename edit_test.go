@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func Test_Edit(t *testing.T) {
+func TestEdit(t *testing.T) {
 	testCases := []struct {
 		caseName string
 		n        Node
@@ -697,7 +697,7 @@ func Test_Edit(t *testing.T) {
 	}
 }
 
-func Test_Edit_resolveSelectStep_SelectorError(t *testing.T) {
+func TestEditResolveSelectStepSelectorError(t *testing.T) {
 	selector := &testSelectorDelegator{
 		matchesFunc: func(Node) (bool, error) {
 			return false, errors.New("selector boom")
