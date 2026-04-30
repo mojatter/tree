@@ -251,15 +251,6 @@ func TestParseQueryErrors(t *testing.T) {
 		}, {
 			expr:   `[foo-bar]`,
 			errstr: `syntax error: invalid token -: "[foo-bar]"`,
-		}, {
-			expr:   `[-3:5]`,
-			errstr: `syntax error: invalid array range: "[-3:5]"`,
-		}, {
-			expr:   `[-3:]`,
-			errstr: `syntax error: invalid array range: "[-3:]"`,
-		}, {
-			expr:   `[-2:-1]`,
-			errstr: `syntax error: invalid array range: "[-2:-1]"`,
 		},
 	}
 	for _, tc := range testCases {

@@ -261,17 +261,35 @@ type ArrayRangeQuery struct {
 
 func (q ArrayRangeQuery) Exec(n Node) ([]Node, error) {
 	if a := n.Array(); a != nil {
-		from := 0
-		if q.From != nil {
-			from = *q.From
-		}
-		to := len(a)
-		if q.To != nil {
-			to = *q.To
+		from := resolveRangeBound(q.From, len(a), 0)
+		to := resolveRangeBound(q.To, len(a), len(a))
+		if from >= to {
+			return nil, nil
 		}
 		return a[from:to], nil
 	}
 	return nil, fmt.Errorf("cannot index array with range %s", q)
+}
+
+// resolveRangeBound resolves a *int bound for ArrayRangeQuery.Exec against
+// an array of length n. Nil falls back to defaultV. Negative bounds are
+// interpreted Python-style (end-relative: `-1` is the last element). The
+// result is clamped to [0, n].
+func resolveRangeBound(bound *int, n, defaultV int) int {
+	if bound == nil {
+		return defaultV
+	}
+	v := *bound
+	if v < 0 {
+		v += n
+	}
+	if v < 0 {
+		return 0
+	}
+	if v > n {
+		return n
+	}
+	return v
 }
 
 func (q ArrayRangeQuery) String() string {

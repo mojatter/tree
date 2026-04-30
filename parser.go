@@ -516,39 +516,47 @@ func (p *parser) bracketHasColon() bool {
 
 // parseArrayRange parses `[from? : to?]`. The leading `[` is already consumed.
 func (p *parser) parseArrayRange() (Query, error) {
-	var from *int
-	if p.peek().kind != tkColon {
-		if p.peek().kind != tkIdent {
-			return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
-		}
-		i, err := strconv.Atoi(p.peek().text)
-		if err != nil {
-			return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
-		}
-		from = &i
-		p.skip(1)
+	from, err := p.parseRangeBound(tkColon)
+	if err != nil {
+		return nil, err
 	}
 	if p.peek().kind != tkColon {
 		return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
 	}
 	p.skip(1)
-	var to *int
-	if p.peek().kind != tkRBrack {
-		if p.peek().kind != tkIdent {
-			return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
-		}
-		i, err := strconv.Atoi(p.peek().text)
-		if err != nil {
-			return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
-		}
-		to = &i
-		p.skip(1)
+	to, err := p.parseRangeBound(tkRBrack)
+	if err != nil {
+		return nil, err
 	}
 	if p.peek().kind != tkRBrack {
 		return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
 	}
 	p.skip(1)
 	return ArrayRangeQuery{From: from, To: to}, nil
+}
+
+// parseRangeBound parses one optional bound of `[from?:to?]`. It returns nil
+// when the bound is omitted (peek is stop). Accepts a leading `-` for
+// negative bounds (Python-style end-relative indexing).
+func (p *parser) parseRangeBound(stop tokenKind) (*int, error) {
+	if p.peek().kind == stop {
+		return nil, nil
+	}
+	sign := 1
+	if p.peek().kind == tkMinus {
+		sign = -1
+		p.skip(1)
+	}
+	if p.peek().kind != tkIdent {
+		return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
+	}
+	i, err := strconv.Atoi(p.peek().text)
+	if err != nil {
+		return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
+	}
+	p.skip(1)
+	v := sign * i
+	return &v, nil
 }
 
 // parseSelector parses a complete selector expression. The result is always
