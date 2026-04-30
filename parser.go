@@ -48,6 +48,7 @@ const (
 	tkIdent
 	tkString
 	tkMethod
+	tkMinus
 )
 
 // operator returns the Operator that this tokenKind represents, or the
@@ -225,7 +226,7 @@ func matchOp(expr string, i int) string {
 		}
 	}
 	switch expr[i] {
-	case '.', '[', ']', '(', ')', '|', '<', '>', ':':
+	case '.', '[', ']', '(', ')', '|', '<', '>', ':', '-':
 		return string(expr[i])
 	}
 	return ""
@@ -247,6 +248,8 @@ func cmdKind(cmd string) tokenKind {
 		return tkRParen
 	case ":":
 		return tkColon
+	case "-":
+		return tkMinus
 	case "|":
 		return tkPipe
 	case "==":
@@ -399,6 +402,21 @@ func (p *parser) parseBracket() (Query, error) {
 		if err != nil {
 			return nil, fmt.Errorf("syntax error: invalid array index: %q", p.expr)
 		}
+		p.advance()
+		p.advance()
+		return ArrayQuery(i), nil
+	}
+
+	if p.peek().kind == tkMinus &&
+		p.pos+2 < len(p.tokens) &&
+		p.tokens[p.pos+1].kind == tkIdent &&
+		p.tokens[p.pos+2].kind == tkRBrack {
+		text := p.tokens[p.pos+1].text
+		i, err := strconv.Atoi("-" + text)
+		if err != nil {
+			return nil, fmt.Errorf("syntax error: invalid array index: %q", p.expr)
+		}
+		p.advance()
 		p.advance()
 		p.advance()
 		return ArrayQuery(i), nil
