@@ -151,6 +151,27 @@ func (l *lexer) scanMethod() (tok token, ok bool) {
 	return tok, true
 }
 
+// scanIdent parses a tkIdent token starting at l.pos (where l.expr[l.pos]
+// is an isWord byte). A digit-led run absorbs an optional `.[0-9]+`
+// fractional part for float literals; prevPathDot suppresses that
+// continuation so path steps like `.1.5` stay chained.
+func (l *lexer) scanIdent(prevPathDot bool) token {
+	start := l.pos
+	end := l.pos + 1
+	for end < len(l.expr) && isWord(l.expr[end]) {
+		end++
+	}
+	if isNumber(l.expr[start]) && !prevPathDot &&
+		end+1 < len(l.expr) && l.expr[end] == '.' && isNumber(l.expr[end+1]) {
+		end++
+		for end < len(l.expr) && isWord(l.expr[end]) {
+			end++
+		}
+	}
+	l.pos = end
+	return token{kind: tkIdent, text: l.expr[start:end]}
+}
+
 // lex returns the source as a flat slice of tokens terminated by tkEOF.
 // Bytes that don't form a recognized token (whitespace, stray punctuation
 // like '+' or '\') are silently skipped, preserving legacy behavior.
@@ -176,12 +197,7 @@ func (l *lexer) lex() []token {
 			}
 		}
 		if isWord(c) {
-			end := l.pos + 1
-			for end < len(l.expr) && isWord(l.expr[end]) {
-				end++
-			}
-			out = append(out, token{kind: tkIdent, text: l.expr[l.pos:end]})
-			l.pos = end
+			out = append(out, l.scanIdent(prevIsPathDot(out)))
 			continue
 		}
 		l.pos++
@@ -278,11 +294,29 @@ func isLower(c byte) bool {
 	return c >= 'a' && c <= 'z'
 }
 
+func isNumber(c byte) bool {
+	return c >= '0' && c <= '9'
+}
+
 func isWord(c byte) bool {
 	return isLower(c) ||
 		(c >= 'A' && c <= 'Z') ||
-		(c >= '0' && c <= '9') ||
+		isNumber(c) ||
 		c == '_'
+}
+
+// prevIsPathDot reports whether the most recently emitted token is a path-step
+// `.` or `..`. Used to suppress float-literal extension after a path separator
+// so that `.1.5` stays as chained `MapQuery("1"), MapQuery("5")`.
+func prevIsPathDot(out []token) bool {
+	if len(out) == 0 {
+		return false
+	}
+	switch out[len(out)-1].kind {
+	case tkDot, tkDotDot:
+		return true
+	}
+	return false
 }
 
 // parser holds the recursive-descent state.
