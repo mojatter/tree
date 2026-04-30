@@ -155,6 +155,34 @@ func TestParseQuery(t *testing.T) {
 					Comparator{MapQuery("x"), EQ, ValueQuery{NumberValue(0.0015)}},
 				},
 			},
+		}, {
+			expr: `[.x == -1]`,
+			want: SelectQuery{
+				And{
+					Comparator{MapQuery("x"), EQ, ValueQuery{NumberValue(-1)}},
+				},
+			},
+		}, {
+			expr: `[.x == -1.5]`,
+			want: SelectQuery{
+				And{
+					Comparator{MapQuery("x"), EQ, ValueQuery{NumberValue(-1.5)}},
+				},
+			},
+		}, {
+			expr: `[-1.5 == .x]`,
+			want: SelectQuery{
+				And{
+					Comparator{ValueQuery{NumberValue(-1.5)}, EQ, MapQuery("x")},
+				},
+			},
+		}, {
+			expr: `[.x == -1e-3]`,
+			want: SelectQuery{
+				And{
+					Comparator{MapQuery("x"), EQ, ValueQuery{NumberValue(-0.001)}},
+				},
+			},
 		},
 	}
 	for _, tc := range testCases {
