@@ -438,3 +438,83 @@ func (n Map) Each(cb func(key any, n Node) error) error {
 func (n Map) Find(expr string) ([]Node, error) {
 	return Find(n, expr)
 }
+
+// Equal reports whether two Node values represent the same tree.
+//
+// Equality semantics:
+//
+//   - Type tags must match. NumberValue(1) and StringValue("1") are
+//     not equal even though they format to the same string.
+//   - Untyped nil and the Nil sentinel (NilValue{}) compare equal to
+//     each other.
+//   - Map equality is order-independent. Map{"a":1, "b":2} equals
+//     Map{"b":2, "a":1}.
+//   - Array equality is order-dependent. Array{1, 2} does not equal
+//     Array{2, 1}.
+//   - NumberValue equality follows IEEE 754. NumberValue(NaN) does
+//     not equal NumberValue(NaN).
+//   - Map(nil) equals Map{} (both empty Map); the same applies to
+//     Array(nil) and Array{}. Neither equals Nil because the type
+//     tags differ.
+//   - Any wrappers are unwrapped before comparison.
+//
+// For comparing []Node slices (e.g. results from Find), wrap each
+// side as Array before calling Equal.
+func Equal(n1, n2 Node) bool {
+	if a, ok := n1.(Any); ok {
+		n1 = a.Node
+	}
+	if a, ok := n2.(Any); ok {
+		n2 = a.Node
+	}
+
+	if n1 == nil {
+		return n2 == nil || n2 == Nil
+	}
+	if n2 == nil {
+		return n1 == Nil
+	}
+
+	if n1.Type() != n2.Type() {
+		return false
+	}
+
+	switch v1 := n1.(type) {
+	case NilValue:
+		return true
+	case StringValue:
+		return v1 == n2.(StringValue)
+	case NumberValue:
+		return v1 == n2.(NumberValue)
+	case BoolValue:
+		return v1 == n2.(BoolValue)
+	case Map:
+		v2 := n2.(Map)
+		if len(v1) != len(v2) {
+			return false
+		}
+		for k, c1 := range v1 {
+			c2, exists := v2[k]
+			if !exists {
+				return false
+			}
+			if !Equal(c1, c2) {
+				return false
+			}
+		}
+		return true
+	case Array:
+		v2 := n2.(Array)
+		if len(v1) != len(v2) {
+			return false
+		}
+		for i := range v1 {
+			if !Equal(v1[i], v2[i]) {
+				return false
+			}
+		}
+		return true
+	}
+
+	return false
+}
