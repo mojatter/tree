@@ -1,77 +1,71 @@
 package tree
 
 import (
-	"reflect"
+	"fmt"
 	"testing"
 )
 
 func TestValue(t *testing.T) {
-	tests := []struct {
-		value Node
-		b     bool
-		i     int
-		i64   int64
-		f64   float64
-		s     string
+	testCases := []struct {
+		caseName string
+		value    Node
+		want     Node
 	}{
-		{
-			value: Nil,
-		}, {
-			value: StringValue("test"),
-			s:     "test",
-		}, {
-			value: BoolValue(true),
-			b:     true,
-			s:     "true",
-		}, {
-			value: NumberValue(1),
-			i:     1,
-			i64:   int64(1),
-			f64:   float64(1),
-			s:     "1",
-		}, {
-			value: NumberValue(2.3),
-			i:     2,
-			i64:   int64(2),
-			f64:   float64(2.3),
-			s:     "2.3",
-		},
+		{caseName: "Nil", value: Nil, want: Nil},
+		{caseName: "StringValue", value: StringValue("test"), want: StringValue("test")},
+		{caseName: "BoolValue", value: BoolValue(true), want: BoolValue(true)},
+		{caseName: "NumberValue int", value: NumberValue(1), want: NumberValue(1)},
+		{caseName: "NumberValue float", value: NumberValue(2.3), want: NumberValue(2.3)},
 	}
-	for i, test := range tests {
-		v := test.value
-		vv := v.Value()
-		if tt := v.Type(); tt&TypeValue == 0 {
-			t.Errorf("tests[%d] Type got %v; want TypeValue", i, tt)
-		}
-		if a := v.Array(); a != nil {
-			t.Errorf("tests[%d] Array got %v; want nil", i, a)
-		}
-		if m := v.Map(); m != nil {
-			t.Errorf("tests[%d] Map got %v; want nil", i, m)
-		}
-		if vv.(Node) != v {
-			t.Errorf("tests[%d] Value got %v; want %v", i, vv, v)
-		}
-		if b := vv.Bool(); b != test.b {
-			t.Errorf("tests[%d] Bool got %v; want %v", i, b, test.b)
-		}
-		if ii := vv.Int(); ii != test.i {
-			t.Errorf("tests[%d] Int got %v; want %v", i, ii, test.i)
-		}
-		if i64 := vv.Int64(); i64 != test.i64 {
-			t.Errorf("tests[%d] Int64 got %v; want %v", i, i64, test.i64)
-		}
-		if f64 := vv.Float64(); f64 != test.f64 {
-			t.Errorf("tests[%d] Float64 got %v; want %v", i, f64, test.f64)
-		}
-		if s := vv.String(); s != test.s {
-			t.Errorf("tests[%d] String got %v; want %v", i, s, test.s)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got := tc.value.Value()
+			if !Equal(got, tc.want) {
+				t.Errorf("Value got %v; want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestValueAs(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		value    Value
+		b        bool
+		i        int
+		i64      int64
+		f64      float64
+		s        string
+	}{
+		{caseName: "Nil", value: Nil},
+		{caseName: "StringValue", value: StringValue("test"), s: "test"},
+		{caseName: "BoolValue true", value: BoolValue(true), b: true, s: "true"},
+		{caseName: "NumberValue int", value: NumberValue(1), i: 1, i64: 1, f64: 1, s: "1"},
+		{caseName: "NumberValue float", value: NumberValue(2.3), i: 2, i64: 2, f64: 2.3, s: "2.3"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			if got := tc.value.Bool(); got != tc.b {
+				t.Errorf("Bool got %v; want %v", got, tc.b)
+			}
+			if got := tc.value.Int(); got != tc.i {
+				t.Errorf("Int got %v; want %v", got, tc.i)
+			}
+			if got := tc.value.Int64(); got != tc.i64 {
+				t.Errorf("Int64 got %v; want %v", got, tc.i64)
+			}
+			if got := tc.value.Float64(); got != tc.f64 {
+				t.Errorf("Float64 got %v; want %v", got, tc.f64)
+			}
+			if got := tc.value.String(); got != tc.s {
+				t.Errorf("String got %v; want %v", got, tc.s)
+			}
+		})
 	}
 }
 
 func TestValueCompare(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
 		n    Value
 		op   Operator
 		v    Value
@@ -135,41 +129,49 @@ func TestValueCompare(t *testing.T) {
 		{BoolValue(true), NE, BoolValue(false), true},
 		{BoolValue(true), NE, StringValue("true"), true},
 	}
-	for i, test := range tests {
-		got := test.n.Compare(test.op, test.v)
-		if got != test.want {
-			t.Errorf("tests[%d] got %v; want %v", i, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("%v %s %v", tc.n, tc.op, tc.v), func(t *testing.T) {
+			got := tc.n.Compare(tc.op, tc.v)
+			if got != tc.want {
+				t.Errorf("got %v; want %v", got, tc.want)
+			}
+		})
 	}
 }
 
 func TestValueFind(t *testing.T) {
-	tests := []struct {
-		n    Node
-		expr string
-		want []Node
+	testCases := []struct {
+		caseName string
+		n        Node
+		expr     string
+		want     []Node
 	}{
 		{
-			n:    StringValue("str"),
-			expr: ".",
-			want: []Node{StringValue("str")},
+			caseName: "StringValue",
+			n:        StringValue("str"),
+			expr:     ".",
+			want:     []Node{StringValue("str")},
 		}, {
-			n:    BoolValue(true),
-			expr: ".",
-			want: []Node{BoolValue(true)},
+			caseName: "BoolValue",
+			n:        BoolValue(true),
+			expr:     ".",
+			want:     []Node{BoolValue(true)},
 		}, {
-			n:    NumberValue(1),
-			expr: ".",
-			want: []Node{NumberValue(1)},
+			caseName: "NumberValue",
+			n:        NumberValue(1),
+			expr:     ".",
+			want:     []Node{NumberValue(1)},
 		},
 	}
-	for i, test := range tests {
-		got, err := test.n.Find(test.expr)
-		if err != nil {
-			t.Fatalf("tests[%d] %v", i, err)
-		}
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf("tests[%d] got %#v; want %#v", i, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := tc.n.Find(tc.expr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !Equal(Array(got), Array(tc.want)) {
+				t.Errorf("got %#v; want %#v", got, tc.want)
+			}
+		})
 	}
 }
