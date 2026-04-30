@@ -608,12 +608,12 @@ func Test_Edit(t *testing.T) {
 			caseName: "default-branch intermediate Exec error propagates up",
 			n:        Map{"items": Map{"x": StringValue("v")}},
 			expr:     `.items[1:2].x = 1`,
-			errstr:   `cannot index array with range 1:2`,
+			errstr:   `cannot index array with range [1:2]`,
 		}, {
 			caseName: "slurp left.Exec error propagates up",
 			n:        Map{"items": Map{"x": StringValue("v")}},
 			expr:     `.items[1:2] | .x = 1`,
-			errstr:   `cannot index array with range 1:2`,
+			errstr:   `cannot index array with range [1:2]`,
 		}, {
 			caseName: "terminal SelectQuery is an unsupported edit query",
 			n:        Map{"items": Array{NumberValue(1)}},

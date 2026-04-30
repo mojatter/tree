@@ -516,7 +516,7 @@ func (p *parser) bracketHasColon() bool {
 
 // parseArrayRange parses `[from? : to?]`. The leading `[` is already consumed.
 func (p *parser) parseArrayRange() (Query, error) {
-	from := -1
+	var from *int
 	if p.peek().kind != tkColon {
 		if p.peek().kind != tkIdent {
 			return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
@@ -525,14 +525,14 @@ func (p *parser) parseArrayRange() (Query, error) {
 		if err != nil {
 			return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
 		}
-		from = i
+		from = &i
 		p.skip(1)
 	}
 	if p.peek().kind != tkColon {
 		return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
 	}
 	p.skip(1)
-	to := -1
+	var to *int
 	if p.peek().kind != tkRBrack {
 		if p.peek().kind != tkIdent {
 			return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
@@ -541,14 +541,14 @@ func (p *parser) parseArrayRange() (Query, error) {
 		if err != nil {
 			return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
 		}
-		to = i
+		to = &i
 		p.skip(1)
 	}
 	if p.peek().kind != tkRBrack {
 		return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
 	}
 	p.skip(1)
-	return ArrayRangeQuery{from, to}, nil
+	return ArrayRangeQuery{From: from, To: to}, nil
 }
 
 // parseSelector parses a complete selector expression. The result is always

@@ -51,24 +51,19 @@ func TestQuery(t *testing.T) {
 			n:        Array{ToValue(0), ToValue(1), ToValue(2)},
 		}, {
 			caseName: "range: 0:2",
-			q:        ArrayRangeQuery{0, 2},
+			q:        ArrayRangeQuery{From: IntPtr(0), To: IntPtr(2)},
 			n:        Array{ToValue(0), ToValue(1), ToValue(2)},
 			want:     []Node{ToValue(0), ToValue(1)},
 		}, {
 			caseName: "range: 1:end",
-			q:        ArrayRangeQuery{1, -1},
+			q:        ArrayRangeQuery{From: IntPtr(1), To: nil},
 			n:        Array{ToValue(0), ToValue(1), ToValue(2)},
 			want:     []Node{ToValue(1), ToValue(2)},
 		}, {
-			caseName: "range: invalid arity",
-			q:        ArrayRangeQuery{0, 1, 2},
-			n:        Array{},
-			errstr:   `invalid array range [0:1:2]`,
-		}, {
 			caseName: "range: not array",
-			q:        ArrayRangeQuery{0, 1},
+			q:        ArrayRangeQuery{From: IntPtr(0), To: IntPtr(1)},
 			n:        Map{},
-			errstr:   `cannot index array with range 0:1`,
+			errstr:   `cannot index array with range [0:1]`,
 		}, {
 			caseName: "filter: hit",
 			q:        FilterQuery{MapQuery("key"), ArrayQuery(0)},
@@ -169,11 +164,11 @@ func TestQueryString(t *testing.T) {
 			want:     "[1]",
 		}, {
 			caseName: "range full",
-			q:        ArrayRangeQuery{0, 2},
+			q:        ArrayRangeQuery{From: IntPtr(0), To: IntPtr(2)},
 			want:     "[0:2]",
 		}, {
 			caseName: "range to only",
-			q:        ArrayRangeQuery{-1, 2},
+			q:        ArrayRangeQuery{From: nil, To: IntPtr(2)},
 			want:     "[:2]",
 		}, {
 			caseName: "slurp",

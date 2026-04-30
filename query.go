@@ -251,33 +251,39 @@ func (q ArrayQuery) String() string {
 	return fmt.Sprintf("[%d]", q)
 }
 
-// ArrayRangeQuery represents a range of the Array that implements methods of the Query.
-type ArrayRangeQuery []int
+// ArrayRangeQuery represents a range of the Array that implements methods of
+// the Query. From/To use *int so that omitted bounds (`[1:]`, `[:5]`) are
+// represented as nil rather than a magic sentinel.
+type ArrayRangeQuery struct {
+	From *int
+	To   *int
+}
 
 func (q ArrayRangeQuery) Exec(n Node) ([]Node, error) {
-	if len(q) != 2 {
-		return nil, fmt.Errorf("invalid array range %s", q)
-	}
 	if a := n.Array(); a != nil {
-		from, to := q[0], q[1]
-		if from == -1 {
-			return a[:to], nil
-		} else if q[1] == -1 {
-			return a[from:], nil
+		from := 0
+		if q.From != nil {
+			from = *q.From
+		}
+		to := len(a)
+		if q.To != nil {
+			to = *q.To
 		}
 		return a[from:to], nil
 	}
-	return nil, fmt.Errorf("cannot index array with range %d:%d", q[0], q[1])
+	return nil, fmt.Errorf("cannot index array with range %s", q)
 }
 
 func (q ArrayRangeQuery) String() string {
-	ss := make([]string, len(q))
-	for i, r := range q {
-		if r != -1 {
-			ss[i] = strconv.Itoa(r)
-		}
+	f := ""
+	if q.From != nil {
+		f = strconv.Itoa(*q.From)
 	}
-	return "[" + strings.Join(ss, ":") + "]"
+	t := ""
+	if q.To != nil {
+		t = strconv.Itoa(*q.To)
+	}
+	return "[" + f + ":" + t + "]"
 }
 
 // SlurpQuery is a special query that works in FilterQuery.

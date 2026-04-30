@@ -54,7 +54,7 @@ func TestParseQuery(t *testing.T) {
 			want: FilterQuery{
 				MapQuery("store"),
 				MapQuery("book"),
-				ArrayRangeQuery{0, 1},
+				ArrayRangeQuery{From: IntPtr(0), To: IntPtr(1)},
 			},
 		}, {
 			expr: `.store.book[.category=="fiction" and .price < 10].title`,
