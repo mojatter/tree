@@ -302,6 +302,13 @@ func (p *parser) advance() token {
 	return t
 }
 
+// skip advances p.pos by n without returning the consumed tokens.
+// Use it when the tokens have already been inspected via peek/lookahead
+// and only their consumption is needed.
+func (p *parser) skip(n int) {
+	p.pos += n
+}
+
 // parseSequence consumes 0 or more steps until tkEOF or one of stops is seen.
 // 0 steps yield ValueQuery{Nil}, 1 step is returned bare, multiple steps are
 // wrapped in a FilterQuery.
@@ -333,13 +340,13 @@ func (p *parser) parseStep() (Query, error) {
 	switch t.kind {
 	case tkDot:
 		if next := p.peek(); next.kind == tkIdent || next.kind == tkString {
-			p.advance()
+			p.skip(1)
 			return MapQuery(next.text), nil
 		}
 		return NopQuery{}, nil
 	case tkDotDot:
 		if next := p.peek(); next.kind == tkIdent || next.kind == tkString {
-			p.advance()
+			p.skip(1)
 			return WalkQuery(next.text), nil
 		}
 		return NopQuery{}, nil
@@ -353,7 +360,7 @@ func (p *parser) parseStep() (Query, error) {
 		if p.peek().kind != tkRParen {
 			return nil, fmt.Errorf("syntax error: no right brackets: %q", p.expr)
 		}
-		p.advance()
+		p.skip(1)
 		return inner, nil
 	case tkPipe:
 		return SlurpQuery{}, nil
@@ -383,15 +390,14 @@ func (p *parser) parseStep() (Query, error) {
 // consumed; this function consumes through the matching `]`.
 func (p *parser) parseBracket() (Query, error) {
 	if p.peek().kind == tkRBrack {
-		p.advance()
+		p.skip(1)
 		return SelectQuery{}, nil
 	}
 
 	if p.peek().kind == tkString &&
 		p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].kind == tkRBrack {
 		text := p.peek().text
-		p.advance()
-		p.advance()
+		p.skip(2)
 		return MapQuery(text), nil
 	}
 
@@ -402,8 +408,7 @@ func (p *parser) parseBracket() (Query, error) {
 		if err != nil {
 			return nil, fmt.Errorf("syntax error: invalid array index: %q", p.expr)
 		}
-		p.advance()
-		p.advance()
+		p.skip(2)
 		return ArrayQuery(i), nil
 	}
 
@@ -416,9 +421,7 @@ func (p *parser) parseBracket() (Query, error) {
 		if err != nil {
 			return nil, fmt.Errorf("syntax error: invalid array index: %q", p.expr)
 		}
-		p.advance()
-		p.advance()
-		p.advance()
+		p.skip(3)
 		return ArrayQuery(i), nil
 	}
 
@@ -433,7 +436,7 @@ func (p *parser) parseBracket() (Query, error) {
 	if p.peek().kind != tkRBrack {
 		return nil, fmt.Errorf("syntax error: no right brackets: %q", p.expr)
 	}
-	p.advance()
+	p.skip(1)
 	return SelectQuery{Selector: sel}, nil
 }
 
@@ -475,12 +478,12 @@ func (p *parser) parseArrayRange() (Query, error) {
 			return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
 		}
 		from = i
-		p.advance()
+		p.skip(1)
 	}
 	if p.peek().kind != tkColon {
 		return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
 	}
-	p.advance()
+	p.skip(1)
 	to := -1
 	if p.peek().kind != tkRBrack {
 		if p.peek().kind != tkIdent {
@@ -491,12 +494,12 @@ func (p *parser) parseArrayRange() (Query, error) {
 			return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
 		}
 		to = i
-		p.advance()
+		p.skip(1)
 	}
 	if p.peek().kind != tkRBrack {
 		return nil, fmt.Errorf("syntax error: invalid array range: %q", p.expr)
 	}
-	p.advance()
+	p.skip(1)
 	return ArrayRangeQuery{from, to}, nil
 }
 
@@ -525,7 +528,7 @@ func (p *parser) parseOrExpr() (Selector, error) {
 	}
 	sels := []Selector{first}
 	for p.peek().kind == tkOr {
-		p.advance()
+		p.skip(1)
 		next, err := p.parseAndExpr()
 		if err != nil {
 			return nil, err
@@ -545,7 +548,7 @@ func (p *parser) parseAndExpr() (Selector, error) {
 	}
 	sels := []Selector{first}
 	for p.peek().kind == tkAnd {
-		p.advance()
+		p.skip(1)
 		next, err := p.parseCompExpr()
 		if err != nil {
 			return nil, err
@@ -557,7 +560,7 @@ func (p *parser) parseAndExpr() (Selector, error) {
 
 func (p *parser) parseCompExpr() (Selector, error) {
 	if p.peek().kind == tkLParen {
-		p.advance()
+		p.skip(1)
 		inner, err := p.parseOrExpr()
 		if err != nil {
 			return nil, err
@@ -565,7 +568,7 @@ func (p *parser) parseCompExpr() (Selector, error) {
 		if p.peek().kind != tkRParen {
 			return nil, fmt.Errorf("syntax error: no right brackets: %q", p.expr)
 		}
-		p.advance()
+		p.skip(1)
 		return inner, nil
 	}
 	left, err := p.parseSelectorOperand()
@@ -576,7 +579,7 @@ func (p *parser) parseCompExpr() (Selector, error) {
 	if op == "" {
 		return Evaluator{Query: left}, nil
 	}
-	p.advance()
+	p.skip(1)
 	right, err := p.parseSelectorOperand()
 	if err != nil {
 		return nil, err
