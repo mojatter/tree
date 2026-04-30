@@ -636,8 +636,18 @@ func (p *parser) parseCompExpr() (Selector, error) {
 }
 
 // parseSelectorOperand parses the LHS or RHS of a comparator: a sequence of
-// path steps that stops at any selector-level structural token.
+// path steps that stops at any selector-level structural token. A leading
+// `tkMinus + tkIdent(numeric)` is consumed as a single negative number
+// literal; non-numeric `-X` falls through and errors via parseSequence.
 func (p *parser) parseSelectorOperand() (Query, error) {
+	if p.peek().kind == tkMinus &&
+		p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].kind == tkIdent {
+		v := wordValue("-" + p.tokens[p.pos+1].text)
+		if _, ok := v.(NumberValue); ok {
+			p.skip(2)
+			return ValueQuery{v}, nil
+		}
+	}
 	return p.parseSequence(
 		tkAnd, tkOr,
 		tkEQ, tkNE, tkLT, tkLE, tkGT, tkGE, tkRE,
