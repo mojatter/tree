@@ -41,6 +41,15 @@ func TestQuery(t *testing.T) {
 			n:        ToValue("not array"),
 			errstr:   `cannot index array with 0`,
 		}, {
+			caseName: "array: negative index hit",
+			q:        ArrayQuery(-1),
+			n:        Array{ToValue(0), ToValue(1), ToValue(2)},
+			want:     []Node{ToValue(2)},
+		}, {
+			caseName: "array: negative index out of range",
+			q:        ArrayQuery(-4),
+			n:        Array{ToValue(0), ToValue(1), ToValue(2)},
+		}, {
 			caseName: "range: 0:2",
 			q:        ArrayRangeQuery{0, 2},
 			n:        Array{ToValue(0), ToValue(1), ToValue(2)},
