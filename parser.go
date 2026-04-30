@@ -187,8 +187,12 @@ func (l *lexer) scanIdent(prevPathDot bool) token {
 }
 
 // lex returns the source as a flat slice of tokens terminated by tkEOF.
-// Bytes that don't form a recognized token (whitespace, stray punctuation
-// like '+' or '\') are silently skipped, preserving legacy behavior.
+// Whitespace and stray punctuation that don't form a recognized token
+// (e.g. '+', '*', '\') are silently skipped, preserving legacy behavior.
+// '-' is the deliberate exception: it's recognized as tkMinus (used for
+// negative number literals and array ranges), so a stray '-' produces a
+// parse error rather than being skipped. This asymmetry is intentional;
+// '-' carries language-level meaning, while '+', '*', '\' do not.
 func (l *lexer) lex() []token {
 	var out []token
 	for l.pos < len(l.expr) {
