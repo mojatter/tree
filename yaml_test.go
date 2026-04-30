@@ -9,106 +9,119 @@ import (
 )
 
 func TestMarshalYAML(t *testing.T) {
-	want := `a:
+	testCases := []struct {
+		caseName string
+		n        Node
+		want     string
+	}{
+		{
+			caseName: "Map with Array containing Nil values",
+			n: Map{
+				"a": Array{
+					StringValue("1"),
+					NumberValue(2),
+					BoolValue(true),
+					Nil,
+					nil,
+				},
+			},
+			want: `a:
   - "1"
   - 2
   - true
   - null
   - null
-`
-	n := Map{
-		"a": Array{
-			StringValue("1"),
-			NumberValue(2),
-			BoolValue(true),
-			Nil,
-			nil,
+`,
 		},
-	}
-	got, err := MarshalYAML(n)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != want {
-		t.Errorf("for %#v; got %s; want %s", n, string(got), want)
-	}
-}
-
-func TestMapMarshalYAML(t *testing.T) {
-	want := `a:
+		{
+			caseName: "Map with Array",
+			n: Map{
+				"a": Array{
+					StringValue("1"),
+					NumberValue(2),
+					BoolValue(true),
+				},
+			},
+			want: `a:
   - "1"
   - 2
   - true
-`
-	n := Map{
-		"a": Array{
-			StringValue("1"),
-			NumberValue(2),
-			BoolValue(true),
+`,
 		},
-	}
-	got, err := MarshalYAML(n)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != want {
-		t.Errorf("for %#v; got %s; want %s", n, string(got), want)
-	}
-}
-
-func TestArrayMarshalYAML(t *testing.T) {
-	want := `- "1"
+		{
+			caseName: "Array",
+			n: Array{
+				StringValue("1"),
+				NumberValue(2),
+				BoolValue(true),
+			},
+			want: `- "1"
 - 2
 - true
-`
-	n := Array{
-		StringValue("1"),
-		NumberValue(2),
-		BoolValue(true),
+`,
+		},
 	}
-	got, err := MarshalYAML(n)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(got) != want {
-		t.Errorf("for %#v; marshaled %s; want %s", n, string(got), want)
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := MarshalYAML(tc.n)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != tc.want {
+				t.Errorf("got %s; want %s", string(got), tc.want)
+			}
+		})
 	}
 }
 
 func TestDecodeYAMLErrors(t *testing.T) {
-	tests := []struct {
-		data   []byte
-		errstr string
+	testCases := []struct {
+		caseName string
+		data     []byte
+		errstr   string
 	}{
 		{
-			data:   []byte(`"`),
-			errstr: "yaml: found unexpected end of stream",
+			caseName: "unexpected end of stream",
+			data:     []byte(`"`),
+			errstr:   "yaml: found unexpected end of stream",
 		}, {
-			data:   []byte(`}`),
-			errstr: "yaml: did not find expected node content",
+			caseName: "unexpected node content",
+			data:     []byte(`}`),
+			errstr:   "yaml: did not find expected node content",
 		}, {
-			data:   []byte("{\n1"),
-			errstr: `yaml: line 2: did not find expected ',' or '}'`,
+			caseName: "missing comma or brace",
+			data:     []byte("{\n1"),
+			errstr:   `yaml: line 2: did not find expected ',' or '}'`,
 		},
 	}
-	for i, test := range tests {
-		dec := yaml.NewDecoder(bytes.NewReader(test.data))
-		_, err := DecodeYAML(dec)
-		if err == nil {
-			t.Fatalf("tests[%d] no error", i)
-		}
-		if err.Error() != test.errstr {
-			t.Errorf("tests[%d] got %s; want %s", i, err.Error(), test.errstr)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			dec := yaml.NewDecoder(bytes.NewReader(tc.data))
+			_, err := DecodeYAML(dec)
+			if err == nil {
+				t.Fatal("no error")
+			}
+			if err.Error() != tc.errstr {
+				t.Errorf("got %s; want %s", err.Error(), tc.errstr)
+			}
+		})
 	}
 }
 
 func TestUnmarshalYAML(t *testing.T) {
-	tests := []struct {
-		want Node
-		data []byte
+	testCases := []struct {
+		caseName string
+		data     []byte
+		want     Node
 	}{
 		{
+			caseName: "Map with nested Array and Map",
+			data: []byte(`a: 1
+b: true
+c: null
+d: ["1",2,true]
+e: {"x":"x"}
+`),
 			want: Map{
 				"a": NumberValue(1),
 				"b": BoolValue(true),
@@ -122,13 +135,15 @@ func TestUnmarshalYAML(t *testing.T) {
 					"x": StringValue("x"),
 				},
 			},
-			data: []byte(`a: 1
-b: true
-c: null
-d: ["1",2,true]
-e: {"x":"x"}
-`),
 		}, {
+			caseName: "Array with nested Map and Array",
+			data: []byte(`- "1"
+- 2
+- true
+- null
+- {"a":1,"b":true,"c":null}
+- ["x"]
+`),
 			want: Array{
 				StringValue("1"),
 				NumberValue(2),
@@ -143,23 +158,18 @@ e: {"x":"x"}
 					StringValue("x"),
 				},
 			},
-			data: []byte(`- "1"
-- 2
-- true
-- null
-- {"a":1,"b":true,"c":null}
-- ["x"]
-`),
 		},
 	}
-	for i, test := range tests {
-		got, err := UnmarshalYAML(test.data)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf("tests[%d] got %#v; want %#v", i, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := UnmarshalYAML(tc.data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !Equal(got, tc.want) {
+				t.Errorf("got %#v; want %#v", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -177,7 +187,7 @@ c: null
 	if err := yaml.Unmarshal(data, &got); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got, want) {
+	if !Equal(got, want) {
 		t.Errorf("got %#v; want %#v", got, want)
 	}
 }
@@ -196,17 +206,19 @@ func TestArrayUnmarshalYAML(t *testing.T) {
 	if err := yaml.Unmarshal(data, &got); err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(got, want) {
+	if !Equal(got, want) {
 		t.Errorf("got %#v; want %#v", got, want)
 	}
 }
 
 func TestMarshalViaYAML(t *testing.T) {
-	tests := []struct {
-		v    any
-		want Node
+	testCases := []struct {
+		caseName string
+		v        any
+		want     Node
 	}{
 		{
+			caseName: "struct",
 			v: struct {
 				ID     int      `yaml:"id"`
 				Name   string   `yaml:"name"`
@@ -221,32 +233,23 @@ func TestMarshalViaYAML(t *testing.T) {
 				"name":   ToValue("Reds"),
 				"colors": ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
 			},
-		}, {
-			v:    "str",
-			want: StringValue("str"),
-		}, {
-			v:    true,
-			want: BoolValue(true),
-		}, {
-			v:    1,
-			want: NumberValue(1),
-		}, {
-			v:    nil,
-			want: Nil,
-		}, {
-			v:    BoolValue(true),
-			want: BoolValue(true),
 		},
+		{caseName: "string", v: "str", want: StringValue("str")},
+		{caseName: "bool", v: true, want: BoolValue(true)},
+		{caseName: "int", v: 1, want: NumberValue(1)},
+		{caseName: "nil", v: nil, want: Nil},
+		{caseName: "BoolValue passthrough", v: BoolValue(true), want: BoolValue(true)},
 	}
-
-	for i, test := range tests {
-		got, err := MarshalViaYAML(test.v)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf("tests[%d] got %#v; want %#v", i, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := MarshalViaYAML(tc.v)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !Equal(got, tc.want) {
+				t.Errorf("got %#v; want %#v", got, tc.want)
+			}
+		})
 	}
 }
 
