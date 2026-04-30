@@ -153,16 +153,30 @@ func (l *lexer) scanMethod() (tok token, ok bool) {
 
 // scanIdent parses a tkIdent token starting at l.pos (where l.expr[l.pos]
 // is an isWord byte). A digit-led run absorbs an optional `.[0-9]+`
-// fractional part for float literals; prevPathDot suppresses that
-// continuation so path steps like `.1.5` stay chained.
+// fractional part for float literals, plus an optional `[eE][+-]?[0-9]+`
+// exponent. prevPathDot suppresses the fractional continuation so path
+// steps like `.1.5` stay chained.
 func (l *lexer) scanIdent(prevPathDot bool) token {
 	start := l.pos
 	end := l.pos + 1
 	for end < len(l.expr) && isWord(l.expr[end]) {
 		end++
 	}
-	if isNumber(l.expr[start]) && !prevPathDot &&
+	digitLed := isNumber(l.expr[start])
+	if digitLed && !prevPathDot &&
 		end+1 < len(l.expr) && l.expr[end] == '.' && isNumber(l.expr[end+1]) {
+		end++
+		for end < len(l.expr) && isWord(l.expr[end]) {
+			end++
+		}
+	}
+	// Exponent sign continuation: a digit-led run that ended at `e`/`E`
+	// followed by `+`/`-` followed by a digit absorbs the sign and digits.
+	// Unsigned exponent (`1e3`) is already covered by the isWord body loop.
+	if digitLed && end+1 < len(l.expr) &&
+		(l.expr[end] == '+' || l.expr[end] == '-') &&
+		end > start && (l.expr[end-1] == 'e' || l.expr[end-1] == 'E') &&
+		isNumber(l.expr[end+1]) {
 		end++
 		for end < len(l.expr) && isWord(l.expr[end]) {
 			end++
