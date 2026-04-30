@@ -657,6 +657,21 @@ func Test_Edit(t *testing.T) {
 			n:        Map{"arr": Array{Map{"k": NumberValue(1)}, Map{"k": NumberValue(2)}}},
 			expr:     `.arr[-1].k = 99`,
 			want:     Map{"arr": Array{Map{"k": NumberValue(1)}, Map{"k": NumberValue(99)}}},
+		}, {
+			caseName: "negative index set on map errors",
+			n:        Map{"x": StringValue("v")},
+			expr:     `[-1] = "z"`,
+			errstr:   `cannot index array with -1`,
+		}, {
+			caseName: "negative index append on map errors",
+			n:        Map{"x": StringValue("v")},
+			expr:     `[-1] += "z"`,
+			errstr:   `cannot append to array with -1`,
+		}, {
+			caseName: "negative index delete on map errors",
+			n:        Map{"x": StringValue("v")},
+			expr:     `[-1] ^?`,
+			errstr:   `cannot delete array with -1`,
 		},
 	}
 	for _, tc := range testCases {
