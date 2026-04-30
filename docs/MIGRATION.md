@@ -8,6 +8,7 @@ old `jarxorg/tree` repository), start here.
 
 - [Migrating from jarxorg/tree to mojatter/tree](#migrating-from-jarxorgtree-to-mojattertree)
 - [v0.9.x -> v0.10.0 breaking changes](#v09x---v0100-breaking-changes)
+- [v0.11.x -> v0.12.0 breaking changes](#v011x---v0120-breaking-changes)
 
 ---
 
@@ -153,3 +154,175 @@ with `-ldflags`. `go install`-built binaries will report `dev`
 instead of a number; this is intentional. Use a tagged release from
 `brew` or a download if you need the version string to be
 meaningful.
+
+---
+
+## v0.11.x -> v0.12.0 breaking changes
+
+v0.12.0 replaces the regex-based query parser with a hand-written
+recursive-descent parser. The rewrite fixes six pre-existing parser
+bugs and unlocks Python-style negative array indexing, but it also
+tightens parsing in ways that can surface latent issues. This section
+walks through every break and silent-behavior change, with the code
+shape needed to migrate.
+
+### `ArrayRangeQuery` is now a struct, not `[]int`
+
+The previous `[]int` shape used `-1` as an "omitted" sentinel:
+`ArrayRangeQuery{-1, 5}` meant `[:5]`, and `ArrayRangeQuery{1, -1}`
+meant `[1:]`. This collided with the new Python-style "last element"
+meaning of `-1`, so the type was migrated to a struct with explicit
+nil-able pointer fields.
+
+```go
+// before: v0.11.x
+import "github.com/mojatter/tree"
+
+q1 := tree.ArrayRangeQuery{-1, 5}    // meant [:5]
+q2 := tree.ArrayRangeQuery{1, -1}    // meant [1:]
+q3 := tree.ArrayRangeQuery{1, 5}     // meant [1:5]
+```
+
+```go
+// after: v0.12.0
+import "github.com/mojatter/tree"
+
+q1 := tree.ArrayRangeQuery{To: tree.IntPtr(5)}                       // [:5]
+q2 := tree.ArrayRangeQuery{From: tree.IntPtr(1)}                     // [1:]
+q3 := tree.ArrayRangeQuery{From: tree.IntPtr(1), To: tree.IntPtr(5)} // [1:5]
+```
+
+`nil` means "omitted" (whole-end slice). A non-nil negative pointer
+now means "from / to the end", Python-style:
+
+```go
+// new in v0.12.0: previously a parse error or silently wrong
+tree.ArrayRangeQuery{From: tree.IntPtr(-3)}                       // [-3:]   (last 3 elements)
+tree.ArrayRangeQuery{From: tree.IntPtr(1), To: tree.IntPtr(-1)}   // [1:-1]  (drop first, drop last)
+```
+
+`tree.IntPtr` is the canonical helper. `tree.Int64Ptr` and
+`tree.Float64Ptr` ship alongside it for symmetry. The same-named
+helpers in the `schema` package (`schema.IntPtr` etc.) are kept as
+thin re-exports but marked `Deprecated`; new code should import from
+`tree`.
+
+This change only affects code that constructs `ArrayRangeQuery`
+directly. Query strings parsed via `tree.ParseQuery` are unaffected
+by the type shape — but see the next section for query-string
+behavior changes.
+
+### `[-1]` now resolves to the last element
+
+In v0.11.x, `tree.ParseQuery("[-1]")` silently produced
+`tree.ArrayQuery(1)` — the leading `-` was dropped during lexing. On
+a 3-element array, `[-1]` would resolve to index `1`, not the last
+element.
+
+v0.12.0 lexes `-` as a real token. `[-1]` parses to
+`tree.ArrayQuery(-1)` and resolves jq-style to the last element.
+
+```go
+n, _ := tree.UnmarshalJSON([]byte(`["a", "b", "c"]`))
+q, _ := tree.ParseQuery("[-1]")
+got, _ := q.Exec(n)
+// v0.11.x: got == ["b"]
+// v0.12.0: got == ["c"]
+```
+
+If you had code that relied on the buggy v0.11.x behavior, switch to
+the explicit positive index.
+
+`tree.ArrayQuery(-1).Set(...)`, `Append(...)`, and `Delete(...)` on
+a value that is a `Map` (not an `Array`) used to silently write or
+no-op against the literal key `"-1"`. They now return an error
+because negative indices have no meaning on maps.
+
+### `.foo-bar` is now a syntax error
+
+Hyphens in unquoted path keys used to silently split the path:
+`.foo-bar` parsed as `FilterQuery{MapQuery("foo"), MapQuery("bar")}`,
+which was almost never what the caller intended.
+
+v0.12.0 returns a syntax error. Quote the key explicitly:
+
+```go
+// before: v0.11.x — silently parsed as .foo.bar
+q, _ := tree.ParseQuery(".foo-bar")
+
+// after: v0.12.0
+q, err := tree.ParseQuery(`."foo-bar"`)
+```
+
+The same applies to keys containing other punctuation; quoting is the
+universal escape hatch. Single quotes also work
+(`.'foo-bar'`, new in v0.12.0).
+
+### `[:]` and `[2:1]` no longer panic
+
+v0.11.x panicked on degenerate range expressions:
+
+- `[:]` (no `From`, no `To`)
+- `[2:1]` (`From > To`)
+- `[-3:5]` and other end-relative ranges
+
+v0.12.0 resolves these without panicking:
+
+- `[:]` returns every element
+- `[2:1]` returns an empty slice
+- `[-3:5]`, `[1:-1]`, `[-3:-1]` clamp Python-style
+
+If you wrapped any of these in `defer recover()` to swallow the
+panic, the recover branch is now dead code.
+
+### `Inf` / `NaN` in selector operands are strings, not numbers
+
+v0.11.x parsed `Inf`, `+Inf`, `-Inf`, and `NaN` ident tokens as
+floating-point literals via `strconv.ParseFloat`. Inside selectors
+this caused a footgun: `[.x == NaN]` compiled against
+`NumberValue(NaN)`, and `NaN != NaN` by IEEE rules, so the selector
+silently never matched.
+
+v0.12.0 treats these tokens as strings:
+
+```go
+// v0.11.x: tries (and fails) to compare to numeric NaN
+q, _ := tree.ParseQuery("[.x == NaN]")
+
+// v0.12.0: compares .x to the literal string "NaN"
+q, _ := tree.ParseQuery(`[.x == "NaN"]`)
+```
+
+If you really need a numeric `+Inf` or `NaN` comparison, build the
+selector programmatically instead of going through
+`tree.ParseQuery`.
+
+### Float literals in selectors now work
+
+v0.11.x failed to parse decimals, signed exponents, and negative
+numbers in selector operand position:
+
+```go
+// v0.11.x: parse error
+tree.ParseQuery("[.x == 1.5]")
+tree.ParseQuery("[.x == -1.5]")
+tree.ParseQuery("[.x == 1e-3]")
+```
+
+v0.12.0 parses all three correctly. This is purely additive — code
+that was already working continues to work.
+
+### Summary table
+
+| Expression | v0.11.x | v0.12.0 |
+|---|---|---|
+| `ArrayRangeQuery{1, -1}` literal | `[1:]` (sentinel `-1`) | type error (use struct + `IntPtr`) |
+| `[-1]` on `[a, b, c]` | silently `[1]` -> `b` | `c` (last element) |
+| `[:]` | panic | every element |
+| `[2:1]` | panic | empty slice |
+| `[-3:]`, `[1:-1]` | parse error / silently wrong | Python-style end-relative |
+| `.foo-bar` | silent `FilterQuery{foo, bar}` | syntax error (quote it) |
+| `[foo-bar]` | silent meaningless selector | error |
+| `ArrayQuery(-1).Set/Delete` on `Map` | wrote / no-op'd `"-1"` key | error |
+| `[.x == Inf]`, `[.x == NaN]` | numeric `+Inf` / `NaN` | string `"Inf"` / `"NaN"` |
+| `[.x == 1.5]`, `[.x == -1.5]`, `[.x == 1e-3]` | parse error | parsed correctly |
