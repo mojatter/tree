@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func Test_MethodQuery(t *testing.T) {
+func TestMethodQuery(t *testing.T) {
 	testCases := []struct {
 		caseName string
 		q        Query
@@ -279,7 +279,7 @@ func Test_MethodQuery(t *testing.T) {
 	}
 }
 
-func Test_NewMethodQuery(t *testing.T) {
+func TestNewMethodQuery(t *testing.T) {
 	testCases := []struct {
 		caseName string
 		method   string
@@ -424,7 +424,7 @@ func Test_NewMethodQuery(t *testing.T) {
 	}
 }
 
-func Test_RegisterNewMethodQueryFunc(t *testing.T) {
+func TestRegisterNewMethodQueryFunc(t *testing.T) {
 	// Save original state
 	methodQueryMux.Lock()
 	original := make(map[string]NewMethodQueryFunc)

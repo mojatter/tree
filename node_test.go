@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func Test_Type(t *testing.T) {
+func TestType(t *testing.T) {
 	tests := []struct {
 		typ  Type
 		is   func() bool
@@ -62,7 +62,7 @@ func Test_Type(t *testing.T) {
 	}
 }
 
-func Test_Type_String(t *testing.T) {
+func TestTypeString(t *testing.T) {
 	testCases := []struct {
 		caseName string
 		typ      Type
@@ -87,7 +87,7 @@ func Test_Type_String(t *testing.T) {
 	}
 }
 
-func Test_Node(t *testing.T) {
+func TestNode(t *testing.T) {
 	tests := []struct {
 		n         Node
 		isNil     bool
@@ -204,7 +204,7 @@ func Test_Node(t *testing.T) {
 	}
 }
 
-func Test_Node_Get(t *testing.T) {
+func TestNodeGet(t *testing.T) {
 	tests := []struct {
 		n    Node
 		keys []any
@@ -306,7 +306,7 @@ func Test_Node_Get(t *testing.T) {
 	}
 }
 
-func Test_Node_Each(t *testing.T) {
+func TestNodeEach(t *testing.T) {
 	tests := []struct {
 		n    Node
 		want map[any]Node
@@ -353,7 +353,7 @@ func Test_Node_Each(t *testing.T) {
 	}
 }
 
-func Test_Node_Find(t *testing.T) {
+func TestNodeFind(t *testing.T) {
 	tests := []struct {
 		n    Node
 		expr string
@@ -380,7 +380,7 @@ func Test_Node_Find(t *testing.T) {
 	}
 }
 
-func Test_EditorNode_Append(t *testing.T) {
+func TestEditorNodeAppend(t *testing.T) {
 	tests := []struct {
 		n      EditorNode
 		values []Node
@@ -424,7 +424,7 @@ func Test_EditorNode_Append(t *testing.T) {
 	}
 }
 
-func Test_EditorNode_Set(t *testing.T) {
+func TestEditorNodeSet(t *testing.T) {
 	tests := []struct {
 		n       EditorNode
 		entries map[any]Node
@@ -494,7 +494,7 @@ func Test_EditorNode_Set(t *testing.T) {
 	}
 }
 
-func Test_EditorNode_Delete(t *testing.T) {
+func TestEditorNodeDelete(t *testing.T) {
 	tests := []struct {
 		n      EditorNode
 		keys   []any

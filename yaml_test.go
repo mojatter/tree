@@ -8,7 +8,7 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-func Test_MarshalYAML(t *testing.T) {
+func TestMarshalYAML(t *testing.T) {
 	want := `a:
   - "1"
   - 2
@@ -34,7 +34,7 @@ func Test_MarshalYAML(t *testing.T) {
 	}
 }
 
-func Test_Map_MarshalYAML(t *testing.T) {
+func TestMapMarshalYAML(t *testing.T) {
 	want := `a:
   - "1"
   - 2
@@ -56,7 +56,7 @@ func Test_Map_MarshalYAML(t *testing.T) {
 	}
 }
 
-func Test_Array_MarshalYAML(t *testing.T) {
+func TestArrayMarshalYAML(t *testing.T) {
 	want := `- "1"
 - 2
 - true
@@ -75,7 +75,7 @@ func Test_Array_MarshalYAML(t *testing.T) {
 	}
 }
 
-func Test_DecodeYAML_Errors(t *testing.T) {
+func TestDecodeYAMLErrors(t *testing.T) {
 	tests := []struct {
 		data   []byte
 		errstr string
@@ -103,7 +103,7 @@ func Test_DecodeYAML_Errors(t *testing.T) {
 	}
 }
 
-func Test_UnmarshalYAML(t *testing.T) {
+func TestUnmarshalYAML(t *testing.T) {
 	tests := []struct {
 		want Node
 		data []byte
@@ -163,7 +163,7 @@ e: {"x":"x"}
 	}
 }
 
-func Test_Map_UnmarshalYAML(t *testing.T) {
+func TestMapUnmarshalYAML(t *testing.T) {
 	want := Map{
 		"a": NumberValue(1),
 		"b": BoolValue(true),
@@ -182,7 +182,7 @@ c: null
 	}
 }
 
-func Test_Array_UnmarshalYAML(t *testing.T) {
+func TestArrayUnmarshalYAML(t *testing.T) {
 	want := Array{
 		StringValue("1"),
 		NumberValue(2),
@@ -201,7 +201,7 @@ func Test_Array_UnmarshalYAML(t *testing.T) {
 	}
 }
 
-func Test_MarshalViaYAML(t *testing.T) {
+func TestMarshalViaYAML(t *testing.T) {
 	tests := []struct {
 		v    any
 		want Node
@@ -250,7 +250,7 @@ func Test_MarshalViaYAML(t *testing.T) {
 	}
 }
 
-func Test_UnmarshalViaYAML(t *testing.T) {
+func TestUnmarshalViaYAML(t *testing.T) {
 	m := Map{
 		"id":     ToValue(1),
 		"name":   ToValue("Reds"),

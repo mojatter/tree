@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func Test_V(t *testing.T) {
+func TestV(t *testing.T) {
 	// V is a thin alias for ToValue; sample a few representative
 	// inputs to confirm they yield identical results.
 	inputs := []any{nil, "s", true, 1, int64(2), 3.5}
@@ -16,7 +16,7 @@ func Test_V(t *testing.T) {
 	}
 }
 
-func Test_A(t *testing.T) {
+func TestA(t *testing.T) {
 	// A is a thin alias for ToArrayValues.
 	got := A("a", 1, true)
 	want := ToArrayValues("a", 1, true)
@@ -25,7 +25,7 @@ func Test_A(t *testing.T) {
 	}
 }
 
-func Test_ToValue(t *testing.T) {
+func TestToValue(t *testing.T) {
 	tests := []struct {
 		v    any
 		want Node
@@ -76,7 +76,7 @@ func Test_ToValue(t *testing.T) {
 	}
 }
 
-func Test_ToNode(t *testing.T) {
+func TestToNode(t *testing.T) {
 	tests := []struct {
 		v    any
 		want Node
@@ -103,7 +103,7 @@ func Test_ToNode(t *testing.T) {
 	}
 }
 
-func Test_Walk(t *testing.T) {
+func TestWalk(t *testing.T) {
 	root := Array{
 		Map{"ID": ToValue(1)},
 		Map{"ID": ToValue(2), "Sub": Array{Map{"ID": ToValue(20)}}},
@@ -174,7 +174,7 @@ func Test_Walk(t *testing.T) {
 	}
 }
 
-func Test_regexpMatchString(t *testing.T) {
+func TestRegexpMatchString(t *testing.T) {
 	tests := []struct {
 		expr   string
 		value  string

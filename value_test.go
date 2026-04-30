@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func Test_Value(t *testing.T) {
+func TestValue(t *testing.T) {
 	tests := []struct {
 		value Node
 		b     bool
@@ -70,7 +70,7 @@ func Test_Value(t *testing.T) {
 	}
 }
 
-func Test_Value_Compare(t *testing.T) {
+func TestValueCompare(t *testing.T) {
 	tests := []struct {
 		n    Value
 		op   Operator
@@ -143,7 +143,7 @@ func Test_Value_Compare(t *testing.T) {
 	}
 }
 
-func Test_Value_Find(t *testing.T) {
+func TestValueFind(t *testing.T) {
 	tests := []struct {
 		n    Node
 		expr string

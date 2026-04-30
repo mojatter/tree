@@ -9,7 +9,7 @@ import (
 	"github.com/mojatter/tree/internal/testdata"
 )
 
-func Test_MarshalJSON(t *testing.T) {
+func TestMarshalJSON(t *testing.T) {
 	want := `{"a":["1",2,true,null,null]}`
 	n := Map{
 		"a": Array{
@@ -29,7 +29,7 @@ func Test_MarshalJSON(t *testing.T) {
 	}
 }
 
-func Test_Map_MarshalJSON(t *testing.T) {
+func TestMapMarshalJSON(t *testing.T) {
 	want := `{"a":["1",2,true]}`
 	n := Map{
 		"a": Array{
@@ -47,7 +47,7 @@ func Test_Map_MarshalJSON(t *testing.T) {
 	}
 }
 
-func Test_Array_MarshalJSON(t *testing.T) {
+func TestArrayMarshalJSON(t *testing.T) {
 	want := `["1",2,true]`
 	n := Array{
 		StringValue("1"),
@@ -63,7 +63,7 @@ func Test_Array_MarshalJSON(t *testing.T) {
 	}
 }
 
-func Test_DecodeJSON_Errors(t *testing.T) {
+func TestDecodeJSONErrors(t *testing.T) {
 	tests := []struct {
 		data   []byte
 		errstr string
@@ -91,7 +91,7 @@ func Test_DecodeJSON_Errors(t *testing.T) {
 	}
 }
 
-func Test_UnmarshalJSON(t *testing.T) {
+func TestUnmarshalJSON(t *testing.T) {
 	tests := []struct {
 		want Node
 		data string
@@ -152,7 +152,7 @@ func Test_UnmarshalJSON(t *testing.T) {
 	}
 }
 
-func Test_Map_UnmarshalJSON(t *testing.T) {
+func TestMapUnmarshalJSON(t *testing.T) {
 	want := Map{
 		"a": NumberValue(1),
 		"b": BoolValue(true),
@@ -168,7 +168,7 @@ func Test_Map_UnmarshalJSON(t *testing.T) {
 	}
 }
 
-func Test_Array_UnmarshalJSON(t *testing.T) {
+func TestArrayUnmarshalJSON(t *testing.T) {
 	want := Array{
 		StringValue("1"),
 		NumberValue(2),
@@ -184,7 +184,7 @@ func Test_Array_UnmarshalJSON(t *testing.T) {
 	}
 }
 
-func Test_MarshalViaJSON(t *testing.T) {
+func TestMarshalViaJSON(t *testing.T) {
 	tests := []struct {
 		v    any
 		want Node
@@ -233,7 +233,7 @@ func Test_MarshalViaJSON(t *testing.T) {
 	}
 }
 
-func Test_UnmarshalViaJSON(t *testing.T) {
+func TestUnmarshalViaJSON(t *testing.T) {
 	m := Map{
 		"id":     ToValue(1),
 		"name":   ToValue("Reds"),
