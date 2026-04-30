@@ -8,57 +8,59 @@ import (
 )
 
 func TestType(t *testing.T) {
-	tests := []struct {
-		typ  Type
-		is   func() bool
-		want bool
+	testCases := []struct {
+		caseName string
+		is       func() bool
+		want     bool
 	}{
-		{typ: TypeArray, is: TypeArray.IsArray, want: true},
-		{typ: TypeArray, is: TypeArray.IsMap, want: false},
-		{typ: TypeArray, is: TypeArray.IsValue, want: false},
-		{typ: TypeMap, is: TypeMap.IsArray, want: false},
-		{typ: TypeMap, is: TypeMap.IsMap, want: true},
-		{typ: TypeMap, is: TypeMap.IsValue, want: false},
-		{typ: TypeValue, is: TypeValue.IsArray, want: false},
-		{typ: TypeValue, is: TypeValue.IsMap, want: false},
-		{typ: TypeValue, is: TypeValue.IsValue, want: true},
-		{typ: TypeValue, is: TypeValue.IsNilValue, want: false},
-		{typ: TypeValue, is: TypeValue.IsStringValue, want: false},
-		{typ: TypeValue, is: TypeValue.IsBoolValue, want: false},
-		{typ: TypeValue, is: TypeValue.IsNumberValue, want: false},
-		{typ: TypeNilValue, is: TypeNilValue.IsArray, want: false},
-		{typ: TypeNilValue, is: TypeNilValue.IsMap, want: false},
-		{typ: TypeNilValue, is: TypeNilValue.IsValue, want: true},
-		{typ: TypeNilValue, is: TypeNilValue.IsNilValue, want: true},
-		{typ: TypeNilValue, is: TypeNilValue.IsStringValue, want: false},
-		{typ: TypeNilValue, is: TypeNilValue.IsBoolValue, want: false},
-		{typ: TypeNilValue, is: TypeNilValue.IsNumberValue, want: false},
-		{typ: TypeStringValue, is: TypeStringValue.IsArray, want: false},
-		{typ: TypeStringValue, is: TypeStringValue.IsMap, want: false},
-		{typ: TypeStringValue, is: TypeStringValue.IsValue, want: true},
-		{typ: TypeStringValue, is: TypeStringValue.IsNilValue, want: false},
-		{typ: TypeStringValue, is: TypeStringValue.IsStringValue, want: true},
-		{typ: TypeStringValue, is: TypeStringValue.IsBoolValue, want: false},
-		{typ: TypeStringValue, is: TypeStringValue.IsNumberValue, want: false},
-		{typ: TypeBoolValue, is: TypeBoolValue.IsArray, want: false},
-		{typ: TypeBoolValue, is: TypeBoolValue.IsMap, want: false},
-		{typ: TypeBoolValue, is: TypeBoolValue.IsValue, want: true},
-		{typ: TypeBoolValue, is: TypeBoolValue.IsNilValue, want: false},
-		{typ: TypeBoolValue, is: TypeBoolValue.IsStringValue, want: false},
-		{typ: TypeBoolValue, is: TypeBoolValue.IsBoolValue, want: true},
-		{typ: TypeBoolValue, is: TypeBoolValue.IsNumberValue, want: false},
-		{typ: TypeNumberValue, is: TypeNumberValue.IsArray, want: false},
-		{typ: TypeNumberValue, is: TypeNumberValue.IsMap, want: false},
-		{typ: TypeNumberValue, is: TypeNumberValue.IsValue, want: true},
-		{typ: TypeNumberValue, is: TypeNumberValue.IsNilValue, want: false},
-		{typ: TypeNumberValue, is: TypeNumberValue.IsStringValue, want: false},
-		{typ: TypeNumberValue, is: TypeNumberValue.IsBoolValue, want: false},
-		{typ: TypeNumberValue, is: TypeNumberValue.IsNumberValue, want: true},
+		{"TypeArray.IsArray", TypeArray.IsArray, true},
+		{"TypeArray.IsMap", TypeArray.IsMap, false},
+		{"TypeArray.IsValue", TypeArray.IsValue, false},
+		{"TypeMap.IsArray", TypeMap.IsArray, false},
+		{"TypeMap.IsMap", TypeMap.IsMap, true},
+		{"TypeMap.IsValue", TypeMap.IsValue, false},
+		{"TypeValue.IsArray", TypeValue.IsArray, false},
+		{"TypeValue.IsMap", TypeValue.IsMap, false},
+		{"TypeValue.IsValue", TypeValue.IsValue, true},
+		{"TypeValue.IsNilValue", TypeValue.IsNilValue, false},
+		{"TypeValue.IsStringValue", TypeValue.IsStringValue, false},
+		{"TypeValue.IsBoolValue", TypeValue.IsBoolValue, false},
+		{"TypeValue.IsNumberValue", TypeValue.IsNumberValue, false},
+		{"TypeNilValue.IsArray", TypeNilValue.IsArray, false},
+		{"TypeNilValue.IsMap", TypeNilValue.IsMap, false},
+		{"TypeNilValue.IsValue", TypeNilValue.IsValue, true},
+		{"TypeNilValue.IsNilValue", TypeNilValue.IsNilValue, true},
+		{"TypeNilValue.IsStringValue", TypeNilValue.IsStringValue, false},
+		{"TypeNilValue.IsBoolValue", TypeNilValue.IsBoolValue, false},
+		{"TypeNilValue.IsNumberValue", TypeNilValue.IsNumberValue, false},
+		{"TypeStringValue.IsArray", TypeStringValue.IsArray, false},
+		{"TypeStringValue.IsMap", TypeStringValue.IsMap, false},
+		{"TypeStringValue.IsValue", TypeStringValue.IsValue, true},
+		{"TypeStringValue.IsNilValue", TypeStringValue.IsNilValue, false},
+		{"TypeStringValue.IsStringValue", TypeStringValue.IsStringValue, true},
+		{"TypeStringValue.IsBoolValue", TypeStringValue.IsBoolValue, false},
+		{"TypeStringValue.IsNumberValue", TypeStringValue.IsNumberValue, false},
+		{"TypeBoolValue.IsArray", TypeBoolValue.IsArray, false},
+		{"TypeBoolValue.IsMap", TypeBoolValue.IsMap, false},
+		{"TypeBoolValue.IsValue", TypeBoolValue.IsValue, true},
+		{"TypeBoolValue.IsNilValue", TypeBoolValue.IsNilValue, false},
+		{"TypeBoolValue.IsStringValue", TypeBoolValue.IsStringValue, false},
+		{"TypeBoolValue.IsBoolValue", TypeBoolValue.IsBoolValue, true},
+		{"TypeBoolValue.IsNumberValue", TypeBoolValue.IsNumberValue, false},
+		{"TypeNumberValue.IsArray", TypeNumberValue.IsArray, false},
+		{"TypeNumberValue.IsMap", TypeNumberValue.IsMap, false},
+		{"TypeNumberValue.IsValue", TypeNumberValue.IsValue, true},
+		{"TypeNumberValue.IsNilValue", TypeNumberValue.IsNilValue, false},
+		{"TypeNumberValue.IsStringValue", TypeNumberValue.IsStringValue, false},
+		{"TypeNumberValue.IsBoolValue", TypeNumberValue.IsBoolValue, false},
+		{"TypeNumberValue.IsNumberValue", TypeNumberValue.IsNumberValue, true},
 	}
-	for i, test := range tests {
-		if got := test.is(); got != test.want {
-			t.Errorf("tests[%d] got %v; want %v", i, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			if got := tc.is(); got != tc.want {
+				t.Errorf("got %v; want %v", got, tc.want)
+			}
+		})
 	}
 }
 
@@ -88,7 +90,8 @@ func TestTypeString(t *testing.T) {
 }
 
 func TestNode(t *testing.T) {
-	tests := []struct {
+	testCases := []struct {
+		caseName  string
 		n         Node
 		isNil     bool
 		t         Type
@@ -103,6 +106,7 @@ func TestNode(t *testing.T) {
 		findValue []Node
 	}{
 		{
+			caseName: "Map(nil)",
 			n:        Map(nil),
 			isNil:    true,
 			t:        TypeMap,
@@ -111,6 +115,7 @@ func TestNode(t *testing.T) {
 			v:        Nil,
 			getValue: Nil,
 		}, {
+			caseName: "Map empty",
 			n:        Map{},
 			t:        TypeMap,
 			m:        Map{},
@@ -118,6 +123,7 @@ func TestNode(t *testing.T) {
 			v:        Nil,
 			getValue: Nil,
 		}, {
+			caseName: "Array(nil)",
 			n:        Array(nil),
 			isNil:    true,
 			t:        TypeArray,
@@ -126,6 +132,7 @@ func TestNode(t *testing.T) {
 			v:        Nil,
 			getValue: Nil,
 		}, {
+			caseName: "Array empty",
 			n:        Array{},
 			t:        TypeArray,
 			m:        Map(nil),
@@ -133,6 +140,7 @@ func TestNode(t *testing.T) {
 			v:        Nil,
 			getValue: Nil,
 		}, {
+			caseName: "Nil",
 			n:        Nil,
 			isNil:    true,
 			t:        TypeNilValue,
@@ -141,6 +149,7 @@ func TestNode(t *testing.T) {
 			v:        Nil,
 			getValue: Nil,
 		}, {
+			caseName: "StringValue",
 			n:        StringValue("a"),
 			t:        TypeStringValue,
 			m:        Map(nil),
@@ -148,6 +157,7 @@ func TestNode(t *testing.T) {
 			v:        StringValue("a"),
 			getValue: Nil,
 		}, {
+			caseName: "BoolValue",
 			n:        BoolValue(true),
 			t:        TypeBoolValue,
 			m:        Map(nil),
@@ -155,6 +165,7 @@ func TestNode(t *testing.T) {
 			v:        BoolValue(true),
 			getValue: Nil,
 		}, {
+			caseName: "NumberValue",
 			n:        NumberValue(1),
 			t:        TypeNumberValue,
 			m:        Map(nil),
@@ -162,6 +173,7 @@ func TestNode(t *testing.T) {
 			v:        NumberValue(1),
 			getValue: Nil,
 		}, {
+			caseName: "Any wrapping Map(nil)",
 			n:        Any{Map(nil)},
 			isNil:    true,
 			t:        TypeMap,
@@ -171,268 +183,313 @@ func TestNode(t *testing.T) {
 			getValue: Nil,
 		},
 	}
-	for i, test := range tests {
-		n := test.n
-		if n.IsNil() != test.isNil {
-			t.Errorf("tests[%d] IsNil got %v; want %v", i, n.IsNil(), test.isNil)
-		}
-		if tt := n.Type(); tt != test.t {
-			t.Errorf("tests[%d] Type got %v; want %v", i, tt, test.t)
-		}
-		if aa := n.Array(); !reflect.DeepEqual(aa, test.a) {
-			t.Errorf("tests[%d] Array got %v; want %v", i, aa, test.a)
-		}
-		if mm := n.Map(); !reflect.DeepEqual(mm, test.m) {
-			t.Errorf("tests[%d] Map got %v; want %v", i, mm, test.m)
-		}
-		if vv := n.Value(); !reflect.DeepEqual(vv, test.v) {
-			t.Errorf("tests[%d] Value got %v; want %v", i, vv, test.v)
-		}
-		if had := n.Has(test.hasKeys...); had != test.hasValue {
-			t.Errorf("tests[%d] Has got %v; want %v", i, had, test.hasValue)
-		}
-		if got := n.Get(test.getKeys...); !reflect.DeepEqual(got, test.getValue) {
-			t.Errorf("tests[%d] Get got %v; want %v", i, got, test.getValue)
-		}
-		found, err := n.Find(test.findExpr)
-		if err != nil {
-			t.Errorf("tests[%d] failed to Find error %v", i, err)
-		}
-		if !reflect.DeepEqual(found, test.findValue) {
-			t.Errorf("tests[%d] Find got %v; want %v", i, found, test.findValue)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			n := tc.n
+			if n.IsNil() != tc.isNil {
+				t.Errorf("IsNil got %v; want %v", n.IsNil(), tc.isNil)
+			}
+			if tt := n.Type(); tt != tc.t {
+				t.Errorf("Type got %v; want %v", tt, tc.t)
+			}
+			if aa := n.Array(); !Equal(aa, tc.a) {
+				t.Errorf("Array got %v; want %v", aa, tc.a)
+			}
+			if mm := n.Map(); !Equal(mm, tc.m) {
+				t.Errorf("Map got %v; want %v", mm, tc.m)
+			}
+			if vv := n.Value(); !Equal(vv, tc.v) {
+				t.Errorf("Value got %v; want %v", vv, tc.v)
+			}
+			if had := n.Has(tc.hasKeys...); had != tc.hasValue {
+				t.Errorf("Has got %v; want %v", had, tc.hasValue)
+			}
+			if got := n.Get(tc.getKeys...); !Equal(got, tc.getValue) {
+				t.Errorf("Get got %v; want %v", got, tc.getValue)
+			}
+			found, err := n.Find(tc.findExpr)
+			if err != nil {
+				t.Errorf("failed to Find error %v", err)
+			}
+			if !Equal(Array(found), Array(tc.findValue)) {
+				t.Errorf("Find got %v; want %v", found, tc.findValue)
+			}
+		})
 	}
 }
 
 func TestNodeGet(t *testing.T) {
-	tests := []struct {
-		n    Node
-		keys []any
-		has  bool
-		want Node
+	testCases := []struct {
+		caseName string
+		n        Node
+		keys     []any
+		has      bool
+		want     Node
 	}{
 		{
-			n:    Array{StringValue("a"), StringValue("b")},
-			keys: []any{1},
-			has:  true,
-			want: StringValue("b"),
+			caseName: "Array int key",
+			n:        Array{StringValue("a"), StringValue("b")},
+			keys:     []any{1},
+			has:      true,
+			want:     StringValue("b"),
 		}, {
-			n:    Array{StringValue("a"), StringValue("b")},
-			keys: []any{"1"},
-			has:  true,
-			want: StringValue("b"),
+			caseName: "Array string-as-int key",
+			n:        Array{StringValue("a"), StringValue("b")},
+			keys:     []any{"1"},
+			has:      true,
+			want:     StringValue("b"),
 		}, {
-			n:    Array{StringValue("a"), StringValue("b")},
-			keys: []any{1.0},
-			want: Nil,
+			caseName: "Array float key invalid",
+			n:        Array{StringValue("a"), StringValue("b")},
+			keys:     []any{1.0},
+			want:     Nil,
 		}, {
-			n:    Array{StringValue("a"), StringValue("b")},
-			keys: []any{2},
-			want: Nil,
+			caseName: "Array out of range",
+			n:        Array{StringValue("a"), StringValue("b")},
+			keys:     []any{2},
+			want:     Nil,
 		}, {
-			n:    Array{StringValue("a"), nil},
-			keys: []any{1},
-			has:  true,
-			want: Nil,
+			caseName: "Array nil element",
+			n:        Array{StringValue("a"), nil},
+			keys:     []any{1},
+			has:      true,
+			want:     Nil,
 		}, {
-			n:    Map{"1": NumberValue(10), "2": NumberValue(20)},
-			keys: []any{"1"},
-			has:  true,
-			want: NumberValue(10),
+			caseName: "Map string key",
+			n:        Map{"1": NumberValue(10), "2": NumberValue(20)},
+			keys:     []any{"1"},
+			has:      true,
+			want:     NumberValue(10),
 		}, {
-			n:    Map{"1": NumberValue(10), "2": NumberValue(20)},
-			keys: []any{1},
-			has:  true,
-			want: NumberValue(10),
+			caseName: "Map int key",
+			n:        Map{"1": NumberValue(10), "2": NumberValue(20)},
+			keys:     []any{1},
+			has:      true,
+			want:     NumberValue(10),
 		}, {
-			n:    Map{"1": NumberValue(10), "2": NumberValue(20)},
-			keys: []any{1.0},
-			want: Nil,
+			caseName: "Map float key invalid",
+			n:        Map{"1": NumberValue(10), "2": NumberValue(20)},
+			keys:     []any{1.0},
+			want:     Nil,
 		}, {
-			n:    Map{"1": NumberValue(10), "2": NumberValue(20)},
-			keys: []any{"3"},
-			want: Nil,
+			caseName: "Map missing key",
+			n:        Map{"1": NumberValue(10), "2": NumberValue(20)},
+			keys:     []any{"3"},
+			want:     Nil,
 		}, {
-			n:    Map{"1": NumberValue(10), "2": nil},
-			keys: []any{"2"},
-			has:  true,
-			want: Nil,
+			caseName: "Map nil value",
+			n:        Map{"1": NumberValue(10), "2": nil},
+			keys:     []any{"2"},
+			has:      true,
+			want:     Nil,
 		}, {
-			n:    Map{"a": Map{"b": StringValue("v")}},
-			keys: []any{"a", "b"},
-			has:  true,
-			want: StringValue("v"),
+			caseName: "Map nested two keys",
+			n:        Map{"a": Map{"b": StringValue("v")}},
+			keys:     []any{"a", "b"},
+			has:      true,
+			want:     StringValue("v"),
 		}, {
-			n:    Map{"a": Map{"b": StringValue("v")}},
-			keys: []any{"a", "b", "c", "d"},
-			want: Nil,
+			caseName: "Map nested over-deep",
+			n:        Map{"a": Map{"b": StringValue("v")}},
+			keys:     []any{"a", "b", "c", "d"},
+			want:     Nil,
 		}, {
-			n:    Map{"a": Map{"b": StringValue("v")}},
-			keys: []any{"a", "c"},
-			want: Nil,
+			caseName: "Map nested missing leaf",
+			n:        Map{"a": Map{"b": StringValue("v")}},
+			keys:     []any{"a", "c"},
+			want:     Nil,
 		}, {
-			n:    Array{Array{nil, StringValue("v")}},
-			keys: []any{0, 1},
-			has:  true,
-			want: StringValue("v"),
+			caseName: "Array nested two indices",
+			n:        Array{Array{nil, StringValue("v")}},
+			keys:     []any{0, 1},
+			has:      true,
+			want:     StringValue("v"),
 		}, {
-			n:    Array{Array{nil, StringValue("v")}},
-			keys: []any{0, 1, 2, 3},
-			want: Nil,
+			caseName: "Array nested over-deep",
+			n:        Array{Array{nil, StringValue("v")}},
+			keys:     []any{0, 1, 2, 3},
+			want:     Nil,
 		}, {
-			n:    Array{Map{"a": Array{nil, Map{"b": StringValue("v")}}}},
-			keys: []any{0, "a", 1, "b"},
-			has:  true,
-			want: StringValue("v"),
+			caseName: "mixed Array Map Array Map deep",
+			n:        Array{Map{"a": Array{nil, Map{"b": StringValue("v")}}}},
+			keys:     []any{0, "a", 1, "b"},
+			has:      true,
+			want:     StringValue("v"),
 		}, {
-			n:    StringValue("str"),
-			want: Nil,
+			caseName: "StringValue no keys",
+			n:        StringValue("str"),
+			want:     Nil,
 		}, {
-			n:    BoolValue(true),
-			want: Nil,
+			caseName: "BoolValue no keys",
+			n:        BoolValue(true),
+			want:     Nil,
 		}, {
-			n:    NumberValue(1),
-			want: Nil,
+			caseName: "NumberValue no keys",
+			n:        NumberValue(1),
+			want:     Nil,
 		},
 	}
-	for i, test := range tests {
-		if test.n.Has(test.keys...) != test.has {
-			t.Errorf("tests[%d] Has got %v; want %v", i, !test.has, test.has)
-		}
-		got := test.n.Get(test.keys...)
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf("tests[%d] Get got %v; want %v", i, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			if tc.n.Has(tc.keys...) != tc.has {
+				t.Errorf("Has got %v; want %v", !tc.has, tc.has)
+			}
+			got := tc.n.Get(tc.keys...)
+			if !Equal(got, tc.want) {
+				t.Errorf("Get got %v; want %v", got, tc.want)
+			}
+		})
 	}
 }
 
 func TestNodeEach(t *testing.T) {
-	tests := []struct {
-		n    Node
-		want map[any]Node
+	testCases := []struct {
+		caseName string
+		n        Node
+		want     map[any]Node
 	}{
 		{
-			n:    Array{StringValue("a"), StringValue("b")},
-			want: map[any]Node{0: StringValue("a"), 1: StringValue("b")},
+			caseName: "Array",
+			n:        Array{StringValue("a"), StringValue("b")},
+			want:     map[any]Node{0: StringValue("a"), 1: StringValue("b")},
 		}, {
-			n:    Map{"a": NumberValue(0), "b": NumberValue(1)},
-			want: map[any]Node{"a": NumberValue(0), "b": NumberValue(1)},
+			caseName: "Map",
+			n:        Map{"a": NumberValue(0), "b": NumberValue(1)},
+			want:     map[any]Node{"a": NumberValue(0), "b": NumberValue(1)},
 		}, {
-			n:    StringValue("str"),
-			want: map[any]Node{nil: StringValue("str")},
+			caseName: "StringValue",
+			n:        StringValue("str"),
+			want:     map[any]Node{nil: StringValue("str")},
 		}, {
-			n:    BoolValue(true),
-			want: map[any]Node{nil: BoolValue(true)},
+			caseName: "BoolValue",
+			n:        BoolValue(true),
+			want:     map[any]Node{nil: BoolValue(true)},
 		}, {
-			n:    NumberValue(1),
-			want: map[any]Node{nil: NumberValue(1)},
+			caseName: "NumberValue",
+			n:        NumberValue(1),
+			want:     map[any]Node{nil: NumberValue(1)},
 		}, {
-			n:    Any{Map{"a": NumberValue(0), "b": NumberValue(1)}},
-			want: map[any]Node{"a": NumberValue(0), "b": NumberValue(1)},
+			caseName: "Any wrapping Map",
+			n:        Any{Map{"a": NumberValue(0), "b": NumberValue(1)}},
+			want:     map[any]Node{"a": NumberValue(0), "b": NumberValue(1)},
 		},
 	}
-	for i, test := range tests {
-		got := map[any]Node{}
-		err := test.n.Each(func(key any, v Node) error {
-			got[key] = v
-			return nil
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got := map[any]Node{}
+			err := tc.n.Each(func(key any, v Node) error {
+				got[key] = v
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %v; want %v", got, tc.want)
+			}
+			wantErr := fmt.Errorf("err for %s", tc.caseName)
+			gotErr := tc.n.Each(func(key any, v Node) error {
+				return wantErr
+			})
+			if wantErr != gotErr {
+				t.Errorf("got %v; want %v", gotErr, wantErr)
+			}
 		})
-		if err != nil {
-			t.Fatalf("tests[%d] %v", i, err)
-		}
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf("tests[%d] got %v; want %v", i, got, test.want)
-		}
-		wantErr := fmt.Errorf("test%d", i)
-		gotErr := test.n.Each(func(key any, v Node) error {
-			return wantErr
-		})
-		if wantErr != gotErr {
-			t.Errorf("tests[%d] got %v; want %v", i, gotErr, wantErr)
-		}
 	}
 }
 
 func TestNodeFind(t *testing.T) {
-	tests := []struct {
-		n    Node
-		expr string
-		want []Node
+	testCases := []struct {
+		caseName string
+		n        Node
+		expr     string
+		want     []Node
 	}{
 		{
-			n:    Array{StringValue("a"), StringValue("b")},
-			expr: ".[0]",
-			want: []Node{StringValue("a")},
+			caseName: "Array index",
+			n:        Array{StringValue("a"), StringValue("b")},
+			expr:     ".[0]",
+			want:     []Node{StringValue("a")},
 		}, {
-			n:    Map{"1": NumberValue(10), "2": NumberValue(20)},
-			expr: ".1",
-			want: []Node{NumberValue(10)},
+			caseName: "Map key",
+			n:        Map{"1": NumberValue(10), "2": NumberValue(20)},
+			expr:     ".1",
+			want:     []Node{NumberValue(10)},
 		},
 	}
-	for i, test := range tests {
-		got, err := test.n.Find(test.expr)
-		if err != nil {
-			t.Fatalf("tests[%d] %v", i, err)
-		}
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf("tests[%d] got %#v; want %#v", i, got, test.want)
-		}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := tc.n.Find(tc.expr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !Equal(Array(got), Array(tc.want)) {
+				t.Errorf("got %#v; want %#v", got, tc.want)
+			}
+		})
 	}
 }
 
 func TestEditorNodeAppend(t *testing.T) {
-	tests := []struct {
-		n      EditorNode
-		values []Node
-		want   EditorNode
-		errstr string
+	testCases := []struct {
+		caseName string
+		n        EditorNode
+		values   []Node
+		want     EditorNode
+		errstr   string
 	}{
 		{
-			n:      &Array{NumberValue(1)},
-			values: []Node{StringValue("2"), BoolValue(true)},
-			want:   &Array{NumberValue(1), StringValue("2"), BoolValue(true)},
+			caseName: "Array",
+			n:        &Array{NumberValue(1)},
+			values:   []Node{StringValue("2"), BoolValue(true)},
+			want:     &Array{NumberValue(1), StringValue("2"), BoolValue(true)},
 		}, {
-			n:      Map{},
-			values: []Node{StringValue("2")},
-			errstr: "cannot append to map",
+			caseName: "Map rejected",
+			n:        Map{},
+			values:   []Node{StringValue("2")},
+			errstr:   "cannot append to map",
 		},
 	}
-	for i, test := range tests {
-		var err error
-		for _, value := range test.values {
-			err = test.n.Append(value)
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			var err error
+			for _, value := range tc.values {
+				err = tc.n.Append(value)
+				if err != nil {
+					break
+				}
+			}
+			if tc.errstr != "" {
+				if err == nil {
+					t.Fatal("no error")
+				}
+				if err.Error() != tc.errstr {
+					t.Errorf("got %s; want %s", err.Error(), tc.errstr)
+				}
+				return
+			}
 			if err != nil {
-				break
+				t.Fatal(err)
 			}
-		}
-		if test.errstr != "" {
-			if err == nil {
-				t.Fatalf("tests[%d] no error", i)
+			got := tc.n
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %v; want %v", got, tc.want)
 			}
-			if err.Error() != test.errstr {
-				t.Errorf("tests[%d] got %s; want %s", i, err.Error(), test.errstr)
-			}
-			continue
-		}
-		if err != nil {
-			t.Fatalf("tests[%d] %v", i, err)
-		}
-		got := test.n
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf("tests[%d] got %v; want %v", i, got, test.want)
-		}
+		})
 	}
 }
 
 func TestEditorNodeSet(t *testing.T) {
-	tests := []struct {
-		n       EditorNode
-		entries map[any]Node
-		want    EditorNode
-		errstr  string
+	testCases := []struct {
+		caseName string
+		n        EditorNode
+		entries  map[any]Node
+		want     EditorNode
+		errstr   string
 	}{
 		{
-			n: &Array{NumberValue(0), StringValue("1")},
+			caseName: "Array set existing and append",
+			n:        &Array{NumberValue(0), StringValue("1")},
 			entries: map[any]Node{
 				0:   NumberValue(1),
 				"1": StringValue("2"),
@@ -440,10 +497,12 @@ func TestEditorNodeSet(t *testing.T) {
 			},
 			want: &Array{NumberValue(1), StringValue("2"), BoolValue(true)},
 		}, {
-			n:       &Array{},
-			entries: map[any]Node{-2: StringValue("value")},
-			errstr:  "cannot index array with -2",
+			caseName: "Array negative index rejected",
+			n:        &Array{},
+			entries:  map[any]Node{-2: StringValue("value")},
+			errstr:   "cannot index array with -2",
 		}, {
+			caseName: "Map set and add new keys",
 			n: Map{
 				"1": NumberValue(1),
 				"2": StringValue("2"),
@@ -462,54 +521,61 @@ func TestEditorNodeSet(t *testing.T) {
 				"5": BoolValue(true),
 			},
 		}, {
-			n:       Map{},
-			entries: map[any]Node{true: StringValue("value")},
-			errstr:  "cannot index array with true",
+			caseName: "Map bool key rejected",
+			n:        Map{},
+			entries:  map[any]Node{true: StringValue("value")},
+			errstr:   "cannot index array with true",
 		},
 	}
-	for i, test := range tests {
-		var err error
-		for key, value := range test.entries {
-			err = test.n.Set(key, value)
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			var err error
+			for key, value := range tc.entries {
+				err = tc.n.Set(key, value)
+				if err != nil {
+					break
+				}
+			}
+			if tc.errstr != "" {
+				if err == nil {
+					t.Fatal("no error")
+				}
+				if err.Error() != tc.errstr {
+					t.Errorf("got %s; want %s", err.Error(), tc.errstr)
+				}
+				return
+			}
 			if err != nil {
-				break
+				t.Fatal(err)
 			}
-		}
-		if test.errstr != "" {
-			if err == nil {
-				t.Fatalf("tests[%d] no error", i)
+			got := tc.n
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %v; want %v", got, tc.want)
 			}
-			if err.Error() != test.errstr {
-				t.Errorf(`tests[%d] got %s; want %s`, i, err.Error(), test.errstr)
-			}
-			continue
-		}
-		if err != nil {
-			t.Fatalf("tests[%d] %v", i, err)
-		}
-		got := test.n
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf("tests[%d] got %v; want %v", i, got, test.want)
-		}
+		})
 	}
 }
 
 func TestEditorNodeDelete(t *testing.T) {
-	tests := []struct {
-		n      EditorNode
-		keys   []any
-		want   EditorNode
-		errstr string
+	testCases := []struct {
+		caseName string
+		n        EditorNode
+		keys     []any
+		want     EditorNode
+		errstr   string
 	}{
 		{
-			n:    &Array{NumberValue(1), StringValue("1"), BoolValue(true)},
-			keys: []any{1, "1"},
-			want: &Array{NumberValue(1)},
+			caseName: "Array delete by int and string-as-int",
+			n:        &Array{NumberValue(1), StringValue("1"), BoolValue(true)},
+			keys:     []any{1, "1"},
+			want:     &Array{NumberValue(1)},
 		}, {
-			n:      &Array{},
-			keys:   []any{-1},
-			errstr: "cannot index array with -1",
+			caseName: "Array negative index rejected",
+			n:        &Array{},
+			keys:     []any{-1},
+			errstr:   "cannot index array with -1",
 		}, {
+			caseName: "Map delete mixed keys",
 			n: Map{
 				"1": NumberValue(1),
 				"2": StringValue("2"),
@@ -523,35 +589,38 @@ func TestEditorNodeDelete(t *testing.T) {
 				"3": BoolValue(true),
 			},
 		}, {
-			n:      Map{},
-			keys:   []any{true},
-			errstr: "cannot index array with true",
+			caseName: "Map bool key rejected",
+			n:        Map{},
+			keys:     []any{true},
+			errstr:   "cannot index array with true",
 		},
 	}
-	for i, test := range tests {
-		var err error
-		for _, key := range test.keys {
-			err = test.n.Delete(key)
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			var err error
+			for _, key := range tc.keys {
+				err = tc.n.Delete(key)
+				if err != nil {
+					break
+				}
+			}
+			if tc.errstr != "" {
+				if err == nil {
+					t.Fatal("no error")
+				}
+				if err.Error() != tc.errstr {
+					t.Errorf("got %s; want %s", err.Error(), tc.errstr)
+				}
+				return
+			}
 			if err != nil {
-				break
+				t.Fatal(err)
 			}
-		}
-		if test.errstr != "" {
-			if err == nil {
-				t.Fatalf("tests[%d] no error", i)
+			got := tc.n
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %v; want %v", got, tc.want)
 			}
-			if err.Error() != test.errstr {
-				t.Errorf("tests[%d] got %s; want %s", i, err.Error(), test.errstr)
-			}
-			continue
-		}
-		if err != nil {
-			t.Fatalf("tests[%d] %v", i, err)
-		}
-		got := test.n
-		if !reflect.DeepEqual(got, test.want) {
-			t.Errorf("tests[%d] got %v; want %v", i, got, test.want)
-		}
+		})
 	}
 }
 
