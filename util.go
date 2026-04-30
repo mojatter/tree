@@ -15,6 +15,19 @@ func V(v any) Node {
 	return ToValue(v)
 }
 
+// IntPtr, Int64Ptr, and Float64Ptr return a pointer to v. They are
+// convenience helpers for constructing pointer-valued struct fields
+// (e.g. ArrayRangeQuery.From, schema rule bounds) inline.
+
+// IntPtr returns a pointer to v.
+func IntPtr(v int) *int { return &v }
+
+// Int64Ptr returns a pointer to v.
+func Int64Ptr(v int64) *int64 { return &v }
+
+// Float64Ptr returns a pointer to v.
+func Float64Ptr(v float64) *float64 { return &v }
+
 // A is a short alias for [ToArrayValues]. It pairs with [V] for concise
 // construction of arrays:
 //
