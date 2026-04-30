@@ -608,12 +608,12 @@ func Test_Edit(t *testing.T) {
 			caseName: "default-branch intermediate Exec error propagates up",
 			n:        Map{"items": Map{"x": StringValue("v")}},
 			expr:     `.items[1:2].x = 1`,
-			errstr:   `cannot index array with range 1:2`,
+			errstr:   `cannot index array with range [1:2]`,
 		}, {
 			caseName: "slurp left.Exec error propagates up",
 			n:        Map{"items": Map{"x": StringValue("v")}},
 			expr:     `.items[1:2] | .x = 1`,
-			errstr:   `cannot index array with range 1:2`,
+			errstr:   `cannot index array with range [1:2]`,
 		}, {
 			caseName: "terminal SelectQuery is an unsupported edit query",
 			n:        Map{"items": Array{NumberValue(1)}},
@@ -639,6 +639,39 @@ func Test_Edit(t *testing.T) {
 					"b": Map{"x": NumberValue(2), "name": StringValue("old2")},
 				},
 			},
+		},
+
+		// --- Negative array index ---
+		{
+			caseName: "set on negative index targets last element",
+			n:        Map{"arr": Array{NumberValue(1), NumberValue(2), NumberValue(3)}},
+			expr:     `.arr[-1] = 99`,
+			want:     Map{"arr": Array{NumberValue(1), NumberValue(2), NumberValue(99)}},
+		}, {
+			caseName: "delete on negative index removes last element",
+			n:        Map{"arr": Array{NumberValue(1), NumberValue(2), NumberValue(3)}},
+			expr:     `.arr[-1] ^?`,
+			want:     Map{"arr": Array{NumberValue(1), NumberValue(2)}},
+		}, {
+			caseName: "intermediate negative index walks last element",
+			n:        Map{"arr": Array{Map{"k": NumberValue(1)}, Map{"k": NumberValue(2)}}},
+			expr:     `.arr[-1].k = 99`,
+			want:     Map{"arr": Array{Map{"k": NumberValue(1)}, Map{"k": NumberValue(99)}}},
+		}, {
+			caseName: "negative index set on map errors",
+			n:        Map{"x": StringValue("v")},
+			expr:     `[-1] = "z"`,
+			errstr:   `cannot index array with -1`,
+		}, {
+			caseName: "negative index append on map errors",
+			n:        Map{"x": StringValue("v")},
+			expr:     `[-1] += "z"`,
+			errstr:   `cannot append to array with -1`,
+		}, {
+			caseName: "negative index delete on map errors",
+			n:        Map{"x": StringValue("v")},
+			expr:     `[-1] ^?`,
+			errstr:   `cannot delete array with -1`,
 		},
 	}
 	for _, tc := range testCases {

@@ -1,9 +1,7 @@
 package tree
 
 import (
-	"encoding/csv"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 )
@@ -145,23 +143,41 @@ type ArrayQuery int
 
 var _ EditorQuery = (ArrayQuery)(0)
 
+// resolveIndex returns the absolute index for q against an array of length n.
+// A non-negative index passes through unchanged. A negative index is resolved
+// jq-style: -1 maps to the last element. The result may still be out of range
+// (negative or >= n); callers handle that.
+func (q ArrayQuery) resolveIndex(n int) int {
+	i := int(q)
+	if i < 0 {
+		return n + i
+	}
+	return i
+}
+
 func (q ArrayQuery) Exec(n Node) ([]Node, error) {
 	if a := n.Array(); a != nil {
-		index := int(q)
-		if n.Has(index) {
+		index := q.resolveIndex(len(a))
+		if index >= 0 && index < len(a) {
 			return []Node{a[index]}, nil
 		}
 		return nil, nil
 	}
-	return nil, fmt.Errorf("cannot index array with %d", q)
+	return nil, fmt.Errorf("cannot index array with %d", int(q))
 }
 
 func (q ArrayQuery) Set(pn *Node, v Node) error {
+	n := *pn
 	index := int(q)
-	if en, ok := (*pn).(EditorNode); ok {
+	if a := n.Array(); a != nil {
+		index = q.resolveIndex(len(a))
+	} else if index < 0 {
+		return fmt.Errorf("cannot index array with %d", index)
+	}
+	if en, ok := n.(EditorNode); ok {
 		return en.Set(index, v)
 	}
-	if a := (*pn).Array(); a != nil {
+	if a := n.Array(); a != nil {
 		if err := a.Set(index, v); err != nil {
 			return err
 		}
@@ -169,18 +185,26 @@ func (q ArrayQuery) Set(pn *Node, v Node) error {
 		*pn = a
 		return nil
 	}
-	return fmt.Errorf("cannot index array with %d", index)
+	return fmt.Errorf("cannot index array with %d", int(q))
 }
 
 func (q ArrayQuery) Append(pn *Node, v Node) error {
-	index := int(q)
 	n := *pn
+	index := int(q)
+	if a := n.Array(); a != nil {
+		index = q.resolveIndex(len(a))
+	} else if index < 0 {
+		return fmt.Errorf("cannot append to array with %d", index)
+	}
 	if en, ok := n.(EditorNode); ok {
 		if n.Has(index) {
 			if ca := n.Get(index).Array(); ca != nil {
 				return en.Set(index, append(ca, v))
 			}
-			return fmt.Errorf("cannot append to array with %d", index)
+			return fmt.Errorf("cannot append to array with %d", int(q))
+		}
+		if index < 0 {
+			return fmt.Errorf("cannot append to array with %d", int(q))
 		}
 		return en.Set(index, Array{v})
 	}
@@ -191,7 +215,10 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 				*pn = a
 				return nil
 			}
-			return fmt.Errorf("cannot append to array with %d", index)
+			return fmt.Errorf("cannot append to array with %d", int(q))
+		}
+		if index < 0 {
+			return fmt.Errorf("cannot append to array with %d", int(q))
 		}
 		na := make(Array, index+1)
 		copy(na, a)
@@ -199,58 +226,88 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 		*pn = na
 		return nil
 	}
-	return fmt.Errorf("cannot append to array with %d", index)
+	return fmt.Errorf("cannot append to array with %d", int(q))
 }
 
 func (q ArrayQuery) Delete(pn *Node) error {
+	n := *pn
 	index := int(q)
-	if en, ok := (*pn).(EditorNode); ok {
+	if a := n.Array(); a != nil {
+		index = q.resolveIndex(len(a))
+	} else if index < 0 {
+		return fmt.Errorf("cannot delete array with %d", index)
+	}
+	if en, ok := n.(EditorNode); ok {
 		if err := en.Delete(index); err == nil {
 			return nil
 		}
 	}
-	if a := (*pn).Array(); a != nil {
+	if a := n.Array(); a != nil {
 		if err := a.Delete(index); err != nil {
-			return fmt.Errorf("cannot delete array with %d", index)
+			return fmt.Errorf("cannot delete array with %d", int(q))
 		}
 
 		*pn = a
 		return nil
 	}
-	return fmt.Errorf("cannot delete array with %d", index)
+	return fmt.Errorf("cannot delete array with %d", int(q))
 }
 
 func (q ArrayQuery) String() string {
 	return fmt.Sprintf("[%d]", q)
 }
 
-// ArrayRangeQuery represents a range of the Array that implements methods of the Query.
-type ArrayRangeQuery []int
+// ArrayRangeQuery represents a range of the Array that implements methods of
+// the Query. From/To use *int so that omitted bounds (`[1:]`, `[:5]`) are
+// represented as nil rather than a magic sentinel.
+type ArrayRangeQuery struct {
+	From *int
+	To   *int
+}
 
 func (q ArrayRangeQuery) Exec(n Node) ([]Node, error) {
-	if len(q) != 2 {
-		return nil, fmt.Errorf("invalid array range %s", q)
-	}
 	if a := n.Array(); a != nil {
-		from, to := q[0], q[1]
-		if from == -1 {
-			return a[:to], nil
-		} else if q[1] == -1 {
-			return a[from:], nil
+		from := resolveRangeBound(q.From, len(a), 0)
+		to := resolveRangeBound(q.To, len(a), len(a))
+		if from >= to {
+			return nil, nil
 		}
 		return a[from:to], nil
 	}
-	return nil, fmt.Errorf("cannot index array with range %d:%d", q[0], q[1])
+	return nil, fmt.Errorf("cannot index array with range %s", q)
+}
+
+// resolveRangeBound resolves a *int bound for ArrayRangeQuery.Exec against
+// an array of length n. Nil falls back to defaultV. Negative bounds are
+// interpreted Python-style (end-relative: `-1` is the last element). The
+// result is clamped to [0, n].
+func resolveRangeBound(bound *int, n, defaultV int) int {
+	if bound == nil {
+		return defaultV
+	}
+	v := *bound
+	if v < 0 {
+		v += n
+	}
+	if v < 0 {
+		return 0
+	}
+	if v > n {
+		return n
+	}
+	return v
 }
 
 func (q ArrayRangeQuery) String() string {
-	ss := make([]string, len(q))
-	for i, r := range q {
-		if r != -1 {
-			ss[i] = strconv.Itoa(r)
-		}
+	f := ""
+	if q.From != nil {
+		f = strconv.Itoa(*q.From)
 	}
-	return "[" + strings.Join(ss, ":") + "]"
+	t := ""
+	if q.To != nil {
+		t = strconv.Itoa(*q.To)
+	}
+	return "[" + f + ":" + t + "]"
 }
 
 // SlurpQuery is a special query that works in FilterQuery.
@@ -561,277 +618,6 @@ var (
 	_ Selector = (*Comparator)(nil)
 	_ Selector = (*SelectQuery)(nil)
 )
-
-// ParseQuery parses the provided expr to a Query.
-// See https://github.com/mojatter/tree#Query
-func ParseQuery(expr string) (Query, error) {
-	token, err := tokenizeQuery(expr)
-	if err != nil {
-		return nil, err
-	}
-	return tokenToQuery(token, expr)
-}
-
-type token struct {
-	cmd      string
-	method   string
-	argsStr  string
-	quoted   bool
-	value    string
-	parent   *token
-	children []*token
-}
-
-// toValue converts a token to a Node value based on its type and content.
-// Handles quoted strings, booleans, numbers, and defaults to string values.
-func (t *token) toValue() Node {
-	if !t.quoted {
-		if t.value == "" {
-			return Nil
-		}
-		if t.value == "true" {
-			return BoolValue(true)
-		}
-		if t.value == "false" {
-			return BoolValue(false)
-		}
-		if n, err := strconv.ParseFloat(t.value, 64); err == nil {
-			return NumberValue(n)
-		}
-	}
-	return StringValue(t.value)
-}
-
-// indexOfCmd finds the index of a child token with the specified command.
-// Returns -1 if not found.
-func (t *token) indexOfCmd(cmd string) int {
-	for i, c := range t.children {
-		if c.cmd == cmd {
-			return i
-		}
-	}
-	return -1
-}
-
-func (t *token) Args() ([]string, error) {
-	if t.argsStr == "" {
-		return nil, nil
-	}
-	r := csv.NewReader(strings.NewReader(t.argsStr))
-	args, err := r.Read()
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse args: %w", err)
-	}
-	return args, nil
-}
-
-var tokenRegexp = regexp.MustCompile(`"([^"]*)"|(and|or|==|<=|>=|!=|~=|\.\.|[\.\[\]\(\)\|<>:]|([a-z]+)\(([^\)]*)\))|(\w+)`)
-
-// tokenizeQuery parses a query expression string into a token tree.
-// Uses regular expressions to identify different token types.
-func tokenizeQuery(expr string) (*token, error) {
-	current := &token{}
-	ms := tokenRegexp.FindAllStringSubmatch(expr, -1)
-	for _, m := range ms {
-		quoted := m[1]
-		cmd := m[2]
-		method := m[3]
-		argsStr := m[4]
-		word := m[5]
-		// NOTE: detect node name
-		if quoted != "" || word != "" {
-			value := quoted
-			if value == "" {
-				value = word
-			}
-			var lastChild *token
-			if len(current.children) > 0 {
-				lastChild = current.children[len(current.children)-1]
-			}
-			if lastChild != nil && (lastChild.cmd == "." || lastChild.cmd == "..") {
-				lastChild.value = value
-				lastChild.quoted = quoted != ""
-				continue
-			}
-			t := &token{value: value, quoted: quoted != ""}
-			current.children = append(current.children, t)
-			continue
-		}
-		// NOTE: detect keywords
-		t := &token{cmd: cmd, method: method, argsStr: argsStr, parent: current}
-		switch cmd {
-		case "]", ")":
-			if (cmd == "]" && current.cmd != "[") || (cmd == ")" && current.cmd != "(") {
-				return nil, fmt.Errorf("syntax error: no left bracket: %q", expr)
-			}
-			current = current.parent
-		case "[", "(":
-			current.children = append(current.children, t)
-			current = t
-		default:
-			current.children = append(current.children, t)
-		}
-	}
-	if current.parent != nil {
-		return nil, fmt.Errorf("syntax error: no right brackets: %q", expr)
-	}
-	return current, nil
-}
-
-// tokenToQuery converts a token tree into a Query object.
-// Recursively processes tokens based on their command type.
-func tokenToQuery(t *token, expr string) (Query, error) {
-	if t.method != "" {
-		args, err := t.Args()
-		if err != nil {
-			return nil, err
-		}
-		return NewMethodQuery(t.method, args...)
-	}
-	child := len(t.children)
-	switch t.cmd {
-	case "":
-		if child == 0 {
-			return ValueQuery{t.toValue()}, nil
-		}
-	case "|":
-		return SlurpQuery{}, nil
-	case ".":
-		if t.value != "" {
-			return MapQuery(t.value), nil
-		}
-		return NopQuery{}, nil
-	case "..":
-		if t.value != "" {
-			return WalkQuery(t.value), nil
-		}
-		return NopQuery{}, nil
-	case "[":
-		if child == 0 {
-			return SelectQuery{}, nil
-		}
-		if child == 1 {
-			i, err := strconv.Atoi(t.children[0].value)
-			if err != nil {
-				return nil, fmt.Errorf("syntax error: invalid array index: %q", expr)
-			}
-			return ArrayQuery(i), nil
-		}
-		if i := t.indexOfCmd(":"); i != -1 {
-			return tokensToArrayRangeQuery(t.children, i, expr)
-		}
-		selector, err := tokensToSelector(t.children, expr)
-		if err != nil {
-			return nil, err
-		}
-		return SelectQuery{selector}, nil
-	}
-	if child == 0 {
-		return nil, fmt.Errorf("syntax error: invalid token %s: %q", t.cmd, expr)
-	}
-	if child == 1 {
-		return tokenToQuery(t.children[0], expr)
-	}
-	var fq FilterQuery
-	for _, c := range t.children {
-		q, err := tokenToQuery(c, expr)
-		if err != nil {
-			return nil, err
-		}
-		fq = append(fq, q)
-	}
-	return fq, nil
-}
-
-// tokensToArrayRangeQuery creates an ArrayRangeQuery from tokens.
-// Handles array slice notation like [from:to].
-func tokensToArrayRangeQuery(ts []*token, i int, expr string) (Query, error) {
-	from := -1
-	to := -1
-	if j := i - 1; j >= 0 {
-		var err error
-		from, err = strconv.Atoi(ts[j].value)
-		if err != nil {
-			return nil, fmt.Errorf("syntax error: invalid array range: %q", expr)
-		}
-	}
-	if j := i + 1; j < len(ts) {
-		var err error
-		to, err = strconv.Atoi(ts[j].value)
-		if err != nil {
-			return nil, fmt.Errorf("syntax error: invalid array range: %q", expr)
-		}
-	}
-	return ArrayRangeQuery{from, to}, nil
-}
-
-// tokensToSelector converts tokens into a Selector for filtering operations.
-// Handles logical operators (and/or) and comparison operators.
-func tokensToSelector(ts []*token, expr string) (Selector, error) {
-	andOr := ""
-	var groups [][]*token
-	off := 0
-	for i, t := range ts {
-		switch t.cmd {
-		case "and", "or":
-			if andOr != "" && andOr != t.cmd {
-				return nil, fmt.Errorf("syntax error: mixed and|or: %q", expr)
-			}
-			andOr = t.cmd
-			groups = append(groups, ts[off:i])
-			off = i + 1
-		case "(":
-			groups = append(groups, ts[off:i])
-			groups = append(groups, []*token{t})
-			off = i + 1
-		}
-	}
-	groups = append(groups, ts[off:])
-
-	var ss []Selector
-	for _, group := range groups {
-		op := -1
-	GROUP:
-		for i, t := range group {
-			if t.cmd == "(" {
-				sss, err := tokensToSelector(t.children, expr)
-				if err != nil {
-					return nil, err
-				}
-				ss = append(ss, sss)
-				break
-			}
-			switch Operator(t.cmd) {
-			case EQ, GT, GE, LT, LE, NE, RE:
-				op = i
-				break GROUP
-			}
-		}
-		if op == -1 {
-			if len(groups) == 1 && len(group) > 0 {
-				q, err := tokenToQuery(&token{children: group}, expr)
-				if err != nil {
-					return nil, err
-				}
-				ss = append(ss, Evaluator{Query: q})
-			}
-			continue
-		}
-		left, err := tokenToQuery(&token{children: group[0:op]}, expr)
-		if err != nil {
-			return nil, err
-		}
-		right, err := tokenToQuery(&token{children: group[op+1:]}, expr)
-		if err != nil {
-			return nil, err
-		}
-		ss = append(ss, Comparator{left, Operator(group[op].cmd), right})
-	}
-	if andOr == "or" {
-		return Or(ss), nil
-	}
-	return And(ss), nil
-}
 
 // Find finds a node from n using the Query.
 func Find(n Node, expr string) ([]Node, error) {
