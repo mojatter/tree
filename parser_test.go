@@ -111,6 +111,9 @@ func TestParseQuery(t *testing.T) {
 		}, {
 			expr: `["foo bar"]`,
 			want: MapQuery("foo bar"),
+		}, {
+			expr: `[-1]`,
+			want: ArrayQuery(-1),
 		},
 	}
 	for _, tc := range testCases {
@@ -158,6 +161,21 @@ func TestParseQueryErrors(t *testing.T) {
 		}, {
 			expr:   `.a[a]`,
 			errstr: `syntax error: invalid array index: ".a[a]"`,
+		}, {
+			expr:   `.foo-bar`,
+			errstr: `syntax error: invalid token -: ".foo-bar"`,
+		}, {
+			expr:   `[foo-bar]`,
+			errstr: `syntax error: invalid token -: "[foo-bar]"`,
+		}, {
+			expr:   `[-3:5]`,
+			errstr: `syntax error: invalid array range: "[-3:5]"`,
+		}, {
+			expr:   `[-3:]`,
+			errstr: `syntax error: invalid array range: "[-3:]"`,
+		}, {
+			expr:   `[-2:-1]`,
+			errstr: `syntax error: invalid array range: "[-2:-1]"`,
 		},
 	}
 	for _, tc := range testCases {
