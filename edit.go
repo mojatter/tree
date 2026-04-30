@@ -100,7 +100,11 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node) error
 		return resolveMapStep(pn, n, string(tq), fq, step, op, v)
 
 	case ArrayQuery:
-		return resolveArrayStep(pn, n, int(tq), fq, step, op, v)
+		index := int(tq)
+		if a := n.Array(); a != nil {
+			index = tq.resolveIndex(len(a))
+		}
+		return resolveArrayStep(pn, n, index, fq, step, op, v)
 
 	case WalkQuery:
 		key := string(tq)

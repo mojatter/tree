@@ -143,23 +143,39 @@ type ArrayQuery int
 
 var _ EditorQuery = (ArrayQuery)(0)
 
+// resolveIndex returns the absolute index for q against an array of length n.
+// A non-negative index passes through unchanged. A negative index is resolved
+// jq-style: -1 maps to the last element. The result may still be out of range
+// (negative or >= n); callers handle that.
+func (q ArrayQuery) resolveIndex(n int) int {
+	i := int(q)
+	if i < 0 {
+		return n + i
+	}
+	return i
+}
+
 func (q ArrayQuery) Exec(n Node) ([]Node, error) {
 	if a := n.Array(); a != nil {
-		index := int(q)
-		if n.Has(index) {
+		index := q.resolveIndex(len(a))
+		if index >= 0 && index < len(a) {
 			return []Node{a[index]}, nil
 		}
 		return nil, nil
 	}
-	return nil, fmt.Errorf("cannot index array with %d", q)
+	return nil, fmt.Errorf("cannot index array with %d", int(q))
 }
 
 func (q ArrayQuery) Set(pn *Node, v Node) error {
+	n := *pn
 	index := int(q)
-	if en, ok := (*pn).(EditorNode); ok {
+	if a := n.Array(); a != nil {
+		index = q.resolveIndex(len(a))
+	}
+	if en, ok := n.(EditorNode); ok {
 		return en.Set(index, v)
 	}
-	if a := (*pn).Array(); a != nil {
+	if a := n.Array(); a != nil {
 		if err := a.Set(index, v); err != nil {
 			return err
 		}
@@ -167,18 +183,24 @@ func (q ArrayQuery) Set(pn *Node, v Node) error {
 		*pn = a
 		return nil
 	}
-	return fmt.Errorf("cannot index array with %d", index)
+	return fmt.Errorf("cannot index array with %d", int(q))
 }
 
 func (q ArrayQuery) Append(pn *Node, v Node) error {
-	index := int(q)
 	n := *pn
+	index := int(q)
+	if a := n.Array(); a != nil {
+		index = q.resolveIndex(len(a))
+	}
 	if en, ok := n.(EditorNode); ok {
 		if n.Has(index) {
 			if ca := n.Get(index).Array(); ca != nil {
 				return en.Set(index, append(ca, v))
 			}
-			return fmt.Errorf("cannot append to array with %d", index)
+			return fmt.Errorf("cannot append to array with %d", int(q))
+		}
+		if index < 0 {
+			return fmt.Errorf("cannot append to array with %d", int(q))
 		}
 		return en.Set(index, Array{v})
 	}
@@ -189,7 +211,10 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 				*pn = a
 				return nil
 			}
-			return fmt.Errorf("cannot append to array with %d", index)
+			return fmt.Errorf("cannot append to array with %d", int(q))
+		}
+		if index < 0 {
+			return fmt.Errorf("cannot append to array with %d", int(q))
 		}
 		na := make(Array, index+1)
 		copy(na, a)
@@ -197,25 +222,29 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 		*pn = na
 		return nil
 	}
-	return fmt.Errorf("cannot append to array with %d", index)
+	return fmt.Errorf("cannot append to array with %d", int(q))
 }
 
 func (q ArrayQuery) Delete(pn *Node) error {
+	n := *pn
 	index := int(q)
-	if en, ok := (*pn).(EditorNode); ok {
+	if a := n.Array(); a != nil {
+		index = q.resolveIndex(len(a))
+	}
+	if en, ok := n.(EditorNode); ok {
 		if err := en.Delete(index); err == nil {
 			return nil
 		}
 	}
-	if a := (*pn).Array(); a != nil {
+	if a := n.Array(); a != nil {
 		if err := a.Delete(index); err != nil {
-			return fmt.Errorf("cannot delete array with %d", index)
+			return fmt.Errorf("cannot delete array with %d", int(q))
 		}
 
 		*pn = a
 		return nil
 	}
-	return fmt.Errorf("cannot delete array with %d", index)
+	return fmt.Errorf("cannot delete array with %d", int(q))
 }
 
 func (q ArrayQuery) String() string {
