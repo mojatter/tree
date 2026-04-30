@@ -3,6 +3,7 @@ package tree
 import (
 	"encoding/csv"
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -678,7 +679,8 @@ func wordValue(s string) Node {
 	if s == "false" {
 		return BoolValue(false)
 	}
-	if n, err := strconv.ParseFloat(s, 64); err == nil {
+	if n, err := strconv.ParseFloat(s, 64); err == nil &&
+		!math.IsInf(n, 0) && !math.IsNaN(n) {
 		return NumberValue(n)
 	}
 	return StringValue(s)
