@@ -2,6 +2,7 @@ package tree
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"testing"
 )
@@ -551,5 +552,149 @@ func Test_EditorNode_Delete(t *testing.T) {
 		if !reflect.DeepEqual(got, test.want) {
 			t.Errorf("tests[%d] got %v; want %v", i, got, test.want)
 		}
+	}
+}
+
+func TestEqual(t *testing.T) {
+	nan := NumberValue(math.NaN())
+
+	testCases := []struct {
+		caseName string
+		a, b     Node
+		want     bool
+	}{
+		// Untyped nil and Nil sentinel
+		{"nil and nil", nil, nil, true},
+		{"nil and Nil", nil, Nil, true},
+		{"Nil and Nil", Nil, Nil, true},
+
+		// Scalars: same type, same value
+		{"StringValue same", StringValue("x"), StringValue("x"), true},
+		{"StringValue different", StringValue("x"), StringValue("y"), false},
+		{"NumberValue same", NumberValue(1), NumberValue(1), true},
+		{"NumberValue different", NumberValue(1), NumberValue(2), false},
+		{"NumberValue int and float same value", NumberValue(1), NumberValue(1.0), true},
+		{"BoolValue true and true", BoolValue(true), BoolValue(true), true},
+		{"BoolValue false and false", BoolValue(false), BoolValue(false), true},
+		{"BoolValue different", BoolValue(true), BoolValue(false), false},
+
+		// Type mismatches
+		{"StringValue and NumberValue", StringValue("1"), NumberValue(1), false},
+		{"BoolValue and StringValue", BoolValue(true), StringValue("true"), false},
+		{"Nil and Map(nil)", Nil, Map(nil), false},
+		{"Nil and Array(nil)", Nil, Array(nil), false},
+		{"Map empty and Array empty", Map{}, Array{}, false},
+
+		// NaN: IEEE 754 semantics
+		{"NaN and NaN", nan, nan, false},
+		{"NaN and Number", nan, NumberValue(1), false},
+
+		// Map equality: order-independent, nil/empty equivalence
+		{"Map empty and empty", Map{}, Map{}, true},
+		{"Map nil and empty", Map(nil), Map{}, true},
+		{"Map same single entry", Map{"a": NumberValue(1)}, Map{"a": NumberValue(1)}, true},
+		{
+			"Map same two entries same order",
+			Map{"a": NumberValue(1), "b": NumberValue(2)},
+			Map{"a": NumberValue(1), "b": NumberValue(2)},
+			true,
+		},
+		{
+			"Map same two entries different order",
+			Map{"a": NumberValue(1), "b": NumberValue(2)},
+			Map{"b": NumberValue(2), "a": NumberValue(1)},
+			true,
+		},
+		{
+			"Map different value",
+			Map{"a": NumberValue(1)},
+			Map{"a": NumberValue(2)},
+			false,
+		},
+		{
+			"Map different keys",
+			Map{"a": NumberValue(1)},
+			Map{"b": NumberValue(1)},
+			false,
+		},
+		{
+			"Map different size",
+			Map{"a": NumberValue(1)},
+			Map{"a": NumberValue(1), "b": NumberValue(2)},
+			false,
+		},
+
+		// Array equality: order-dependent, nil/empty equivalence
+		{"Array empty and empty", Array{}, Array{}, true},
+		{"Array nil and empty", Array(nil), Array{}, true},
+		{
+			"Array same",
+			Array{NumberValue(1), NumberValue(2)},
+			Array{NumberValue(1), NumberValue(2)},
+			true,
+		},
+		{
+			"Array different order",
+			Array{NumberValue(1), NumberValue(2)},
+			Array{NumberValue(2), NumberValue(1)},
+			false,
+		},
+		{
+			"Array different size",
+			Array{NumberValue(1)},
+			Array{NumberValue(1), NumberValue(2)},
+			false,
+		},
+
+		// Nested structures
+		{
+			"Map with nested Map equal",
+			Map{"a": Map{"b": NumberValue(1)}},
+			Map{"a": Map{"b": NumberValue(1)}},
+			true,
+		},
+		{
+			"Map with nested Map different",
+			Map{"a": Map{"b": NumberValue(1)}},
+			Map{"a": Map{"b": NumberValue(2)}},
+			false,
+		},
+		{
+			"Array of Map equal",
+			Array{Map{"a": NumberValue(1)}},
+			Array{Map{"a": NumberValue(1)}},
+			true,
+		},
+
+		// nil child entries inside containers
+		{"Map with nil value", Map{"a": nil}, Map{"a": nil}, true},
+		{"Map nil value and Nil value", Map{"a": nil}, Map{"a": Nil}, true},
+		{"Array with nil element", Array{nil}, Array{nil}, true},
+		{"Array nil element and Nil element", Array{nil}, Array{Nil}, true},
+
+		// Any wrapper unwrapping
+		{
+			"Any wraps Map equals raw Map",
+			Any{Node: Map{"a": NumberValue(1)}},
+			Map{"a": NumberValue(1)},
+			true,
+		},
+		{
+			"Any and Any same",
+			Any{Node: NumberValue(1)},
+			Any{Node: NumberValue(1)},
+			true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			if got := Equal(tc.a, tc.b); got != tc.want {
+				t.Errorf("Equal(%v, %v) = %v; want %v", tc.a, tc.b, got, tc.want)
+			}
+			if got := Equal(tc.b, tc.a); got != tc.want {
+				t.Errorf("Equal(%v, %v) = %v; want %v (symmetry)", tc.b, tc.a, got, tc.want)
+			}
+		})
 	}
 }
