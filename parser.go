@@ -384,6 +384,14 @@ func (p *parser) parseBracket() (Query, error) {
 		return SelectQuery{}, nil
 	}
 
+	if p.peek().kind == tkString &&
+		p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].kind == tkRBrack {
+		text := p.peek().text
+		p.advance()
+		p.advance()
+		return MapQuery(text), nil
+	}
+
 	if p.peek().kind == tkIdent &&
 		p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].kind == tkRBrack {
 		text := p.peek().text
