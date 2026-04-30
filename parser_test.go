@@ -198,6 +198,20 @@ func TestParseQuery(t *testing.T) {
 		}, {
 			expr: `[:-1]`,
 			want: ArrayRangeQuery{From: nil, To: IntPtr(-1)},
+		}, {
+			expr: `[.x == Inf]`,
+			want: SelectQuery{
+				And{
+					Comparator{MapQuery("x"), EQ, ValueQuery{StringValue("Inf")}},
+				},
+			},
+		}, {
+			expr: `[.x == NaN]`,
+			want: SelectQuery{
+				And{
+					Comparator{MapQuery("x"), EQ, ValueQuery{StringValue("NaN")}},
+				},
+			},
 		},
 	}
 	for _, tc := range testCases {
