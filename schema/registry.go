@@ -85,14 +85,14 @@ func (r *Registry) Parse(spec tree.Node) (Rule, error) {
 
 	tn := m.Get("type")
 	if tn.IsNil() {
-		return nil, fmt.Errorf("rule spec missing 'type'")
+		return nil, fmt.Errorf(`rule spec: "type" is required`)
 	}
 	if !tn.Type().IsStringValue() {
-		return nil, fmt.Errorf("'type' must be string, got %s", tn.Type())
+		return nil, fmt.Errorf(`"type" must be string, got %s`, tn.Type())
 	}
 	typ := tn.Value().String()
 	if typ == "" {
-		return nil, fmt.Errorf("'type' must not be empty")
+		return nil, fmt.Errorf(`"type" must not be empty`)
 	}
 
 	e, ok := r.entries[typ]
@@ -314,7 +314,7 @@ func parseOrSpec(spec tree.Node, reg *Registry) (Rule, error) {
 func parseNotSpec(spec tree.Node, reg *Registry) (Rule, error) {
 	inner := spec.Get("rule")
 	if inner.IsNil() {
-		return nil, fmt.Errorf("not: 'rule' is required")
+		return nil, fmt.Errorf(`not: "rule" is required`)
 	}
 	r, err := reg.Parse(inner)
 	if err != nil {
@@ -326,7 +326,7 @@ func parseNotSpec(spec tree.Node, reg *Registry) (Rule, error) {
 func parseEverySpec(spec tree.Node, reg *Registry) (Rule, error) {
 	rulesSpec := spec.Get("rules")
 	if rulesSpec.IsNil() {
-		return nil, fmt.Errorf("every: 'rules' is required")
+		return nil, fmt.Errorf(`every: "rules" is required`)
 	}
 	rules, err := ParseQueryRulesWith(rulesSpec, reg)
 	if err != nil {
@@ -338,10 +338,10 @@ func parseEverySpec(spec tree.Node, reg *Registry) (Rule, error) {
 func parseOfArray(kind string, spec tree.Node, reg *Registry) ([]Rule, error) {
 	of := spec.Get("of")
 	if of.IsNil() {
-		return nil, fmt.Errorf("%s: 'of' is required", kind)
+		return nil, fmt.Errorf(`%s: "of" is required`, kind)
 	}
 	if !of.Type().IsArray() {
-		return nil, fmt.Errorf("%s: 'of' must be array, got %s", kind, of.Type())
+		return nil, fmt.Errorf(`%s: "of" must be array, got %s`, kind, of.Type())
 	}
 	arr := of.Array()
 	rs := make([]Rule, 0, len(arr))

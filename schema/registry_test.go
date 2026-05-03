@@ -46,17 +46,17 @@ func TestRegistry_Parse(t *testing.T) {
 		{
 			caseName: "missing type",
 			spec:     tree.Map{"enum": tree.A("a")},
-			wantErrs: []string{"rule spec missing 'type'"},
+			wantErrs: []string{`rule spec: "type" is required`},
 		},
 		{
 			caseName: "type not string",
 			spec:     tree.Map{"type": tree.V(42)},
-			wantErrs: []string{"'type' must be string"},
+			wantErrs: []string{`"type" must be string`},
 		},
 		{
 			caseName: "type empty",
 			spec:     tree.Map{"type": tree.V("")},
-			wantErrs: []string{"'type' must not be empty"},
+			wantErrs: []string{`"type" must not be empty`},
 		},
 		{
 			caseName: "unknown type",
@@ -139,17 +139,17 @@ func TestRegistry_Parse(t *testing.T) {
 		{
 			caseName: "and missing of",
 			spec:     tree.Map{"type": tree.V("and")},
-			wantErrs: []string{"and: 'of' is required"},
+			wantErrs: []string{`and: "of" is required`},
 		},
 		{
 			caseName: "or of not array",
 			spec:     tree.Map{"type": tree.V("or"), "of": tree.V("nope")},
-			wantErrs: []string{"or: 'of' must be array"},
+			wantErrs: []string{`or: "of" must be array`},
 		},
 		{
 			caseName: "not missing rule",
 			spec:     tree.Map{"type": tree.V("not")},
-			wantErrs: []string{"not: 'rule' is required"},
+			wantErrs: []string{`not: "rule" is required`},
 		},
 		{
 			caseName: "not rule nested error",
@@ -159,7 +159,7 @@ func TestRegistry_Parse(t *testing.T) {
 		{
 			caseName: "every missing rules",
 			spec:     tree.Map{"type": tree.V("every")},
-			wantErrs: []string{"every: 'rules' is required"},
+			wantErrs: []string{`every: "rules" is required`},
 		},
 		{
 			caseName: "every nested error",
