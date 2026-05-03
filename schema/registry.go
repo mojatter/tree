@@ -47,17 +47,18 @@ func NewRegistry() *Registry {
 }
 
 // BuiltinRegistry returns a Registry preloaded with the built-in rule
-// types: require, string, int, float, bool, array, map, and, or,
+// types: require, any, string, int, float, bool, array, map, and, or,
 // not, every.
 func BuiltinRegistry() *Registry {
 	r := NewRegistry()
 	r.Register("require", parseRequireSpec)
+	r.Register("any", parseAnySpec)
 	r.Register("string", parseStringSpec, "enum", "regex", "minLen", "maxLen")
 	r.Register("int", parseIntSpec, "min", "max")
 	r.Register("float", parseFloatSpec, "min", "max")
 	r.Register("bool", parseBoolSpec)
 	r.Register("array", parseArraySpec, "minLen", "maxLen")
-	r.Register("map", parseMapSpec, "keys")
+	r.Register("map", parseMapSpec, "keys", "keyedRules")
 	r.Register("and", parseAndSpec, "of")
 	r.Register("or", parseOrSpec, "of")
 	r.Register("not", parseNotSpec, "rule")
@@ -180,6 +181,10 @@ func parseRequireSpec(_ tree.Node, _ *Registry) (Rule, error) {
 	return Require{}, nil
 }
 
+func parseAnySpec(_ tree.Node, _ *Registry) (Rule, error) {
+	return Any{}, nil
+}
+
 func parseStringSpec(spec tree.Node, _ *Registry) (Rule, error) {
 	r := String{}
 	var err error
@@ -246,14 +251,48 @@ func parseArraySpec(spec tree.Node, _ *Registry) (Rule, error) {
 	return r, nil
 }
 
-func parseMapSpec(spec tree.Node, _ *Registry) (Rule, error) {
+func parseMapSpec(spec tree.Node, reg *Registry) (Rule, error) {
 	r := Map{}
 	ks, err := optStringSlice(spec, "keys")
 	if err != nil {
 		return nil, err
 	}
 	r.Keys = ks
+	kr, err := optKeyedRules(spec, "keyedRules", reg)
+	if err != nil {
+		return nil, err
+	}
+	r.KeyedRules = kr
 	return r, nil
+}
+
+// optKeyedRules parses an optional map field whose value is itself
+// a map of key -> rule spec. Each entry is parsed via reg.Parse so
+// nested rule type errors are aggregated and prefixed with
+// "<key>.<entry>:".
+func optKeyedRules(spec tree.Node, key string, reg *Registry) (map[string]Rule, error) {
+	n := spec.Get(key)
+	if n.IsNil() {
+		return nil, nil
+	}
+	if !n.Type().IsMap() {
+		return nil, fmt.Errorf("%q must be map, got %s", key, n.Type())
+	}
+	m := n.Map()
+	out := make(map[string]Rule, len(m))
+	var errs []error
+	for _, k := range m.Keys() {
+		r, err := reg.Parse(m[k])
+		if err != nil {
+			errs = append(errs, fmt.Errorf("%s.%s: %w", key, k, err))
+			continue
+		}
+		out[k] = r
+	}
+	if len(errs) > 0 {
+		return nil, joinLimited(errs, reg.MaxReportedErrors)
+	}
+	return out, nil
 }
 
 func parseAndSpec(spec tree.Node, reg *Registry) (Rule, error) {

@@ -9,7 +9,7 @@ import (
 
 func TestBuiltinRegistry(t *testing.T) {
 	r := BuiltinRegistry()
-	wantTypes := []string{"require", "string", "int", "float", "bool", "array", "map", "and", "or", "not"}
+	wantTypes := []string{"require", "any", "string", "int", "float", "bool", "array", "map", "and", "or", "not", "every"}
 	for _, name := range wantTypes {
 		if _, ok := r.entries[name]; !ok {
 			t.Errorf("BuiltinRegistry missing %q", name)
@@ -122,6 +122,21 @@ func TestRegistry_Parse(t *testing.T) {
 			wantErrs: []string{`"keys"[1] must be string`},
 		},
 		{
+			caseName: "map keyedRules not a map",
+			spec:     tree.Map{"type": tree.V("map"), "keyedRules": tree.A("a")},
+			wantErrs: []string{`"keyedRules" must be map, got array`},
+		},
+		{
+			caseName: "map keyedRules nested rule error",
+			spec: tree.Map{
+				"type": tree.V("map"),
+				"keyedRules": tree.Map{
+					"name": tree.Map{"type": tree.V("bogus")},
+				},
+			},
+			wantErrs: []string{`keyedRules.name: unknown rule type "bogus"`},
+		},
+		{
 			caseName: "and missing of",
 			spec:     tree.Map{"type": tree.V("and")},
 			wantErrs: []string{"and: 'of' is required"},
@@ -207,6 +222,72 @@ func TestRegistry_Parse_RequiredFalseNotWrapped(t *testing.T) {
 	// Not wrapped: Nil must be OK.
 	if err := rule.Validate(tree.Nil, ".x"); err != nil {
 		t.Errorf("required:false should not wrap; got %v", err)
+	}
+}
+
+func TestRegistry_Parse_Any(t *testing.T) {
+	r := BuiltinRegistry()
+	rule, err := r.Parse(tree.Map{"type": tree.V("any")})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := rule.(Any); !ok {
+		t.Errorf("got %T; want Any", rule)
+	}
+	// Any passes for every node, including Nil.
+	for _, n := range []tree.Node{tree.Nil, tree.V("x"), tree.V(1), tree.A(), tree.Map{}} {
+		if err := rule.Validate(n, ".x"); err != nil {
+			t.Errorf("Any on %v: unexpected %v", n, err)
+		}
+	}
+}
+
+func TestRegistry_Parse_Map_KeyedRules(t *testing.T) {
+	r := BuiltinRegistry()
+	spec := tree.Map{
+		"type": tree.V("map"),
+		"keys": tree.A("legacy"),
+		"keyedRules": tree.Map{
+			"name": tree.Map{"type": tree.V("string"), "required": tree.V(true)},
+			"age":  tree.Map{"type": tree.V("int"), "min": tree.V(0)},
+			"meta": tree.Map{"type": tree.V("any")},
+		},
+	}
+	rule, err := r.Parse(spec)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	mr, ok := rule.(Map)
+	if !ok {
+		t.Fatalf("got %T; want Map", rule)
+	}
+	if len(mr.Keys) != 1 || mr.Keys[0] != "legacy" {
+		t.Errorf("Keys = %v; want [legacy]", mr.Keys)
+	}
+	for _, k := range []string{"name", "age", "meta"} {
+		if _, ok := mr.KeyedRules[k]; !ok {
+			t.Errorf("KeyedRules missing %q", k)
+		}
+	}
+	// Round-trip: validate sample data through the parsed rule.
+	doc := tree.Map{
+		"age":    tree.V(-1),         // < min
+		"meta":   tree.V("anything"), // Any passes
+		"legacy": tree.V("ok"),       // listed in Keys
+		"bogus":  tree.V(1),          // unknown
+	}
+	err = mr.Validate(doc, ".x")
+	if err == nil {
+		t.Fatal("want error, got nil")
+	}
+	for _, w := range []string{
+		".x: unknown key \"bogus\"",
+		".x.age: value -1 less than min 0",
+		".x.name: required",
+	} {
+		if !strings.Contains(err.Error(), w) {
+			t.Errorf("error %q missing %q", err.Error(), w)
+		}
 	}
 }
 
