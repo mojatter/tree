@@ -3,6 +3,7 @@ package schema
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"regexp"
 	"slices"
@@ -38,6 +39,15 @@ func Int64Ptr(v int64) *int64 { return tree.Int64Ptr(v) }
 //
 // Deprecated: Use [tree.Float64Ptr].
 func Float64Ptr(v float64) *float64 { return tree.Float64Ptr(v) }
+
+// Any is a no-op rule that always passes. It is useful inside a
+// [Map.KeyedRules] entry to declare a key as "allowed but not
+// validated", so the map's allow-list still rejects unknown keys
+// while letting the listed key carry any value.
+type Any struct{}
+
+// Validate implements Rule.
+func (Any) Validate(tree.Node, string) error { return nil }
 
 // Require fires an error when the node is tree.Nil (query matched
 // nothing). It is the only rule that treats Nil as a violation.
@@ -294,11 +304,23 @@ func (r Array) Validate(n tree.Node, q string) error {
 	return nil
 }
 
-// Map matches a map. When Keys is non-empty, any key outside the
-// allow-list is reported (one error per unknown key, keys sorted for
-// stable output).
+// Map matches a map with optional allow-list and per-key rules.
+//
+// When Keys or KeyedRules is non-empty, the map becomes "closed":
+// any key not in (Keys ∪ KeyedRules-keys) is reported as
+// "unknown key". Keys lists names that are accepted without further
+// validation; KeyedRules attaches a Rule to specific keys, with the
+// rule receiving tree.Nil when the key is absent (so [Required]
+// fires for missing required fields).
+//
+// When both Keys and KeyedRules are empty, only the type check runs
+// (any keys are accepted).
+//
+// Errors are reported with sorted keys for stable output. Per-key
+// rule errors carry the concrete sub-path (q + "." + key).
 type Map struct {
-	Keys []string
+	Keys       []string
+	KeyedRules map[string]Rule
 }
 
 // Validate implements Rule.
@@ -309,15 +331,33 @@ func (r Map) Validate(n tree.Node, q string) error {
 	if !n.Type().IsMap() {
 		return fmt.Errorf("%s: expected map, got %s", q, n.Type())
 	}
-	if len(r.Keys) == 0 {
+	if len(r.Keys) == 0 && len(r.KeyedRules) == 0 {
 		return nil
 	}
 	m := n.Map()
 	var errs []error
 	for _, k := range m.Keys() {
-		if !slices.Contains(r.Keys, k) {
-			errs = append(errs, fmt.Errorf("%s: unknown key %q", q, k))
+		if slices.Contains(r.Keys, k) {
+			continue
+		}
+		if _, ok := r.KeyedRules[k]; ok {
+			continue
+		}
+		errs = append(errs, fmt.Errorf("%s: unknown key %q", q, k))
+	}
+	for _, k := range slices.Sorted(maps.Keys(r.KeyedRules)) {
+		if err := r.KeyedRules[k].Validate(m.Get(k), keyPath(q, k)); err != nil {
+			errs = append(errs, err)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// keyPath joins a parent display path q with a child key k, avoiding
+// the "..key" double-dot when q is the root marker ".".
+func keyPath(q, k string) string {
+	if q == "." {
+		return "." + k
+	}
+	return q + "." + k
 }

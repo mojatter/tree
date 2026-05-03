@@ -17,6 +17,7 @@ set of rules keyed by tree queries.
 
 - [What it does](#what-it-does)
 - [Getting started: flat rules](#getting-started-flat-rules)
+- [Closed object schemas with `Map.KeyedRules`](#closed-object-schemas-with-mapkeyedrules)
 - [Nested validation with `Every`](#nested-validation-with-every)
 - [`"[]"` suffix vs `Every`](#-suffix-vs-every)
 - [Filter queries and where they fall short](#filter-queries-and-where-they-fall-short)
@@ -85,6 +86,58 @@ err := schema.Validate(doc, schema.QueryRules{
 [`IntPtr`][IntPtr], [`Int64Ptr`][Int64Ptr], and
 [`Float64Ptr`][Float64Ptr] exist so you can set `Min`/`Max` inline
 without a temporary variable.
+
+## Closed object schemas with `Map.KeyedRules`
+
+The flat `QueryRules` style is convenient for sparse assertions over a
+larger document — pin a few paths, ignore the rest. When the goal is
+the opposite ("this map must look exactly like *this* shape"),
+[`Map.KeyedRules`][Map] lets one rule describe both the allow-list
+and the per-key validators:
+
+```go
+schema.Map{KeyedRules: map[string]schema.Rule{
+    "name": schema.Required(schema.String{}),
+    "age":  schema.Int{Min: schema.Int64Ptr(0), Max: schema.Int64Ptr(150)},
+    "tags": schema.Every{Rules: schema.QueryRules{
+        ".": schema.String{},
+    }},
+}}
+```
+
+- The keys of `KeyedRules` form the strict allow-list — any extra key
+  in the data surfaces as `unknown key "..."`.
+- Each entry's rule is invoked with the corresponding value, or
+  `tree.Nil` when the key is absent. Wrap with [`Required`][Required]
+  to make a field mandatory.
+- Nested `Map.KeyedRules` compose naturally; if the parent value is
+  absent, the leaf check is skipped (rather than reporting one error
+  per missing leaf).
+
+`Map.Keys` and `Map.KeyedRules` co-exist. `Keys` lists names accepted
+without any per-value rule (useful for grandfathered legacy fields);
+the strict allow-list becomes the union. To allow a specific key
+without imposing any check, drop an [`Any{}`][Any] entry into
+`KeyedRules`:
+
+```go
+schema.Map{KeyedRules: map[string]schema.Rule{
+    "name": schema.Required(schema.String{}),
+    "meta": schema.Any{}, // any value type is fine, but the key is recognised
+}}
+```
+
+**When to choose which:**
+
+| Scenario | Recommended |
+| -------- | ----------- |
+| "These specific paths must validate; ignore everything else" | flat `QueryRules` |
+| "This map is a closed object: known keys, no extras" | `Map.KeyedRules` |
+| "Each value of this map / each element of this array must validate" | [`Every`][Every] |
+| "Allow this key but trust its content" | `Map.Keys` (no rule) or `Any{}` inside `KeyedRules` |
+
+The two styles can be mixed inside the same `QueryRules`; use whichever
+fits each location.
 
 ## Nested validation with `Every`
 
@@ -189,12 +242,13 @@ resulting rule with `Required`.
 | type | fields |
 | ---- | ------ |
 | `require` | *(none)* |
+| `any` | *(none)* |
 | `string` | `enum`, `regex`, `minLen`, `maxLen` |
 | `int` | `min`, `max` |
 | `float` | `min`, `max` |
 | `bool` | *(none)* |
 | `array` | `minLen`, `maxLen` |
-| `map` | `keys` |
+| `map` | `keys`, `keyedRules: {key: spec, ...}` |
 | `and` | `of: [spec, ...]` |
 | `or` | `of: [spec, ...]` |
 | `not` | `rule: spec` |
@@ -203,6 +257,27 @@ resulting rule with `Required`.
 Plus the universal meta fields `type` and `required`. Unknown
 fields on a spec are rejected. Field types are checked strictly —
 for example, `min: "0"` is an error, not coerced to `0`.
+
+### Closed object via `map.keyedRules`
+
+The same closed-object check as the Go example above, in YAML:
+
+```yaml
+".":
+  type: map
+  keyedRules:
+    name: { type: string, required: true }
+    age:  { type: int, min: 0, max: 150 }
+    tags:
+      type: every
+      rules:
+        ".": { type: string }
+    meta: { type: any }   # accepted but not validated
+```
+
+Inside `keyedRules`, each entry is a full rule spec, so `required:
+true`, nested `every`, custom registered types, and so on all work
+exactly as they do at the top level.
 
 ### Nested YAML example
 
@@ -368,8 +443,8 @@ reference alongside this guide.
 - **Core:** [`Validate`][Validate], [`ValidateWithPrefix`][ValidateWithPrefix],
   [`QueryRules`][QueryRules], [`Rule`][Rule].
 - **Presence / composition:** [`Require`][Require],
-  [`Required`][Required], [`And`][And], [`Or`][Or], [`Not`][Not],
-  [`Every`][Every].
+  [`Required`][Required], [`Any`][Any], [`And`][And], [`Or`][Or],
+  [`Not`][Not], [`Every`][Every].
 - **Leaf rules:** [`String`][String], [`Int`][Int], [`Float`][Float],
   [`Bool`][Bool], [`Array`][Array], [`Map`][Map].
 - **Helpers:** [`IntPtr`][IntPtr], [`Int64Ptr`][Int64Ptr],
@@ -386,6 +461,7 @@ reference alongside this guide.
 [Rule]: https://pkg.go.dev/github.com/mojatter/tree/schema#Rule
 [Require]: https://pkg.go.dev/github.com/mojatter/tree/schema#Require
 [Required]: https://pkg.go.dev/github.com/mojatter/tree/schema#Required
+[Any]: https://pkg.go.dev/github.com/mojatter/tree/schema#Any
 [And]: https://pkg.go.dev/github.com/mojatter/tree/schema#And
 [Or]: https://pkg.go.dev/github.com/mojatter/tree/schema#Or
 [Not]: https://pkg.go.dev/github.com/mojatter/tree/schema#Not

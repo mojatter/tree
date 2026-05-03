@@ -35,6 +35,8 @@
 // # Rule types
 //
 //   - [Require]: fires when the node is Nil.
+//   - [Any]: pass-through; useful as a "key allowed but not validated"
+//     entry inside [Map.KeyedRules].
 //   - [And]: passes when every child passes; collects all errors.
 //   - [Or]: passes when at least one child passes.
 //   - [Not]: passes when the inner rule fails; skips Nil.
@@ -48,7 +50,11 @@
 //   - [Bool]: boolean leaf.
 //   - [Array]: array leaf with optional MinLen/MaxLen. Element rules
 //     go on separate "[]"-suffixed queries.
-//   - [Map]: map leaf with optional Keys allow-list.
+//   - [Map]: map leaf with optional Keys allow-list and per-key
+//     KeyedRules. Either field "closes" the map (unknown keys are
+//     reported); KeyedRules entries also recursively validate each
+//     value, so a single Map rule can describe a strict object
+//     schema without sibling QueryRules entries.
 //
 // [IntPtr], [Int64Ptr], and [Float64Ptr] let you set Min/Max inline
 // without a temporary variable.
