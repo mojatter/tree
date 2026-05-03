@@ -215,15 +215,18 @@ func (r Int) Validate(n tree.Node, q string) error {
 	}
 	f := n.Value().Float64()
 	if math.IsNaN(f) || math.IsInf(f, 0) {
-		return fmt.Errorf("%s: expected integer, got %v", q, f)
+		return fmt.Errorf("%s: value %v is not an integer", q, f)
 	}
 	// int64 range check before conversion; values outside (MinInt64,
-	// MaxInt64] cannot be represented exactly as int64.
+	// MaxInt64] cannot be represented exactly as int64. Reported as
+	// "exceeds int64 range" rather than "not an integer" because such
+	// values are mathematically integers — the rejection is about
+	// representability, not integerness.
 	if f < math.MinInt64 || f > math.MaxInt64 {
-		return fmt.Errorf("%s: expected integer, got %v", q, f)
+		return fmt.Errorf("%s: value %v exceeds int64 range", q, f)
 	}
 	if f != math.Trunc(f) {
-		return fmt.Errorf("%s: expected integer, got %v", q, f)
+		return fmt.Errorf("%s: value %v is not an integer", q, f)
 	}
 	i := int64(f)
 	if r.Min != nil && i < *r.Min {
@@ -254,7 +257,7 @@ func (r Float) Validate(n tree.Node, q string) error {
 	// Min/Max checks; reject it explicitly so the rule never accepts a
 	// value it cannot order.
 	if math.IsNaN(f) {
-		return fmt.Errorf("%s: NaN is not allowed", q)
+		return fmt.Errorf("%s: value NaN is not allowed", q)
 	}
 	if r.Min != nil && f < *r.Min {
 		return fmt.Errorf("%s: value %v less than min %v", q, f, *r.Min)
