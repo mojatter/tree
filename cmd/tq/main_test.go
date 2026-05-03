@@ -163,6 +163,38 @@ func TestRun(t *testing.T) {
 			caseName: "multiple yaml",
 			args:     []string{".", "testdata/book-0.yaml", "testdata/book-0.yaml"},
 			want:     mustReadFileString("testdata/book-0.yaml") + "---\n" + mustReadFileString("testdata/book-0.yaml"),
+		}, {
+			caseName: "merge default",
+			args:     []string{"--merge", "testdata/merge-a.yaml", "testdata/merge-b.yaml"},
+			golden:   "testdata/merge-default.yaml",
+		}, {
+			caseName: "merge override",
+			args:     []string{"--merge=override", "testdata/merge-a.yaml", "testdata/merge-b.yaml"},
+			golden:   "testdata/merge-override.yaml",
+		}, {
+			caseName: "merge append",
+			args:     []string{"--merge=append", "testdata/merge-a.yaml", "testdata/merge-b.yaml"},
+			golden:   "testdata/merge-append.yaml",
+		}, {
+			caseName: "merge with query",
+			args:     []string{"--merge", ".shared", "testdata/merge-a.yaml", "testdata/merge-b.yaml"},
+			golden:   "testdata/merge-shared.yaml",
+		}, {
+			caseName: "merge with edit",
+			args:     []string{"--merge", "-e", `.added = "x"`, "testdata/merge-a.yaml", "testdata/merge-b.yaml"},
+			golden:   "testdata/merge-edited.yaml",
+		}, {
+			caseName: "merge unknown strategy",
+			args:     []string{"--merge=bogus", "testdata/merge-a.yaml"},
+			errstr:   `--merge: unknown merge strategy "bogus"`,
+		}, {
+			caseName: "merge with inplace rejected",
+			args:     []string{"--merge", "-U", "testdata/merge-a.yaml"},
+			errstr:   `--merge cannot be combined with --inplace`,
+		}, {
+			caseName: "merge with slurp rejected",
+			args:     []string{"--merge", "-s", "testdata/merge-a.yaml"},
+			errstr:   `--merge cannot be combined with --slurp`,
 		},
 	}
 	for _, tc := range testCases {

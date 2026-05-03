@@ -96,23 +96,24 @@ func newStdinReader() (io.ReadSeekCloser, error) {
 }
 
 type runner struct {
-	flagSet      *pflag.FlagSet
-	isVersion    bool
-	isHelp       bool
-	isExpand     bool
-	isSlurp      bool
-	isRaw        bool
-	isInplace    bool
-	isColor      bool
-	isInputJSON  bool
-	isInputYAML  bool
-	isOutputJSON bool
-	isOutputYAML bool
-	outputFile   string
-	tmplText     string
-	inputFormat  string
-	outputFormat string
-	editExprs    []string
+	flagSet       *pflag.FlagSet
+	isVersion     bool
+	isHelp        bool
+	isExpand      bool
+	isSlurp       bool
+	isRaw         bool
+	isInplace     bool
+	isColor       bool
+	isInputJSON   bool
+	isInputYAML   bool
+	isOutputJSON  bool
+	isOutputYAML  bool
+	outputFile    string
+	tmplText      string
+	inputFormat   string
+	outputFormat  string
+	editExprs     []string
+	mergeStrategy string
 
 	tmpl             *template.Template
 	stderr           io.Writer
@@ -120,6 +121,16 @@ type runner struct {
 	guessFormat      string
 	outputYAMLCalled int
 	slurpResults     tree.Array
+	mergeOption      tree.MergeOption
+	queryExpr        string
+}
+
+// looksLikeQuery reports whether s looks like a tree query expression
+// rather than a file path. Used by --merge mode to decide whether the
+// first positional argument is a query or a file. tree queries always
+// begin with "." (path) or "[" (filter / array index).
+func looksLikeQuery(s string) bool {
+	return strings.HasPrefix(s, ".") || strings.HasPrefix(s, "[")
 }
 
 func newRunner() *runner {
@@ -150,6 +161,8 @@ func (r *runner) initFlagSet(args []string) error {
 	s.StringVarP(&r.inputFormat, "input-format", "i", "", "input format (json or yaml)")
 	s.StringVarP(&r.outputFormat, "output-format", "o", "", "output format (json or yaml, default json)")
 	s.StringArrayVarP(&r.editExprs, "edit", "e", nil, "edit expression")
+	s.StringVarP(&r.mergeStrategy, "merge", "m", "", "merge inputs (optional strategy: default, override, replace, append, slurp; combine with comma)")
+	s.Lookup("merge").NoOptDefVal = "default"
 	s.Usage = func() {
 		_, _ = fmt.Fprintf(r.stderr, "%s\n\nUsage:\n  %s\n\n", desc, usage)
 		_, _ = fmt.Fprintln(r.stderr, "Flags:")
@@ -176,9 +189,22 @@ func (r *runner) run(args []string) error {
 		_, _ = fmt.Fprintln(r.out, tree.VERSION)
 		return nil
 	}
-	if r.isHelp || (r.flagSet.Arg(0) == "" && len(r.editExprs) == 0) {
+	if r.isHelp || (r.flagSet.Arg(0) == "" && len(r.editExprs) == 0 && r.mergeStrategy == "") {
 		r.flagSet.Usage()
 		return nil
+	}
+	if r.mergeStrategy != "" {
+		opt, err := tree.MergeOptionFromString(r.mergeStrategy)
+		if err != nil {
+			return fmt.Errorf("--merge: %w", err)
+		}
+		r.mergeOption = opt
+		if r.isInplace {
+			return errors.New("--merge cannot be combined with --inplace")
+		}
+		if r.isSlurp {
+			return errors.New("--merge cannot be combined with --slurp")
+		}
 	}
 	if r.tmplText != "" {
 		tmpl, err := template.New("").Parse(r.tmplText)
@@ -189,8 +215,19 @@ func (r *runner) run(args []string) error {
 	}
 
 	var filenames []string
-	if args := r.flagSet.Args(); len(args) > 1 {
-		filenames = args[1:]
+	posArgs := r.flagSet.Args()
+	if r.mergeStrategy != "" && len(posArgs) > 0 && !looksLikeQuery(posArgs[0]) {
+		// In --merge mode, accept the conventional "tq --merge a.yaml b.yaml"
+		// (no query). Treat all positionals as files when the first one
+		// doesn't look like a tree query.
+		filenames = posArgs
+	} else {
+		if len(posArgs) > 0 {
+			r.queryExpr = posArgs[0]
+		}
+		if len(posArgs) > 1 {
+			filenames = posArgs[1:]
+		}
 	}
 	if len(filenames) == 0 {
 		if term.IsTerminal(0) {
@@ -206,6 +243,9 @@ func (r *runner) run(args []string) error {
 			return err
 		}
 		r.out = out
+	}
+	if r.mergeStrategy != "" {
+		return r.evaluateMergeFiles(newInputFiles(filenames))
 	}
 	return r.evaluateInputFiles(newInputFiles(filenames))
 }
@@ -255,23 +295,81 @@ func (r *runner) evaluateInputFiles(f *inputFiles) error {
 	return r.evaluateInputFiles(f)
 }
 
+// evaluateMergeFiles reads every doc from every input file and folds
+// them with tree.Merge in left-to-right order, then runs the usual
+// edit/query/output pipeline once on the merged result. With multiple
+// docs in the same file (e.g. YAML "---" separators) the docs are
+// merged in the order they appear, before merging into the next file.
+func (r *runner) evaluateMergeFiles(f *inputFiles) error {
+	var acc tree.Node
+	accSet := false
+	handle := func(n tree.Node) error {
+		if !accSet {
+			acc = n
+			accSet = true
+			return nil
+		}
+		acc = tree.Merge(acc, n, r.mergeOption)
+		return nil
+	}
+	for {
+		in, err := f.nextReader()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return err
+		}
+		filename := f.filename
+		err = r.parseStream(in, handle)
+		_ = in.Close()
+		if err != nil {
+			if filename == filenameStdin {
+				filename = "STDIN"
+			}
+			return fmt.Errorf("failed to evaluate %s: %w", filename, err)
+		}
+	}
+	if !accSet {
+		return nil
+	}
+	return r.evaluateNode(acc)
+}
+
 func (r *runner) evaluate(in io.ReadSeekCloser) error {
+	if err := r.parseStream(in, r.evaluateNode); err != nil {
+		return err
+	}
+	if len(r.slurpResults) > 0 {
+		defer func() { r.slurpResults = nil }()
+
+		return r.output(r.slurpResults)
+	}
+	return nil
+}
+
+// parseStream reads in, dispatches to the JSON or YAML parser based on
+// the input-format flags (or by trying both when neither is forced),
+// and invokes handle for every parsed node. Decoding the input as one
+// format and falling back to the other is preserved here so callers
+// (evaluate, evaluateMergeFiles) get the same auto-detection.
+func (r *runner) parseStream(in io.ReadSeekCloser, handle func(tree.Node) error) error {
 	if r.inputFormat == "json" || r.isInputJSON {
-		return r.evaluateJSON(in)
+		return r.parseJSON(in, handle)
 	}
 	if r.inputFormat == "yaml" || r.isInputYAML {
-		return r.evaluateYAML(in)
+		return r.parseYAML(in, handle)
 	}
-	fns := []func(io.Reader) error{
-		r.evaluateJSON,
-		r.evaluateYAML,
+	fns := []func(io.Reader, func(tree.Node) error) error{
+		r.parseJSON,
+		r.parseYAML,
 	}
 	var errs []string
 	for _, fn := range fns {
 		if _, err := in.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
-		if err := fn(in); err != nil {
+		if err := fn(in, handle); err != nil {
 			errs = append(errs, err.Error())
 			if !isDecodeError(err) {
 				break
@@ -283,7 +381,7 @@ func (r *runner) evaluate(in io.ReadSeekCloser) error {
 	return errors.New(strings.Join(errs, "; "))
 }
 
-func (r *runner) evaluateJSON(in io.Reader) error {
+func (r *runner) parseJSON(in io.Reader, handle func(tree.Node) error) error {
 	dec := json.NewDecoder(in)
 	for dec.More() {
 		n, err := tree.DecodeJSON(dec)
@@ -291,18 +389,14 @@ func (r *runner) evaluateJSON(in io.Reader) error {
 			return &decodeError{err}
 		}
 		r.guessFormat = "json"
-		if err := r.evaluateNode(n); err != nil {
+		if err := handle(n); err != nil {
 			return err
 		}
-	}
-	if len(r.slurpResults) > 0 {
-		defer func() { r.slurpResults = nil }()
-		return r.output(r.slurpResults)
 	}
 	return nil
 }
 
-func (r *runner) evaluateYAML(in io.Reader) error {
+func (r *runner) parseYAML(in io.Reader, handle func(tree.Node) error) error {
 	dec := yaml.NewDecoder(in)
 	for {
 		n, err := tree.DecodeYAML(dec)
@@ -313,13 +407,9 @@ func (r *runner) evaluateYAML(in io.Reader) error {
 			return &decodeError{err}
 		}
 		r.guessFormat = "yaml"
-		if err := r.evaluateNode(n); err != nil {
+		if err := handle(n); err != nil {
 			return err
 		}
-	}
-	if len(r.slurpResults) > 0 {
-		defer func() { r.slurpResults = nil }()
-		return r.output(r.slurpResults)
 	}
 	return nil
 }
@@ -330,7 +420,7 @@ func (r *runner) evaluateNode(node tree.Node) error {
 			return err
 		}
 	}
-	expr := r.flagSet.Arg(0)
+	expr := r.queryExpr
 	if expr == "" {
 		expr = "."
 	}

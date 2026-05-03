@@ -1,0 +1,10 @@
+arr:
+  - 10
+  - 20
+  - 30
+extra: value
+name: b
+shared:
+  alpha: 1
+  beta: 20
+  gamma: 30

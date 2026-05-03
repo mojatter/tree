@@ -1,0 +1,8 @@
+arr:
+  - 1
+  - 2
+extra: value
+name: a
+shared:
+  alpha: 1
+  beta: 2

@@ -21,6 +21,7 @@ Tree is a simple structure for dealing with dynamic or unknown JSON/YAML in Go.
 - [Edit](#edit)
 - [Schema](#schema)
 - [tq](#tq)
+  - [Merge multiple inputs](#merge-multiple-inputs)
 - [Contributing](#contributing)
 - [Third-party library licenses](#third-party-library-licenses)
 
@@ -36,7 +37,6 @@ Tree is a simple structure for dealing with dynamic or unknown JSON/YAML in Go.
 ## Road to 1.0
 
 - Placeholders in query.
-- Merge support in tq.
 
 ## Syntax
 
@@ -443,22 +443,23 @@ Usage:
   tq [flags] [query] ([file...])
 
 Flags:
-  -c, --color                  output with colors
-  -e, --edit stringArray       edit expression
-  -x, --expand                 expand results
-  -h, --help                   help for tq
-  -U, --inplace                update files, inplace
-  -i, --input-format string    input format (json or yaml)
-  -j, --input-json             alias --input-format json
-  -y, --input-yaml             alias --input-format yaml
-  -O, --output string          output file
-  -o, --output-format string   output format (json or yaml, default json)
-  -J, --output-json            alias --output-format json
-  -Y, --output-yaml            alias --output-format yaml
-  -r, --raw                    output raw strings
-  -s, --slurp                  slurp all results into an array
-  -t, --template string        golang text/template string
-  -v, --version                print version
+  -c, --color                      output with colors
+  -e, --edit stringArray           edit expression
+  -x, --expand                     expand results
+  -h, --help                       help for tq
+  -U, --inplace                    update files, inplace
+  -i, --input-format string        input format (json or yaml)
+  -j, --input-json                 alias --input-format json
+  -y, --input-yaml                 alias --input-format yaml
+  -m, --merge string[="default"]   merge inputs (optional strategy: default, override, replace, append, slurp; combine with comma)
+  -O, --output string              output file
+  -o, --output-format string       output format (json or yaml, default json)
+  -J, --output-json                alias --output-format json
+  -Y, --output-yaml                alias --output-format yaml
+  -r, --raw                        output raw strings
+  -s, --slurp                      slurp all results into an array
+  -t, --template string            golang text/template string
+  -v, --version                    print version
 
 Examples:
   % echo '{"colors": ["red", "green", "blue"]}' | tq '.colors[0]'
@@ -482,6 +483,64 @@ Examples:
   [{"author": "Tolkien"}]
 
 ```
+
+### Merge multiple inputs
+
+The `--merge` (`-m`) flag folds every document from every input file
+into one tree before applying the optional query / `--edit`. The
+positional layout becomes `tq --merge [strategy] [query] file...`, and
+since most merges have no query you can write the natural form:
+
+```sh
+tq --merge a.yaml b.yaml > merged.yaml
+```
+
+When `--merge` is set and the first positional argument doesn't look
+like a query (i.e. doesn't start with `.` or `[`), every positional is
+treated as a file. Pass an explicit `.` only when you also want a
+query.
+
+#### Strategies
+
+`--merge` takes an optional value; omitting it gives the default
+strategy. Multiple strategies can be combined with commas
+(`--merge=override-map,append`).
+
+| Name | Maps | Arrays | Type-mismatched values |
+|---|---|---|---|
+| `default` (no flag) | shallow: keep `a`, add `b`'s missing top-level keys | overlay trailing tail of `b` | keep `a` |
+| `override` | recursive: `b` wins on conflicts | per-index `b` wins, longer `b` extends | replace with `b` |
+| `override-map` | recursive map override only | (default array behaviour) | (depends) |
+| `override-array` | (default map behaviour) | per-index `b` wins | (depends) |
+| `replace` | top-level: take `b` entirely | take `b` entirely | take `b` |
+| `replace-map` | take `b`'s map entirely | (default array behaviour) | (depends) |
+| `replace-array` | (default map behaviour) | take `b`'s array entirely | (depends) |
+| `append` | (default — see note) | concat `a` then `b` | (depends) |
+| `slurp` | recurse like `override-map`; leaf type-mismatch wraps into array | concat `a` then `b` | wrap into array |
+
+Note that `default` and `append` alone are **shallow** at the map
+level — to also recurse into nested maps and append nested arrays,
+combine them: `--merge=override-map,append`.
+
+#### Examples
+
+```sh
+# Layered config: later file's leaves win, scalar values get overridden
+tq --merge=override base.yaml override.yaml > effective.yaml
+
+# Combine list-style configs from multiple sources, keeping all entries
+tq --merge=override-map,append rules.d/*.yaml > all-rules.yaml
+
+# Apply a query after merging
+tq --merge=override .servers cluster-base.yaml cluster-override.yaml
+
+# Edit on top of the merge
+tq --merge -e '.metadata.merged = true' a.yaml b.yaml
+```
+
+`--merge` cannot be combined with `--inplace` (multiple inputs vs. a
+single write target) or `--slurp` (both accumulate, with conflicting
+semantics).
 
 ### for jq user
 
