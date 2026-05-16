@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -97,6 +98,72 @@ func TestMergeOption(t *testing.T) {
 		t.Run(tc.caseName, func(t *testing.T) {
 			if got := tc.is(); got != tc.want {
 				t.Errorf("got %v; want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestMergeOptionFromString(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		spec     string
+		want     MergeOption
+		wantErr  string // substring; empty means success
+	}{
+		{caseName: "empty is default", spec: "", want: MergeOptionDefault},
+		{caseName: "default name", spec: "default", want: MergeOptionDefault},
+		{caseName: "override", spec: "override", want: MergeOptionOverride},
+		{caseName: "override-map", spec: "override-map", want: MergeOptionOverrideMap},
+		{caseName: "override-array", spec: "override-array", want: MergeOptionOverrideArray},
+		{caseName: "replace", spec: "replace", want: MergeOptionReplace},
+		{caseName: "replace-map", spec: "replace-map", want: MergeOptionReplaceMap},
+		{caseName: "replace-array", spec: "replace-array", want: MergeOptionReplaceArray},
+		{caseName: "append", spec: "append", want: MergeOptionAppend},
+		{caseName: "slurp", spec: "slurp", want: MergeOptionSlurp},
+		{
+			caseName: "combined override and append",
+			spec:     "override,append",
+			want:     MergeOptionOverride | MergeOptionAppend,
+		},
+		{
+			caseName: "combined with whitespace",
+			spec:     " override-map , append ",
+			want:     MergeOptionOverrideMap | MergeOptionAppend,
+		},
+		{
+			caseName: "combined three options",
+			spec:     "override-map,replace-array,slurp",
+			want:     MergeOptionOverrideMap | MergeOptionReplaceArray | MergeOptionSlurp,
+		},
+		{
+			caseName: "duplicate names are idempotent",
+			spec:     "append,append",
+			want:     MergeOptionAppend,
+		},
+		{caseName: "unknown name", spec: "bogus", wantErr: `unknown merge strategy "bogus"`},
+		{caseName: "unknown after valid stops at first error", spec: "override,bogus", wantErr: `unknown merge strategy "bogus"`},
+		{caseName: "underscore form not accepted", spec: "override_map", wantErr: `unknown merge strategy "override_map"`},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := MergeOptionFromString(tc.spec)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				if got != tc.want {
+					t.Errorf("got %b; want %b", got, tc.want)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("want error containing %q, got nil", tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Errorf("error %q does not contain %q", err.Error(), tc.wantErr)
+			}
+			if got != 0 {
+				t.Errorf("on error want zero option, got %b", got)
 			}
 		})
 	}

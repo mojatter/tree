@@ -1,9 +1,14 @@
 package tree
 
+import (
+	"fmt"
+	"strings"
+)
+
 // MergeOption represents different merge strategies for combining nodes.
 type MergeOption int
 
-var (
+const (
 	// MergeOptionDefault merges with the following default rules.
 	// For examples:
 	// - {"a": 1, "b": 2} and {"a": 3, "c": 4} merges to {"a": 1, "b": 2, "c": 4}
@@ -43,17 +48,23 @@ var (
 	// - "a" and "b" merges to "b"
 	MergeOptionReplace MergeOption = MergeOptionReplaceMap | MergeOptionReplaceArray
 	// MergeOptionAppend acts when both are arrays and append them.
-	// It takes precedence over MergeOptionOverride and MergeOptionReplace.
+	// Inside array merging this is checked before Override and Replace,
+	// so when both operands are arrays Append wins over those flags.
 	// For examples:
 	// - [1, 2, 3] and [4, 5] merges to [1, 2, 3, 4, 5]
 	MergeOptionAppend MergeOption = 0b010000
 	// MergeOptionSlurp acts on an array or value and converts it to an array and
-	// merges it, even if the value is not an array.
-	// It takes precedence over MergeOptionOverride and MergeOptionReplace.
+	// merges it, even if the value is not an array. When the two operands have
+	// non-matching types (e.g. array vs scalar) it wins over Override and Replace
+	// because the slurp wrapping happens before the type-mismatch fallback.
+	// Inside Map merging Slurp follows the same per-key recursion as
+	// MergeOptionOverrideMap, so leaf type-mismatched values are wrapped into
+	// an array (see "Slurp Map Map" example below).
 	// For examples:
 	// - [1, 2, 3] and [4, 5] merges to [1, 2, 3, 4, 5]
 	// - [1, 2, 3] and 4 merges to [1, 2, 3, 4]
 	// - 1 and 2 merges to [1, 2]
+	// - {"a": 1} and {"a": 2} merges to {"a": [1, 2]}
 	MergeOptionSlurp MergeOption = 0b100000
 )
 
@@ -97,9 +108,68 @@ func (o MergeOption) isSlurp() bool {
 	return o&MergeOptionSlurp == MergeOptionSlurp
 }
 
-// Merge merges two nodes with MergeOption.
-// If you do not want to change the state of the node given as an argument, use CloneDeep.
-// ex: merged := Merge(CloneDeep(a), CloneDeep(b), opts)
+// MergeOptionFromString parses a comma-separated merge strategy spec
+// into a MergeOption. Recognised names map directly to the exported
+// MergeOption* values:
+//
+//   - "default"        — MergeOptionDefault (zero value)
+//   - "override"       — MergeOptionOverride (= override-map | override-array)
+//   - "override-map"   — MergeOptionOverrideMap
+//   - "override-array" — MergeOptionOverrideArray
+//   - "replace"        — MergeOptionReplace (= replace-map | replace-array)
+//   - "replace-map"    — MergeOptionReplaceMap
+//   - "replace-array"  — MergeOptionReplaceArray
+//   - "append"         — MergeOptionAppend
+//   - "slurp"          — MergeOptionSlurp
+//
+// Multiple names may be combined with commas: "override,append" yields
+// MergeOptionOverride | MergeOptionAppend. Whitespace around each name
+// is trimmed. An empty spec returns MergeOptionDefault. An unknown name
+// produces a non-nil error and a zero MergeOption.
+//
+// Intended for CLI / config consumers (e.g. tq's --merge flag) so the
+// option-name vocabulary lives next to the option definitions.
+func MergeOptionFromString(spec string) (MergeOption, error) {
+	if spec == "" {
+		return MergeOptionDefault, nil
+	}
+	var opts MergeOption
+	for name := range strings.SplitSeq(spec, ",") {
+		name = strings.TrimSpace(name)
+		switch name {
+		case "default":
+			// no flag bits
+		case "override":
+			opts |= MergeOptionOverride
+		case "override-map":
+			opts |= MergeOptionOverrideMap
+		case "override-array":
+			opts |= MergeOptionOverrideArray
+		case "replace":
+			opts |= MergeOptionReplace
+		case "replace-map":
+			opts |= MergeOptionReplaceMap
+		case "replace-array":
+			opts |= MergeOptionReplaceArray
+		case "append":
+			opts |= MergeOptionAppend
+		case "slurp":
+			opts |= MergeOptionSlurp
+		default:
+			return 0, fmt.Errorf("unknown merge strategy %q", name)
+		}
+	}
+	return opts, nil
+}
+
+// Merge merges two nodes with MergeOption. The opts value propagates
+// recursively into every nested merge call, so a flag set at the top
+// level (e.g. Append) also applies to arrays found at any depth.
+//
+// Merge mutates a in place and may return either a or b depending on
+// the rules. If you need to preserve the inputs, clone before calling:
+//
+//	merged := tree.Merge(tree.CloneDeep(a), tree.CloneDeep(b), opts)
 func Merge(a, b Node, opts MergeOption) Node {
 	if a.Type().IsMap() {
 		if b.Type().IsMap() {
@@ -125,7 +195,13 @@ func Merge(a, b Node, opts MergeOption) Node {
 }
 
 // mergeNoMatchType handles merging when node types don't match.
-// Returns the appropriate node based on merge options.
+// Returns b if any Override*/Replace* flag is set, otherwise a.
+//
+// Note: the predicate is "any override-or-replace flag", not the
+// specific one matching the operand types. Setting only
+// MergeOptionOverrideArray therefore still causes a Map vs scalar
+// merge to choose b. Distinguishing per-shape override on type
+// mismatch would be a behaviour change; revisit at v1.0.
 func mergeNoMatchType(a Node, b Node, opts MergeOption) Node {
 	if opts.isOverrideValue() || opts.isReplaceValue() {
 		return b
@@ -142,6 +218,8 @@ func mergeArray(a, b Array, opts MergeOption) Array {
 	if opts.isOverrideArray() {
 		for i, v := range b {
 			if i < len(a) {
+				// Set only fails on out-of-range index; the i < len(a)
+				// guard above makes that impossible here.
 				_ = a.Set(i, Merge(a[i], v, opts))
 			} else {
 				a = append(a, v)
