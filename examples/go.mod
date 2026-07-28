@@ -9,7 +9,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2
 	github.com/json-iterator/go v1.1.12
 	github.com/mojatter/tree v0.0.0
-	go.yaml.in/yaml/v3 v3.0.4
+	go.yaml.in/yaml/v3 v3.0.5
 )
 
 require (
