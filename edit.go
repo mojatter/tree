@@ -102,7 +102,9 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node) error
 	case ArrayQuery:
 		index := int(tq)
 		if a := n.Array(); a != nil {
-			index = tq.resolveIndex(len(a))
+			if index = tq.resolveIndex(len(a)); index < 0 {
+				return fmt.Errorf("cannot index array with %d", int(tq))
+			}
 		}
 		return resolveArrayStep(pn, n, index, fq, step, op, v)
 
@@ -169,9 +171,9 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 			return nil
 		}
 		if i >= len(a) {
-			na := make(Array, i+1)
-			copy(na, a)
-			a = na
+			if a, err = growArray(a, i); err != nil {
+				return err
+			}
 		}
 		child := a[i]
 		if child == nil {
@@ -216,9 +218,10 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 
 	if a := n.Array(); a != nil {
 		if index >= len(a) {
-			na := make(Array, index+1)
-			copy(na, a)
-			a = na
+			var err error
+			if a, err = growArray(a, index); err != nil {
+				return err
+			}
 		}
 		child := a[index]
 		if child == nil {

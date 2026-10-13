@@ -171,8 +171,9 @@ func (q ArrayQuery) Set(pn *Node, v Node) error {
 	index := int(q)
 	if a := n.Array(); a != nil {
 		index = q.resolveIndex(len(a))
-	} else if index < 0 {
-		return fmt.Errorf("cannot index array with %d", index)
+	}
+	if index < 0 {
+		return fmt.Errorf("cannot index array with %d", int(q))
 	}
 	if en, ok := n.(EditorNode); ok {
 		return en.Set(index, v)
@@ -220,8 +221,10 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 		if index < 0 {
 			return fmt.Errorf("cannot append to array with %d", int(q))
 		}
-		na := make(Array, index+1)
-		copy(na, a)
+		na, err := growArray(a, index)
+		if err != nil {
+			return err
+		}
 		na[index] = Array{v}
 		*pn = na
 		return nil

@@ -269,19 +269,34 @@ func (n *Array) Append(v Node) error {
 	return nil
 }
 
-// Set sets v to n[key].
+// Set sets v to n[key], growing n as needed; indexes of 1<<24 or more are rejected.
 func (n *Array) Set(key any, v Node) error {
 	i, ok := n.toIndex(key)
 	if i == -1 {
 		return fmt.Errorf("cannot index array with %v", key)
 	}
 	if !ok {
-		a := make([]Node, i+1)
-		copy(a, *n)
+		a, err := growArray(*n, i)
+		if err != nil {
+			return err
+		}
 		*n = a
 	}
 	(*n)[i] = v
 	return nil
+}
+
+// maxArrayLen caps how far an out-of-range index may grow an array.
+const maxArrayLen = 1 << 24
+
+// growArray returns a copy of a extended so that index i exists.
+func growArray(a Array, i int) (Array, error) {
+	if i >= maxArrayLen {
+		return nil, fmt.Errorf("array index %d exceeds maximum %d", i, maxArrayLen-1)
+	}
+	na := make(Array, i+1)
+	copy(na, a)
+	return na, nil
 }
 
 // Delete deletes n[key].

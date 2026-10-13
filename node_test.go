@@ -502,6 +502,11 @@ func TestEditorNodeSet(t *testing.T) {
 			entries:  map[any]Node{-2: StringValue("value")},
 			errstr:   "cannot index array with -2",
 		}, {
+			caseName: "Array index at limit rejected",
+			n:        &Array{},
+			entries:  map[any]Node{1 << 24: StringValue("value")},
+			errstr:   "array index 16777216 exceeds maximum 16777215",
+		}, {
 			caseName: "Map set and add new keys",
 			n: Map{
 				"1": NumberValue(1),

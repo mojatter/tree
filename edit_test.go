@@ -677,6 +677,66 @@ func TestEdit(t *testing.T) {
 			n:        Map{"x": StringValue("v")},
 			expr:     `[-1] ^?`,
 			errstr:   `cannot delete array with -1`,
+		}, {
+			caseName: "set index at array limit errors",
+			n:        Map{"a": Array{}},
+			expr:     `.a[16777216] = 1`,
+			errstr:   `array index 16777216 exceeds maximum 16777215`,
+		}, {
+			caseName: "set int32 max index errors",
+			n:        Map{},
+			expr:     `.a[2147483647] = 1`,
+			errstr:   `array index 2147483647 exceeds maximum 16777215`,
+		}, {
+			caseName: "set through index beyond array limit errors",
+			n:        Map{"a": Array{}},
+			expr:     `.a[16777216].b = 1`,
+			errstr:   `array index 16777216 exceeds maximum 16777215`,
+		}, {
+			caseName: "set through numeric key beyond array limit errors",
+			n:        Map{"a": Array{}},
+			expr:     `.a.16777216.b = 1`,
+			errstr:   `array index 16777216 exceeds maximum 16777215`,
+		}, {
+			caseName: "append at index beyond array limit errors",
+			n:        Map{"a": Array{}},
+			expr:     `.a[16777216] += 1`,
+			errstr:   `array index 16777216 exceeds maximum 16777215`,
+		}, {
+			caseName: "negative index out of range on intermediate array errors",
+			n:        Array{},
+			expr:     `[-5].a = 1`,
+			errstr:   `cannot index array with -5`,
+		}, {
+			caseName: "negative index out of range on nested intermediate array errors",
+			n:        Map{"a": Array{}},
+			expr:     `.a[-5].b = 1`,
+			errstr:   `cannot index array with -5`,
+		}, {
+			caseName: "set via negative index on map key",
+			n:        Map{"m": Map{}},
+			expr:     `.m[-1].x = 1`,
+			want:     Map{"m": Map{"-1": Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "negative index on scalar is a no-op",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.a[-1].b = 1`,
+			want:     Map{"a": NumberValue(1)},
+		}, {
+			caseName: "set past end grows with nil holes",
+			n:        Array{},
+			expr:     `[2] = 1`,
+			want:     Array{nil, nil, NumberValue(1)},
+		}, {
+			caseName: "negative index out of range set reports the index",
+			n:        Array{NumberValue(1), NumberValue(2)},
+			expr:     `[-5] = 1`,
+			errstr:   `cannot index array with -5`,
+		}, {
+			caseName: "negative index out of range set on pointer array reports the index",
+			n:        &Array{NumberValue(1), NumberValue(2)},
+			expr:     `[-5] = 1`,
+			errstr:   `cannot index array with -5`,
 		},
 	}
 	for _, tc := range testCases {
