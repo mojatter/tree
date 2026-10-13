@@ -18,7 +18,7 @@ type color string
 var (
 	colorKey       color = "\033[1;34m"
 	colorValueStr  color = "\033[0;32m"
-	colorValueNull color = "\033[1;30m"
+	colorValueNull color = "\033[0;90m"
 	colorReset           = "\033[0m"
 )
 

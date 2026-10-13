@@ -13,7 +13,7 @@ func TestOutputColorJSON(t *testing.T) {
 		"bool": ToValue(true),
 		"null": Nil,
 	}
-	want := "{\n  \x1b[1;34m\"bool\"\x1b[0m: true,\n  \x1b[1;34m\"null\"\x1b[0m: \x1b[1;30mnull\x1b[0m,\n  \x1b[1;34m\"num\"\x1b[0m: 1,\n  \x1b[1;34m\"str\"\x1b[0m: \x1b[0;32m\"2\"\x1b[0m\n}\n"
+	want := "{\n  \x1b[1;34m\"bool\"\x1b[0m: true,\n  \x1b[1;34m\"null\"\x1b[0m: \x1b[0;90mnull\x1b[0m,\n  \x1b[1;34m\"num\"\x1b[0m: 1,\n  \x1b[1;34m\"str\"\x1b[0m: \x1b[0;32m\"2\"\x1b[0m\n}\n"
 
 	out := new(bytes.Buffer)
 	if err := OutputColorJSON(out, n); err != nil {
@@ -81,7 +81,7 @@ func TestOutputColorYAML(t *testing.T) {
 		"bool": ToValue(true),
 		"null": Nil,
 	}
-	want := "\x1b[1;34mbool\x1b[0m: true\n\x1b[1;34mnull\x1b[0m: \x1b[1;30mnull\x1b[0m\n\x1b[1;34mnum\x1b[0m: 1\n\x1b[1;34mstr\x1b[0m: \x1b[0;32m\"2\"\x1b[0m\n"
+	want := "\x1b[1;34mbool\x1b[0m: true\n\x1b[1;34mnull\x1b[0m: \x1b[0;90mnull\x1b[0m\n\x1b[1;34mnum\x1b[0m: 1\n\x1b[1;34mstr\x1b[0m: \x1b[0;32m\"2\"\x1b[0m\n"
 
 	out := new(bytes.Buffer)
 	if err := OutputColorYAML(out, n); err != nil {
