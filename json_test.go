@@ -3,6 +3,8 @@ package tree
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"reflect"
 	"testing"
 
@@ -73,20 +75,18 @@ func TestDecodeJSONErrors(t *testing.T) {
 	testCases := []struct {
 		caseName string
 		data     []byte
-		errstr   string
+		wantEOF  bool
 	}{
 		{
 			caseName: "unterminated string",
 			data:     []byte(`"`),
-			errstr:   "unexpected EOF",
+			wantEOF:  true,
 		}, {
 			caseName: "stray closing brace",
 			data:     []byte(`}`),
-			errstr:   "invalid character '}' looking for beginning of value",
 		}, {
 			caseName: "invalid character after open brace",
 			data:     []byte("{\n1"),
-			errstr:   `invalid character '1'`,
 		},
 	}
 	for _, tc := range testCases {
@@ -96,8 +96,16 @@ func TestDecodeJSONErrors(t *testing.T) {
 			if err == nil {
 				t.Fatal("no error")
 			}
-			if err.Error() != tc.errstr {
-				t.Errorf("got %s; want %s", err.Error(), tc.errstr)
+			// Match on type, not message: Go 1.27's json/v2-backed decoder rewords syntax errors.
+			if tc.wantEOF {
+				if !errors.Is(err, io.ErrUnexpectedEOF) {
+					t.Errorf("got %v; want io.ErrUnexpectedEOF", err)
+				}
+				return
+			}
+			var syntaxErr *json.SyntaxError
+			if !errors.As(err, &syntaxErr) {
+				t.Errorf("got %T %v; want *json.SyntaxError", err, err)
 			}
 		})
 	}
