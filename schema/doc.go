@@ -26,6 +26,8 @@
 //     failures to the filter expression itself; see docs/schema.md
 //     for the workaround.
 //
+// For example:
+//
 //	rules := schema.QueryRules{
 //	    ".name": schema.Required(schema.String{}),
 //	    ".age":  schema.Int{Min: schema.Int64Ptr(0), Max: schema.Int64Ptr(150)},

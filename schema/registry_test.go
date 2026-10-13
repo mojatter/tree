@@ -180,7 +180,7 @@ func TestRegistry_Parse(t *testing.T) {
 		{
 			caseName: "multiple unknown fields aggregated",
 			spec: tree.Map{
-				"type": tree.V("string"),
+				"type":   tree.V("string"),
 				"bogus1": tree.V(1),
 				"bogus2": tree.V(2),
 			},
@@ -409,7 +409,7 @@ func TestParseQueryRules_RoundTrip(t *testing.T) {
 
 	doc := tree.Map{
 		"name": tree.V("alice"),
-		"age":  tree.V(-1), // < min
+		"age":  tree.V(-1),          // < min
 		"tags": tree.A("a", 2, "b"), // element [1] not string
 		"role": tree.V("guest"),     // not in enum, not bool
 	}
