@@ -113,7 +113,7 @@ func ExampleUnmarshalJSON() {
 
 ### Using other parsers
 
-Tree may work on other parsers that are compatible with "encoding/json" or "gopkg.in/yaml.v2". See [examples](examples) directory.
+Tree may work on other parsers that are compatible with "encoding/json" or "go.yaml.in/yaml/v3". See [examples](examples) directory.
 
 ### Alternate json.RawMessage
 
@@ -502,4 +502,8 @@ the project's code conventions.
 
 ## Third-party library licenses
 
+- [mojatter/io2](https://github.com/mojatter/io2/blob/main/LICENSE)
 - [spf13/pflag](https://github.com/spf13/pflag/blob/master/LICENSE)
+- [go.yaml.in/yaml/v3](https://github.com/yaml/go-yaml/blob/v3.0.5/LICENSE)
+- [golang.org/x/term](https://cs.opensource.google/go/x/term/+/master:LICENSE)
+- [golang.org/x/sys](https://cs.opensource.google/go/x/sys/+/master:LICENSE)
