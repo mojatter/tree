@@ -228,10 +228,13 @@ func TestClone(t *testing.T) {
 			n:        Map{"a": ToValue(1), "b": ToValue(2)},
 			want:     Map{"a": ToValue(1), "b": ToValue(2)},
 		},
+		{caseName: "nil", n: nil, want: Nil},
+		{caseName: "Array(nil)", n: Array(nil), want: Array{}},
+		{caseName: "Map(nil)", n: Map(nil), want: Map{}},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
-			if got := Clone(tc.n); !Equal(got, tc.want) {
+			if got := Clone(tc.n); !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("unexpected %v; want %v", got, tc.want)
 			}
 		})
@@ -257,16 +260,54 @@ func TestCloneDeep(t *testing.T) {
 			update: func(n Node) {
 				n.Map().Get("a").Array()[0] = ToValue(5)
 			},
+		}, {
+			caseName: "Map three levels mutated post-clone",
+			n:        Map{"a": Map{"b": Map{"c": ToValue(1)}}},
+			want:     Map{"a": Map{"b": Map{"c": ToValue(1)}}},
+			update: func(n Node) {
+				n.Map()["a"].Map()["b"].Map()["c"] = ToValue(2)
+			},
+		}, {
+			caseName: "Array three levels mutated post-clone",
+			n:        Array{Array{ToArrayValues(1, 2)}},
+			want:     Array{Array{ToArrayValues(1, 2)}},
+			update: func(n Node) {
+				n.Array()[0].Array()[0].Array()[0] = ToValue(3)
+			},
+		}, {
+			caseName: "nil",
+			n:        nil,
+			want:     Nil,
+			update:   func(n Node) {},
+		}, {
+			caseName: "nil children normalised to Nil",
+			n:        Map{"a": nil, "b": Array{nil, ToValue(1)}},
+			want:     Map{"a": Nil, "b": Array{Nil, ToValue(1)}},
+			update: func(n Node) {
+				n.Map()["b"].Array()[1] = ToValue(2)
+			},
+		}, {
+			caseName: "Array(nil) child",
+			n:        Map{"a": Array(nil)},
+			want:     Map{"a": Array{}},
+			update:   func(n Node) {},
+		}, {
+			caseName: "pointer Array child mutated post-clone",
+			n:        Map{"a": Map{"b": &Array{ToValue(1)}}},
+			want:     Map{"a": Map{"b": Array{ToValue(1)}}},
+			update: func(n Node) {
+				(*n.Map()["a"].Map()["b"].(*Array))[0] = ToValue(9)
+			},
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
 			got := CloneDeep(tc.n)
-			if !Equal(got, tc.want) {
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("unexpected %v; want %v", got, tc.want)
 			}
 			tc.update(tc.n)
-			if !Equal(got, tc.want) {
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("after update unexpected %v; want %v", got, tc.want)
 			}
 		})

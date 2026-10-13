@@ -230,12 +230,12 @@ func regexpMatchString(expr, value string) (bool, error) {
 	return re.MatchString(value), nil
 }
 
-// Clone clones the node.
+// Clone clones the node shallowly; an untyped nil is returned as Nil.
 func Clone(n Node) Node {
 	return clone(n, false)
 }
 
-// CloneDeep clones the node.
+// CloneDeep recursively clones the node and all descendants; an untyped nil is returned as Nil.
 func CloneDeep(n Node) Node {
 	return clone(n, true)
 }
@@ -243,13 +243,16 @@ func CloneDeep(n Node) Node {
 // clone creates a copy of the node with optional deep cloning.
 // If deep is true, recursively clones all child nodes.
 func clone(n Node, deep bool) Node {
+	if n == nil {
+		return Nil
+	}
 	switch n.Type() {
 	case TypeArray:
 		a := n.Array()
 		aa := make(Array, len(a))
 		for i := 0; i < len(a); i++ {
 			if deep {
-				aa[i] = Clone(a[i])
+				aa[i] = clone(a[i], true)
 			} else {
 				aa[i] = a[i]
 			}
@@ -260,7 +263,7 @@ func clone(n Node, deep bool) Node {
 		mm := make(Map, len(m))
 		for k, v := range m {
 			if deep {
-				mm[k] = Clone(v)
+				mm[k] = clone(v, true)
 			} else {
 				mm[k] = v
 			}
