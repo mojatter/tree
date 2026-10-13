@@ -204,7 +204,7 @@ func (l *lexer) lex() []token {
 			}
 			continue
 		}
-		if op := matchOp(l.expr, l.pos); op != "" {
+		if op := matchOp(l.expr, l.pos, l.pos > 0 && l.expr[l.pos-1] == '.'); op != "" {
 			out = append(out, token{kind: cmdKind(op), text: op})
 			l.pos += len(op)
 			continue
@@ -246,13 +246,15 @@ func skipQuoted(expr string, p int) int {
 }
 
 // matchOp returns the operator, keyword, or punctuation token starting
-// at expr[i], or "" if none matches. The probe order mirrors the alternation
-// in the legacy regex so leftmost-first semantics are preserved.
-func matchOp(expr string, i int) string {
+// at expr[i], or "" if none matches.
+// Keywords need a word boundary and no preceding '.', so .orders and .or stay keys.
+func matchOp(expr string, i int, afterDot bool) string {
 	rest := expr[i:]
-	for _, kw := range []string{"and", "or"} {
-		if strings.HasPrefix(rest, kw) {
-			return kw
+	if !afterDot {
+		for _, kw := range []string{"and", "or"} {
+			if strings.HasPrefix(rest, kw) && (len(rest) == len(kw) || !isWord(rest[len(kw)])) {
+				return kw
+			}
 		}
 	}
 	for _, op := range []string{"==", "<=", ">=", "!=", "~=", ".."} {

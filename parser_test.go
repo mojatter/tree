@@ -212,6 +212,67 @@ func TestParseQuery(t *testing.T) {
 					Comparator{MapQuery("x"), EQ, ValueQuery{StringValue("NaN")}},
 				},
 			},
+		}, {
+			expr: `.orders`,
+			want: MapQuery("orders"),
+		}, {
+			expr: `.android`,
+			want: MapQuery("android"),
+		}, {
+			expr: `.origin.order_id`,
+			want: FilterQuery{MapQuery("origin"), MapQuery("order_id")},
+		}, {
+			expr: `..orders`,
+			want: WalkQuery("orders"),
+		}, {
+			expr: `..or`,
+			want: WalkQuery("or"),
+		}, {
+			expr: `.or`,
+			want: MapQuery("or"),
+		}, {
+			expr: `.a.and`,
+			want: FilterQuery{MapQuery("a"), MapQuery("and")},
+		}, {
+			expr: `[.orders and .origin]`,
+			want: SelectQuery{
+				And{
+					Evaluator{MapQuery("orders")},
+					Evaluator{MapQuery("origin")},
+				},
+			},
+		}, {
+			expr: `[.or == 1 or .and == 2]`,
+			want: SelectQuery{
+				Or{
+					Comparator{MapQuery("or"), EQ, ValueQuery{NumberValue(1)}},
+					Comparator{MapQuery("and"), EQ, ValueQuery{NumberValue(2)}},
+				},
+			},
+		}, {
+			expr: `[. and .b]`,
+			want: SelectQuery{
+				And{
+					Evaluator{NopQuery{}},
+					Evaluator{MapQuery("b")},
+				},
+			},
+		}, {
+			expr: `[. or .x == 1]`,
+			want: SelectQuery{
+				Or{
+					Evaluator{NopQuery{}},
+					Comparator{MapQuery("x"), EQ, ValueQuery{NumberValue(1)}},
+				},
+			},
+		}, {
+			expr: `[.a == 1 or.b == 2]`,
+			want: SelectQuery{
+				Or{
+					Comparator{MapQuery("a"), EQ, ValueQuery{NumberValue(1)}},
+					Comparator{MapQuery("b"), EQ, ValueQuery{NumberValue(2)}},
+				},
+			},
 		},
 	}
 	for _, tc := range testCases {

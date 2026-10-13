@@ -26,6 +26,11 @@ func TestEdit(t *testing.T) {
 			expr:     `.store={}`, // NOTE: trim spaces
 			want:     Map{"store": Map{}},
 		}, {
+			caseName: "append on key starting with or",
+			n:        Map{"orders": Array{}},
+			expr:     `.orders += 1`,
+			want:     Map{"orders": Array{NumberValue(1)}},
+		}, {
 			caseName: "set nested map key",
 			n:        Map{},
 			expr:     `.store.book = {}`,
