@@ -9,6 +9,11 @@ import (
 // valueEditorNode is a value-typed EditorNode without reference identity.
 type valueEditorNode struct{ EditorNode }
 
+// setFailingEditorNode is an EditorNode whose Set always fails.
+type setFailingEditorNode struct{ EditorNode }
+
+func (setFailingEditorNode) Set(any, Node) error { return errors.New("set failed") }
+
 func TestEdit(t *testing.T) {
 	testCases := []struct {
 		caseName string
@@ -833,6 +838,16 @@ func TestEdit(t *testing.T) {
 			n:        &Array{NumberValue(1), NumberValue(2)},
 			expr:     `[-5] = 1`,
 			errstr:   `cannot index array with -5`,
+		}, {
+			caseName: "walk set reports set error of editor node",
+			n:        Map{"x": setFailingEditorNode{Map{"b": NumberValue(0)}}},
+			expr:     `..b = 1`,
+			errstr:   `set failed`,
+		}, {
+			caseName: "walk append reports set error of editor node",
+			n:        Map{"x": setFailingEditorNode{Map{"b": Array{}}}},
+			expr:     `..b += 1`,
+			errstr:   `set failed`,
 		},
 	}
 	for _, tc := range testCases {
