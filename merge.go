@@ -1,10 +1,5 @@
 package tree
 
-import (
-	"fmt"
-	"strings"
-)
-
 // MergeOption represents different merge strategies for combining nodes.
 type MergeOption int
 
@@ -106,60 +101,6 @@ func (o MergeOption) isAppend() bool {
 // isSlurp checks if the merge option includes slurp behavior (convert to array).
 func (o MergeOption) isSlurp() bool {
 	return o&MergeOptionSlurp == MergeOptionSlurp
-}
-
-// MergeOptionFromString parses a comma-separated merge strategy spec
-// into a MergeOption. Recognised names map directly to the exported
-// MergeOption* values:
-//
-//   - "default"        — MergeOptionDefault (zero value)
-//   - "override"       — MergeOptionOverride (= override-map | override-array)
-//   - "override-map"   — MergeOptionOverrideMap
-//   - "override-array" — MergeOptionOverrideArray
-//   - "replace"        — MergeOptionReplace (= replace-map | replace-array)
-//   - "replace-map"    — MergeOptionReplaceMap
-//   - "replace-array"  — MergeOptionReplaceArray
-//   - "append"         — MergeOptionAppend
-//   - "slurp"          — MergeOptionSlurp
-//
-// Multiple names may be combined with commas: "override,append" yields
-// MergeOptionOverride | MergeOptionAppend. Whitespace around each name
-// is trimmed. An empty spec returns MergeOptionDefault. An unknown name
-// produces a non-nil error and a zero MergeOption.
-//
-// Intended for CLI / config consumers (e.g. tq's --merge flag) so the
-// option-name vocabulary lives next to the option definitions.
-func MergeOptionFromString(spec string) (MergeOption, error) {
-	if spec == "" {
-		return MergeOptionDefault, nil
-	}
-	var opts MergeOption
-	for name := range strings.SplitSeq(spec, ",") {
-		name = strings.TrimSpace(name)
-		switch name {
-		case "default":
-			// no flag bits
-		case "override":
-			opts |= MergeOptionOverride
-		case "override-map":
-			opts |= MergeOptionOverrideMap
-		case "override-array":
-			opts |= MergeOptionOverrideArray
-		case "replace":
-			opts |= MergeOptionReplace
-		case "replace-map":
-			opts |= MergeOptionReplaceMap
-		case "replace-array":
-			opts |= MergeOptionReplaceArray
-		case "append":
-			opts |= MergeOptionAppend
-		case "slurp":
-			opts |= MergeOptionSlurp
-		default:
-			return 0, fmt.Errorf("unknown merge strategy %q", name)
-		}
-	}
-	return opts, nil
 }
 
 // Merge merges two nodes with MergeOption. The opts value propagates
