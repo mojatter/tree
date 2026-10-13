@@ -2,6 +2,8 @@ package tree
 
 import (
 	"fmt"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -388,30 +390,104 @@ func (q WalkQuery) Exec(root Node) ([]Node, error) {
 	return r, nil
 }
 
-func (q WalkQuery) Set(pn *Node, v Node) error {
+// walkTarget is an editable node found by a walk, with its path from the walk root.
+type walkTarget struct {
+	path []any
+	en   EditorNode
+}
+
+// live returns the target's editor if the same node is still at its path under root.
+func (t walkTarget) live(root Node) (EditorNode, bool) {
+	cur := root
+	for _, k := range t.path {
+		if cur == nil {
+			return nil, false
+		}
+		cur = cur.Get(k)
+	}
+	en, ok := cur.(EditorNode)
+	if !ok || !stillTarget(en, t.en) {
+		return nil, false
+	}
+	return en, true
+}
+
+// stillTarget reports whether en is the collected target, by instance or, for value-typed editors, by type.
+func stillTarget(en, target EditorNode) bool {
+	if hasIdentity(target) {
+		return sameNode(en, target)
+	}
+	// NOTE: the RHS is always a built-in node, so it never matches a custom value type.
+	return reflect.TypeOf(en) == reflect.TypeOf(target)
+}
+
+// hasIdentity reports whether sameNode can identify n (a map, pointer or non-empty slice).
+func hasIdentity(n Node) bool {
+	return sameNode(n, n)
+}
+
+// sameNode reports whether a and b are the same map, pointer or non-empty slice instance.
+func sameNode(a, b Node) bool {
+	va, vb := reflect.ValueOf(a), reflect.ValueOf(b)
+	if !va.IsValid() || !vb.IsValid() || va.Type() != vb.Type() {
+		return false
+	}
+	switch va.Kind() {
+	case reflect.Map, reflect.Pointer:
+		return va.UnsafePointer() == vb.UnsafePointer()
+	case reflect.Slice:
+		return va.Len() > 0 && va.Len() == vb.Len() && va.UnsafePointer() == vb.UnsafePointer()
+	}
+	return false
+}
+
+// walkTargets collects editable nodes holding key up front so edits never walk into assigned values.
+func (q WalkQuery) walkTargets(n, v Node) []walkTarget {
 	key := string(q)
-	return Walk(*pn, func(n Node, keys []any) error {
-		if n.Has(key) {
-			if en, ok := n.(EditorNode); ok {
-				_ = en.Set(key, v)
+	var r []walkTarget
+	// NOTE: Walk returns no error
+	_ = Walk(n, func(wn Node, keys []any) error {
+		if sameNode(wn, v) {
+			return SkipWalk // never edit inside the value assigned by an outer match
+		}
+		if wn.Has(key) {
+			if en, ok := wn.(EditorNode); ok {
+				r = append(r, walkTarget{path: slices.Clone(keys), en: en})
 			}
 		}
 		return nil
 	})
+	return r
+}
+
+func (q WalkQuery) Set(pn *Node, v Node) error {
+	key := string(q)
+	for _, t := range q.walkTargets(*pn, v) {
+		en, ok := t.live(*pn)
+		if !ok {
+			continue
+		}
+		if err := en.Set(key, v); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (q WalkQuery) Append(pn *Node, v Node) error {
 	key := string(q)
-	return Walk(*pn, func(n Node, keys []any) error {
-		if n.Has(key) {
-			if ca := n.Get(key).Array(); ca != nil {
-				if en, ok := n.(EditorNode); ok {
-					_ = en.Set(key, append(ca, v))
-				}
+	for _, t := range q.walkTargets(*pn, v) {
+		en, ok := t.live(*pn)
+		if !ok {
+			continue
+		}
+		if ca := en.Get(key).Array(); ca != nil {
+			if err := en.Set(key, append(ca, v)); err != nil {
+				return err
 			}
 		}
-		return nil
-	})
+	}
+	return nil
 }
 
 func (q WalkQuery) Delete(pn *Node) error {

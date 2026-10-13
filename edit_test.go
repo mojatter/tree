@@ -6,6 +6,9 @@ import (
 	"testing"
 )
 
+// valueEditorNode is a value-typed EditorNode without reference identity.
+type valueEditorNode struct{ EditorNode }
+
 func TestEdit(t *testing.T) {
 	testCases := []struct {
 		caseName string
@@ -678,6 +681,16 @@ func TestEdit(t *testing.T) {
 			expr:     `[-1] ^?`,
 			errstr:   `cannot delete array with -1`,
 		}, {
+			caseName: "walk set with value containing the same key",
+			n:        Map{"a": Map{"b": NumberValue(1)}},
+			expr:     `..b = {"b": 1}`,
+			want:     Map{"a": Map{"b": Map{"b": NumberValue(1)}}},
+		}, {
+			caseName: "walk append with value containing the same key",
+			n:        Map{"b": Array{}},
+			expr:     `..b += {"b": []}`,
+			want:     Map{"b": Array{Map{"b": Array{}}}},
+		}, {
 			caseName: "set index at array limit errors",
 			n:        Map{"a": Array{}},
 			expr:     `.a[16777216] = 1`,
@@ -703,6 +716,16 @@ func TestEdit(t *testing.T) {
 			expr:     `.a[16777216] += 1`,
 			errstr:   `array index 16777216 exceeds maximum 16777215`,
 		}, {
+			caseName: "walk intermediate set with value containing the same path",
+			n:        Map{"b": Map{"c": NumberValue(1)}},
+			expr:     `..b.c = {"b": {"c": 1}}`,
+			want:     Map{"b": Map{"c": Map{"b": Map{"c": NumberValue(1)}}}},
+		}, {
+			caseName: "walk intermediate append with value containing the same path",
+			n:        Map{"b": Map{"c": Array{}}},
+			expr:     `..b.c += {"b": {"c": []}}`,
+			want:     Map{"b": Map{"c": Array{Map{"b": Map{"c": Array{}}}}}},
+		}, {
 			caseName: "negative index out of range on intermediate array errors",
 			n:        Array{},
 			expr:     `[-5].a = 1`,
@@ -723,10 +746,83 @@ func TestEdit(t *testing.T) {
 			expr:     `.a[-1].b = 1`,
 			want:     Map{"a": NumberValue(1)},
 		}, {
+			caseName: "walk intermediate set skips subtree replaced by earlier match",
+			n:        Map{"b": Map{"c": Map{"b": Array{}}}},
+			expr:     `..b.c = 1`,
+			want:     Map{"b": Map{"c": NumberValue(1)}},
+		}, {
+			caseName: "walk intermediate set skips scalar in replaced subtree",
+			n:        Map{"b": Map{"c": Map{"b": NumberValue(1)}}},
+			expr:     `..b.c = 1`,
+			want:     Map{"b": Map{"c": NumberValue(1)}},
+		}, {
+			caseName: "walk set does not edit the assigned value",
+			n:        Map{"b": Map{"b": NumberValue(0)}},
+			expr:     `..b = {"b": 9}`,
+			want:     Map{"b": Map{"b": NumberValue(9)}},
+		}, {
 			caseName: "set past end grows with nil holes",
 			n:        Array{},
 			expr:     `[2] = 1`,
 			want:     Array{nil, nil, NumberValue(1)},
+		}, {
+			caseName: "walk intermediate set skips the assigned value",
+			n:        Map{"b": Map{"b": Map{"b": Map{}}}},
+			expr:     `..b.b = {"x": 1}`,
+			want:     Map{"b": Map{"b": Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "walk intermediate set skips the assigned value below a live target",
+			n:        Map{"b": Map{"b": Map{"b": NumberValue(0)}}},
+			expr:     `..b.b.b = {"x": 1}`,
+			want:     Map{"b": Map{"b": Map{"b": Map{"x": NumberValue(1)}}}},
+		}, {
+			caseName: "walk intermediate set skips the assigned array value",
+			n:        Map{"b": Array{Map{"b": NumberValue(0)}}},
+			expr:     `..b[0].b = [{"c": 0}]`,
+			want:     Map{"b": Array{Map{"b": Array{Map{"c": NumberValue(0)}}}}},
+		}, {
+			caseName: "walk intermediate append skips the assigned value",
+			n:        Map{"b": Map{"b": Map{"b": Map{"c": Array{}}}}},
+			expr:     `..b.b.c += {"b": {"c": []}}`,
+			want: Map{"b": Map{"b": Map{
+				"b": Map{"b": Map{"c": Array{Map{"b": Map{"c": Array{}}}}}, "c": Array{Map{"b": Map{"c": Array{}}}}},
+				"c": Array{Map{"b": Map{"c": Array{}}}},
+			}}},
+		}, {
+			caseName: "walk intermediate delete skips target whose key is already deleted",
+			n:        Map{"b": Map{"b": Map{"b": Map{}}}},
+			expr:     `..b.b ^?`,
+			want:     Map{"b": Map{}},
+		}, {
+			caseName: "nested walk set skips the assigned value",
+			n:        Map{"b": Map{"b": Map{"c": NumberValue(0)}}},
+			expr:     `..b..c = {"c": 1}`,
+			want:     Map{"b": Map{"b": Map{"c": Map{"c": NumberValue(1)}}}},
+		}, {
+			caseName: "walk intermediate set into the assigned empty array fails as on main",
+			n:        Map{"b": Map{"b": Map{"b": NumberValue(0)}}},
+			expr:     `..b.b = []`,
+			errstr:   `cannot index array with b`,
+		}, {
+			caseName: "walk set on value-typed editor node does not edit the assigned value",
+			n:        Map{"b": valueEditorNode{Map{"b": NumberValue(0)}}},
+			expr:     `..b = {"b": 9}`,
+			want:     Map{"b": Map{"b": NumberValue(9)}},
+		}, {
+			caseName: "walk intermediate set grows an existing empty array",
+			n:        Map{"b": Array{}, "x": Map{"b": Array{}}},
+			expr:     `..b[0] = []`,
+			want:     Map{"b": Array{Array{}}, "x": Map{"b": Array{Array{}}}},
+		}, {
+			caseName: "walk set on value-typed editor node",
+			n:        Map{"a": Map{"b": NumberValue(0)}, "x": valueEditorNode{Map{"b": NumberValue(1)}}},
+			expr:     `..b = 9`,
+			want:     Map{"a": Map{"b": NumberValue(9)}, "x": valueEditorNode{Map{"b": NumberValue(9)}}},
+		}, {
+			caseName: "walk intermediate set on value-typed editor node",
+			n:        Map{"x": valueEditorNode{Map{"b": Map{"c": NumberValue(1)}}}},
+			expr:     `..b.c = 9`,
+			want:     Map{"x": valueEditorNode{Map{"b": Map{"c": NumberValue(9)}}}},
 		}, {
 			caseName: "negative index out of range set reports the index",
 			n:        Array{NumberValue(1), NumberValue(2)},
@@ -757,6 +853,39 @@ func TestEdit(t *testing.T) {
 			got := tc.n
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("got %#v; want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEditSequence(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		n        Node
+		exprs    []string
+		want     Node
+	}{
+		{
+			caseName: "walk set empty array then append through separate paths",
+			n:        Map{"a": Map{"b": Nil}, "c": Map{"b": Nil}},
+			exprs:    []string{`..b = []`, `.a.b += 1`, `.c.b += 2`},
+			want:     Map{"a": Map{"b": Array{NumberValue(1)}}, "c": Map{"b": Array{NumberValue(2)}}},
+		}, {
+			caseName: "select set empty array then append through separate elements",
+			n:        Array{Map{"b": NumberValue(0)}, Map{"b": NumberValue(0)}},
+			exprs:    []string{`.[].b = []`, `[0].b += 1`, `[1].b += 2`},
+			want:     Array{Map{"b": Array{NumberValue(1)}}, Map{"b": Array{NumberValue(2)}}},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			for _, expr := range tc.exprs {
+				if err := Edit(&(tc.n), expr); err != nil {
+					t.Fatalf("%s: unexpected error: %+v", expr, err)
+				}
+			}
+			if !reflect.DeepEqual(tc.n, tc.want) {
+				t.Errorf("got %#v; want %#v", tc.n, tc.want)
 			}
 		})
 	}
