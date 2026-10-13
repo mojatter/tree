@@ -78,7 +78,7 @@ func (n NilValue) MarshalYAML() (any, error) {
 	return nil, nil
 }
 
-// MarshalViaYAML returns the node encoding of v via "gopkg.in/yaml.v3".
+// MarshalViaYAML returns the node encoding of v via "go.yaml.in/yaml/v3".
 func MarshalViaYAML(v any) (Node, error) {
 	if v == nil {
 		return Nil, nil
@@ -93,7 +93,7 @@ func MarshalViaYAML(v any) (Node, error) {
 	return UnmarshalYAML(data)
 }
 
-// UnmarshalViaYAML stores the node in the value pointed to by v via "gopkg.in/yaml.v3".
+// UnmarshalViaYAML stores the node in the value pointed to by v via "go.yaml.in/yaml/v3".
 func UnmarshalViaYAML(n Node, v any) error {
 	data, err := MarshalYAML(n)
 	if err != nil {
