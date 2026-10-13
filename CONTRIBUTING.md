@@ -46,6 +46,8 @@ make bench BENCHTIME=10s BENCHCOUNT=3
 
 ## Code conventions
 
+- **Formatting.** Code must be gofmt-clean; `make lint` reports drift
+  through golangci-lint's gofmt formatter.
 - **Test layout.** Each `foo.go` has a single corresponding
   `foo_test.go`. Add new tests by appending to the existing file
   rather than creating split files like `foo_extra_test.go`.
