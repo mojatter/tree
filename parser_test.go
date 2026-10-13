@@ -266,6 +266,13 @@ func TestParseQuery(t *testing.T) {
 				},
 			},
 		}, {
+			expr: `[.x == order]`,
+			want: SelectQuery{
+				And{
+					Comparator{MapQuery("x"), EQ, ValueQuery{StringValue("order")}},
+				},
+			},
+		}, {
 			expr: `[.a == 1 or.b == 2]`,
 			want: SelectQuery{
 				Or{
@@ -356,6 +363,8 @@ func FuzzParseQuery(f *testing.F) {
 		".a | .b",
 		".a.count()",
 		".a.sort(\".name\")",
+		"[.a == 1 or .b == 2]",
+		".orders",
 	}
 	for _, s := range seeds {
 		f.Add(s)

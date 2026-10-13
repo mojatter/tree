@@ -204,6 +204,7 @@ func (l *lexer) lex() []token {
 			}
 			continue
 		}
+		// Raw byte, not prevIsPathDot: "[. and .b]" must keep the keyword.
 		if op := matchOp(l.expr, l.pos, l.pos > 0 && l.expr[l.pos-1] == '.'); op != "" {
 			out = append(out, token{kind: cmdKind(op), text: op})
 			l.pos += len(op)
@@ -247,6 +248,7 @@ func skipQuoted(expr string, p int) int {
 
 // matchOp returns the operator, keyword, or punctuation token starting
 // at expr[i], or "" if none matches.
+// Multi-byte operators are probed before single bytes so ".." and "<=" win.
 // Keywords need a word boundary and no preceding '.', so .orders and .or stay keys.
 func matchOp(expr string, i int, afterDot bool) string {
 	rest := expr[i:]
