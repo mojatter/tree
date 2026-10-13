@@ -280,6 +280,9 @@ func TestParseQuery(t *testing.T) {
 					Comparator{MapQuery("b"), EQ, ValueQuery{NumberValue(2)}},
 				},
 			},
+		}, {
+			expr: `1.or`,
+			want: FilterQuery{ValueQuery{NumberValue(1)}, MapQuery("or")},
 		},
 	}
 	for _, tc := range testCases {
