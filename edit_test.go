@@ -14,6 +14,11 @@ type setFailingEditorNode struct{ EditorNode }
 
 func (setFailingEditorNode) Set(any, Node) error { return errors.New("set failed") }
 
+// mapHidingEditorNode is an EditorNode whose Map returns nil, like a struct-backed node.
+type mapHidingEditorNode struct{ EditorNode }
+
+func (mapHidingEditorNode) Map() Map { return nil }
+
 func TestEdit(t *testing.T) {
 	testCases := []struct {
 		caseName string
@@ -848,6 +853,71 @@ func TestEdit(t *testing.T) {
 			n:        Map{"x": setFailingEditorNode{Map{"b": Array{}}}},
 			expr:     `..b += 1`,
 			errstr:   `set failed`,
+		}, {
+			caseName: "intermediate map step reports set error of editor node",
+			n:        Map{"x": setFailingEditorNode{Map{"y": Map{"c": NumberValue(0)}}}},
+			expr:     `.x.y.c = 1`,
+			errstr:   `set failed`,
+		}, {
+			caseName: "intermediate map step edits editor node without map",
+			n:        Map{"x": mapHidingEditorNode{Map{"y": Map{"c": NumberValue(0)}}}},
+			expr:     `.x.y.c = 1`,
+			want:     Map{"x": mapHidingEditorNode{Map{"y": Map{"c": NumberValue(1)}}}},
+		}, {
+			caseName: "intermediate map step creates missing key in editor node without map",
+			n:        Map{"x": mapHidingEditorNode{Map{}}},
+			expr:     `.x.new.c = 1`,
+			want:     Map{"x": mapHidingEditorNode{Map{"new": Map{"c": NumberValue(1)}}}},
+		}, {
+			caseName: "intermediate map step replaces nil value in editor node",
+			n:        Map{"x": valueEditorNode{Map{"y": nil}}},
+			expr:     `.x.y.c = 1`,
+			want:     Map{"x": valueEditorNode{Map{"y": Map{"c": NumberValue(1)}}}},
+		}, {
+			caseName: "intermediate map step replaces nil value in editor node without map",
+			n:        Map{"x": mapHidingEditorNode{Map{"y": nil}}},
+			expr:     `.x.y.c = 1`,
+			want:     Map{"x": mapHidingEditorNode{Map{"y": Map{"c": NumberValue(1)}}}},
+		}, {
+			caseName: "intermediate map step leaves editor node wrapping nil map",
+			n:        Map{"x": valueEditorNode{Map(nil)}},
+			expr:     `.x.y.c = 1`,
+			want:     Map{"x": valueEditorNode{Map(nil)}},
+		}, {
+			caseName: "intermediate map step replaces null value",
+			n:        Map{"y": Nil},
+			expr:     `.y.c = 1`,
+			want:     Map{"y": Map{"c": NumberValue(1)}},
+		}, {
+			caseName: "intermediate map step keeps pointer array",
+			n:        Map{"x": &Array{Map{"c": NumberValue(0)}}},
+			expr:     `.x.0.c = 1`,
+			want:     Map{"x": &Array{Map{"c": NumberValue(1)}}},
+		}, {
+			caseName: "intermediate map step grows pointer array",
+			n:        Map{"x": &Array{}},
+			expr:     `.x.2.c = 1`,
+			want:     Map{"x": &Array{nil, nil, Map{"c": NumberValue(1)}}},
+		}, {
+			caseName: "intermediate map step rejects non-numeric key on pointer array",
+			n:        Map{"x": &Array{}},
+			expr:     `.x.foo.c = 1`,
+			errstr:   `cannot index array with foo`,
+		}, {
+			caseName: "intermediate map step keeps nil pointer array",
+			n:        Map{"x": new(Array)},
+			expr:     `.x[0].c = 1`,
+			want:     Map{"x": &Array{Map{"c": NumberValue(1)}}},
+		}, {
+			caseName: "delete through null intermediate is a no-op",
+			n:        Map{"x": Map{"y": Nil}},
+			expr:     `.x.y.z ^?`,
+			want:     Map{"x": Map{"y": Nil}},
+		}, {
+			caseName: "delete through missing intermediate is a no-op",
+			n:        Map{"x": Map{}},
+			expr:     `.x.y[0].z ^?`,
+			want:     Map{"x": Map{}},
 		},
 	}
 	for _, tc := range testCases {

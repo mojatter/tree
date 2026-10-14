@@ -152,10 +152,29 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node) error
 
 // resolveMapStep handles a MapQuery intermediate step with write-back.
 func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op string, v Node) error {
+	if en, ok := n.(EditorNode); ok && !n.IsNil() {
+		child := en.Get(key)
+		if child.Type().IsNilValue() {
+			child = emptyIntermediate(op, fq[step+1])
+			if child == nil {
+				return nil
+			}
+			if err := en.Set(key, child); err != nil {
+				return err
+			}
+		}
+
+		if err := resolveAndEdit(&child, fq, step+1, op, v); err != nil {
+			return err
+		}
+
+		return en.Set(key, child)
+	}
+
 	if m := n.Map(); m != nil {
 		child, exists := m[key]
 		if !exists || child == nil {
-			child = emptyIntermediate(fq[step+1])
+			child = emptyIntermediate(op, fq[step+1])
 			if child == nil {
 				return nil
 			}
@@ -182,7 +201,7 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 		}
 		child := a[i]
 		if child == nil {
-			child = emptyIntermediate(fq[step+1])
+			child = emptyIntermediate(op, fq[step+1])
 			if child == nil {
 				return nil
 			}
@@ -205,7 +224,7 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 	if en, ok := n.(EditorNode); ok {
 		child := n.Get(index)
 		if child.IsNil() {
-			child = emptyIntermediate(fq[step+1])
+			child = emptyIntermediate(op, fq[step+1])
 			if child == nil {
 				return nil
 			}
@@ -230,7 +249,7 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 		}
 		child := a[index]
 		if child == nil {
-			child = emptyIntermediate(fq[step+1])
+			child = emptyIntermediate(op, fq[step+1])
 			if child == nil {
 				return nil
 			}
@@ -300,8 +319,11 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 }
 
 // emptyIntermediate returns an empty node appropriate for the next
-// query step, or nil if no intermediate creation is needed.
-func emptyIntermediate(nextQuery Query) Node {
+// query step, or nil if none should be created (always for a delete).
+func emptyIntermediate(op string, nextQuery Query) Node {
+	if op == "^?" {
+		return nil
+	}
 	switch nextQuery.(type) {
 	case MapQuery:
 		return Map{}
