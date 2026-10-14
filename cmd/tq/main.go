@@ -148,7 +148,7 @@ func (r *runner) initFlagSet(args []string) error {
 	s.StringVarP(&r.outputFile, "output", "O", "", "output file")
 	s.StringVarP(&r.tmplText, "template", "t", "", "golang text/template string")
 	s.StringVarP(&r.inputFormat, "input-format", "i", "", "input format (json or yaml)")
-	s.StringVarP(&r.outputFormat, "output-format", "o", "", "output format (json or yaml, default json)")
+	s.StringVarP(&r.outputFormat, "output-format", "o", "", "output format (json or yaml, default: input format)")
 	s.StringArrayVarP(&r.editExprs, "edit", "e", nil, "edit expression")
 	s.Usage = func() {
 		_, _ = fmt.Fprintf(r.stderr, "%s\n\nUsage:\n  %s\n\n", desc, usage)
@@ -380,10 +380,23 @@ func (r *runner) output(node tree.Node) error {
 		}
 		return nil
 	}
-	if r.outputFormat == "yaml" || r.isOutputYAML || r.guessFormat == "yaml" {
+	if r.effectiveOutputFormat() == "yaml" {
 		return r.outputYAML(node)
 	}
 	return r.outputJSON(node)
+}
+
+// effectiveOutputFormat resolves the output format: -o, then -J, then -Y, then the input format.
+func (r *runner) effectiveOutputFormat() string {
+	switch {
+	case r.outputFormat == "json" || r.outputFormat == "yaml":
+		return r.outputFormat
+	case r.isOutputJSON:
+		return "json"
+	case r.isOutputYAML:
+		return "yaml"
+	}
+	return r.guessFormat
 }
 
 func (r *runner) outputYAML(n tree.Node) error {

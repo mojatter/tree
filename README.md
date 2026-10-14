@@ -452,7 +452,7 @@ Flags:
   -j, --input-json             alias --input-format json
   -y, --input-yaml             alias --input-format yaml
   -O, --output string          output file
-  -o, --output-format string   output format (json or yaml, default json)
+  -o, --output-format string   output format (json or yaml, default: input format)
   -J, --output-json            alias --output-format json
   -Y, --output-yaml            alias --output-format yaml
   -r, --raw                    output raw strings

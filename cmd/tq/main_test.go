@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/mojatter/io2"
@@ -73,6 +74,30 @@ func TestRun(t *testing.T) {
 		}, {
 			caseName: "first book from json to yaml",
 			args:     []string{"-o", "yaml", ".store.book[0]", "testdata/store.json"},
+			golden:   "testdata/book-0.yaml",
+		}, {
+			caseName: "first book from yaml to json with -o json",
+			args:     []string{"-o", "json", ".store.book[0]", "testdata/store.yaml"},
+			golden:   "testdata/book-0.json",
+		}, {
+			caseName: "first book from yaml to json with -J",
+			args:     []string{"-J", ".store.book[0]", "testdata/store.yaml"},
+			golden:   "testdata/book-0.json",
+		}, {
+			caseName: "first book from json to yaml with -Y",
+			args:     []string{"-Y", ".store.book[0]", "testdata/store.json"},
+			golden:   "testdata/book-0.yaml",
+		}, {
+			caseName: "-o wins over -Y",
+			args:     []string{"-o", "json", "-Y", ".store.book[0]", "testdata/store.yaml"},
+			golden:   "testdata/book-0.json",
+		}, {
+			caseName: "-J wins over -Y",
+			args:     []string{"-J", "-Y", ".store.book[0]", "testdata/store.yaml"},
+			golden:   "testdata/book-0.json",
+		}, {
+			caseName: "-o wins over -J",
+			args:     []string{"-o", "yaml", "-J", ".store.book[0]", "testdata/store.yaml"},
 			golden:   "testdata/book-0.yaml",
 		}, {
 			caseName: "range[1:3] books",
@@ -272,33 +297,60 @@ func TestRunOutputFile(t *testing.T) {
 // TestRunInplace verifies the `-U` flag writes results back to the
 // input file, exercising the evaluateInputFiles inplace branch.
 func TestRunInplace(t *testing.T) {
-	dir := t.TempDir()
-	target := filepath.Join(dir, "store.json")
-	src, err := os.ReadFile("testdata/store.json")
-	if err != nil {
-		t.Fatalf("ReadFile src: %v", err)
+	testCases := []struct {
+		caseName string
+		src      string
+		args     []string
+		golden   string
+	}{
+		{
+			caseName: "json in place",
+			src:      "testdata/store.json",
+			args:     []string{"-U"},
+			golden:   "testdata/book-0.json",
+		}, {
+			caseName: "yaml to json in place with -J",
+			src:      "testdata/store.yaml",
+			args:     []string{"-U", "-J"},
+			golden:   "testdata/book-0.json",
+		}, {
+			caseName: "json to yaml in place with -Y",
+			src:      "testdata/store.json",
+			args:     []string{"-U", "-Y"},
+			golden:   "testdata/book-0.yaml",
+		},
 	}
-	if err := os.WriteFile(target, src, 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			target := filepath.Join(t.TempDir(), filepath.Base(tc.src))
+			src, err := os.ReadFile(tc.src)
+			if err != nil {
+				t.Fatalf("ReadFile src: %v", err)
+			}
+			if err := os.WriteFile(target, src, 0o644); err != nil {
+				t.Fatalf("WriteFile: %v", err)
+			}
 
-	buf := new(bytes.Buffer)
-	r := newTestRunner(buf)
-	defer r.close()
+			buf := new(bytes.Buffer)
+			r := newTestRunner(buf)
+			defer r.close()
 
-	if err := r.run([]string{"tq", "-U", ".store.book[0]", target}); err != nil {
-		t.Fatalf("run: %v", err)
-	}
-	got, err := os.ReadFile(target)
-	if err != nil {
-		t.Fatalf("ReadFile target: %v", err)
-	}
-	want, err := os.ReadFile("testdata/book-0.json")
-	if err != nil {
-		t.Fatalf("ReadFile want: %v", err)
-	}
-	if string(got) != string(want) {
-		t.Errorf("got %q\nwant %q", got, want)
+			args := slices.Concat([]string{"tq"}, tc.args, []string{".store.book[0]", target})
+			if err := r.run(args); err != nil {
+				t.Fatalf("run: %v", err)
+			}
+			got, err := os.ReadFile(target)
+			if err != nil {
+				t.Fatalf("ReadFile target: %v", err)
+			}
+			want, err := os.ReadFile(tc.golden)
+			if err != nil {
+				t.Fatalf("ReadFile want: %v", err)
+			}
+			if string(got) != string(want) {
+				t.Errorf("got %q\nwant %q", got, want)
+			}
+		})
 	}
 }
 
