@@ -317,8 +317,8 @@ Tree provides several built-in methods for data manipulation and querying:
 #### Array Methods
 - **`first()`** - Returns the first element of an array
 - **`last()`** - Returns the last element of an array
-- **`sort([expr])`** - Returns the array sorted in ascending order. With an optional query expression, sorts by the value that expression resolves to on each element.
-- **`rsort([expr])`** - Same as `sort()` but in descending order.
+- **`sort([expr])`** - Returns the array sorted in ascending order. With an optional query expression, sorts by the value that expression resolves to on each element; an element where it resolves to nothing sorts as `null`, and an error from the expression is returned. Mixed types are ordered `null < false < true < numbers < strings < arrays < objects`, NaN sorts before every other number, and arrays and objects keep their original order among themselves.
+- **`rsort([expr])`** - Same as `sort()` but in descending order; elements with equal keys, including arrays and objects, still keep their original order.
 
 #### Examples
 
