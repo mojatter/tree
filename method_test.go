@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"math"
 	"reflect"
 	"testing"
 )
@@ -321,6 +322,21 @@ func TestMethodQuery(t *testing.T) {
 			q:        &RSortQuery{Expr: ".age", Query: MapQuery("age")},
 			n:        Array{NumberValue(5)},
 			errstr:   `cannot index array with "age"`,
+		}, {
+			caseName: "sort key query error on null element",
+			q:        &SortQuery{Expr: ".age", Query: MapQuery("age")},
+			n:        Array{Map{"age": NumberValue(1)}, Nil},
+			errstr:   `cannot index array with "age"`,
+		}, {
+			caseName: "sort nil containers by type",
+			q:        &SortQuery{},
+			n:        Array{NumberValue(1), Map(nil), StringValue("a"), Array(nil)},
+			want:     []Node{Array{NumberValue(1), StringValue("a"), Array(nil), Map(nil)}},
+		}, {
+			caseName: "sort key ties keep nil and empty containers together",
+			q:        &SortQuery{Expr: ".a", Query: MapQuery("a")},
+			n:        Array{Map{"a": Map{}}, Map{"a": Nil}, Map{"a": Map(nil)}},
+			want:     []Node{Array{Map{"a": Nil}, Map{"a": Map{}}, Map{"a": Map(nil)}}},
 		},
 	}
 	for _, tc := range testCases {
@@ -340,6 +356,45 @@ func TestMethodQuery(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("got %v; want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestSortQueryNaN is separate because reflect.DeepEqual never matches NaN.
+func TestSortQueryNaN(t *testing.T) {
+	nan := math.NaN()
+	testCases := []struct {
+		caseName string
+		q        Query
+		want     []float64
+	}{
+		{
+			caseName: "sort puts NaN first",
+			q:        &SortQuery{},
+			want:     []float64{nan, 1, 2, 3},
+		}, {
+			caseName: "rsort puts NaN last",
+			q:        &RSortQuery{},
+			want:     []float64{3, 2, 1, nan},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := tc.q.Exec(Array{NumberValue(3), NumberValue(nan), NumberValue(1), NumberValue(2)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			a := got[0].Array()
+			if len(a) != len(tc.want) {
+				t.Fatalf("got %v; want %v", a, tc.want)
+			}
+			for i, w := range tc.want {
+				g := a[i].Value().Float64()
+				if g != w && !(math.IsNaN(g) && math.IsNaN(w)) {
+					t.Errorf("got %v; want %v", a, tc.want)
+					break
+				}
 			}
 		})
 	}

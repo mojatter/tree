@@ -1,8 +1,9 @@
 package tree
 
 import (
+	"cmp"
 	"fmt"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -332,8 +333,7 @@ func (q *LastQuery) String() string {
 	return "last()"
 }
 
-// Ranks of the cross-type order used by sort and rsort:
-// null < false < true < numbers < strings < arrays < objects.
+// Sort ranks: null < false < true < numbers < strings < arrays < objects.
 const (
 	sortRankNull = iota
 	sortRankFalse
@@ -366,31 +366,22 @@ func sortRank(n Node) int {
 	return sortRankNull
 }
 
-// compareSortKeys orders keys by type rank first. Numbers and strings are then
-// compared by value; arrays and objects of the same type compare as equal,
-// so the stable sort keeps their original order.
+// compareSortKeys orders keys by type rank, then numbers and strings by value.
 func compareSortKeys(a, b Node) int {
-	ra, rb := sortRank(a), sortRank(b)
-	if ra != rb {
-		if ra < rb {
-			return -1
-		}
-		return 1
+	ra := sortRank(a)
+	if c := cmp.Compare(ra, sortRank(b)); c != 0 {
+		return c
 	}
-	if ra == sortRankNumber || ra == sortRankString {
-		va, vb := a.Value(), b.Value()
-		if va.Compare(LT, vb) {
-			return -1
-		}
-		if vb.Compare(LT, va) {
-			return 1
-		}
+	switch ra {
+	case sortRankNumber:
+		return cmp.Compare(a.Value().Float64(), b.Value().Float64())
+	case sortRankString:
+		return strings.Compare(a.Value().String(), b.Value().String())
 	}
 	return 0
 }
 
-// sortNodes returns a stably sorted copy of a. The key of each element is
-// evaluated once, and the first error from q aborts the sort.
+// sortNodes returns a stably sorted copy of a, evaluating each key once.
 func sortNodes(a Array, q Query, desc bool) (Array, error) {
 	type item struct{ node, key Node }
 	items := make([]item, len(a))
@@ -408,12 +399,12 @@ func sortNodes(a Array, q Query, desc bool) (Array, error) {
 		}
 		items[i] = item{node: n, key: key}
 	}
-	sort.SliceStable(items, func(i, j int) bool {
-		c := compareSortKeys(items[i].key, items[j].key)
+	slices.SortStableFunc(items, func(x, y item) int {
+		c := compareSortKeys(x.key, y.key)
 		if desc {
-			return c > 0
+			return -c
 		}
-		return c < 0
+		return c
 	})
 	sorted := make(Array, len(items))
 	for i, it := range items {
@@ -451,9 +442,7 @@ func (q *SortQuery) Exec(n Node) ([]Node, error) {
 	if n.Type() != TypeArray {
 		return []Node{n}, nil
 	}
-	a := n.Array()
-
-	sorted, err := sortNodes(a, q.Query, false)
+	sorted, err := sortNodes(n.Array(), q.Query, false)
 	if err != nil {
 		return nil, err
 	}
@@ -496,9 +485,7 @@ func (q *RSortQuery) Exec(n Node) ([]Node, error) {
 	if n.Type() != TypeArray {
 		return []Node{n}, nil
 	}
-	a := n.Array()
-
-	sorted, err := sortNodes(a, q.Query, true)
+	sorted, err := sortNodes(n.Array(), q.Query, true)
 	if err != nil {
 		return nil, err
 	}
