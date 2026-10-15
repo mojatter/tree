@@ -332,11 +332,14 @@ func TestRunOutputFile(t *testing.T) {
 // input file, exercising the evaluateInputFiles inplace branch.
 func TestRunInplace(t *testing.T) {
 	testCases := []struct {
-		caseName string
-		src      string
-		args     []string
-		golden   string
-		errstr   string
+		caseName   string
+		src        string
+		args       []string
+		golden     string
+		errstr     string
+		twoFiles   bool
+		stdin      string
+		wantStdout string
 	}{
 		{
 			caseName: "json in place",
@@ -364,24 +367,72 @@ func TestRunInplace(t *testing.T) {
 			args:     []string{"-U", ".a"},
 			golden:   "testdata/broken-json-stream",
 			errstr:   "invalid character 'o' in literal false (expecting 'a'); yaml: line 1: did not find expected <document start>",
+		}, {
+			caseName: "multi-document yaml in place keeps its documents",
+			src:      "testdata/multi-doc.yaml",
+			args:     []string{"-U", "."},
+			golden:   "testdata/multi-doc.yaml",
+		}, {
+			caseName: "json stream to yaml in place with -Y keeps its documents",
+			src:      "testdata/multi-doc-json",
+			args:     []string{"-U", "-Y", "."},
+			golden:   "testdata/multi-doc.yaml",
+		}, {
+			caseName: "expanded results in place are separate documents",
+			src:      "testdata/store.yaml",
+			args:     []string{"-U", "-x", ".store.book"},
+			golden:   "testdata/book-x.yaml",
+		}, {
+			caseName: "second file in place does not start with a separator",
+			src:      "testdata/multi-doc.yaml",
+			args:     []string{"-U", "."},
+			golden:   "testdata/multi-doc.yaml",
+			twoFiles: true,
+		}, {
+			caseName:   "stdin after an in-place file goes to stdout",
+			src:        "testdata/multi-doc-json",
+			args:       []string{"-U", "-Y", "."},
+			golden:     "testdata/multi-doc.yaml",
+			stdin:      "testdata/multi-doc.yaml",
+			wantStdout: "a: 1\n---\na: 2\n",
 		},
 	}
+	stdinOrg := os.Stdin
+	defer func() { os.Stdin = stdinOrg }()
+
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
-			target := filepath.Join(t.TempDir(), filepath.Base(tc.src))
+			dir := t.TempDir()
+			target := filepath.Join(dir, filepath.Base(tc.src))
+			targets := []string{target}
+			if tc.twoFiles {
+				targets = append(targets, filepath.Join(dir, "second-"+filepath.Base(tc.src)))
+			}
 			src, err := os.ReadFile(tc.src)
 			if err != nil {
 				t.Fatalf("ReadFile src: %v", err)
 			}
-			if err := os.WriteFile(target, src, 0o644); err != nil {
-				t.Fatalf("WriteFile: %v", err)
+			for _, f := range targets {
+				if err := os.WriteFile(f, src, 0o644); err != nil {
+					t.Fatalf("WriteFile: %v", err)
+				}
 			}
 
 			buf := new(bytes.Buffer)
 			r := newTestRunner(buf)
 			defer r.close()
 
-			args := slices.Concat([]string{"tq"}, tc.args, []string{target})
+			args := slices.Concat([]string{"tq"}, tc.args, targets)
+			if tc.stdin != "" {
+				in, err := os.Open(tc.stdin)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = in.Close() }()
+
+				os.Stdin = in
+				args = append(args, "-")
+			}
 			err = r.run(args)
 			if tc.errstr != "" {
 				want := "failed to evaluate " + target + ": " + tc.errstr
@@ -390,17 +441,21 @@ func TestRunInplace(t *testing.T) {
 				}
 			} else if err != nil {
 				t.Fatalf("run: %v", err)
-			}
-			got, err := os.ReadFile(target)
-			if err != nil {
-				t.Fatalf("ReadFile target: %v", err)
+			} else if buf.String() != tc.wantStdout {
+				t.Errorf("stdout: got %q; want %q", buf.String(), tc.wantStdout)
 			}
 			want, err := os.ReadFile(tc.golden)
 			if err != nil {
 				t.Fatalf("ReadFile want: %v", err)
 			}
-			if string(got) != string(want) {
-				t.Errorf("got %q\nwant %q", got, want)
+			for _, f := range targets {
+				got, err := os.ReadFile(f)
+				if err != nil {
+					t.Fatalf("ReadFile target: %v", err)
+				}
+				if string(got) != string(want) {
+					t.Errorf("%s: got %q\nwant %q", filepath.Base(f), got, want)
+				}
 			}
 		})
 	}

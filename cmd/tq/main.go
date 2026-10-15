@@ -220,12 +220,14 @@ func (r *runner) evaluateInputFiles(f *inputFiles) error {
 
 	filename := f.filename
 	var inplaceTmp *os.File
+	prevOut, prevCalled := r.out, r.outputYAMLCalled
 	if r.outputFile == "" && r.isInplace && !r.isSlurp && filename != filenameStdin {
 		inplaceTmp, err = os.CreateTemp("", "*.tq.tmp")
 		if err != nil {
 			return err
 		}
 		r.out = inplaceTmp
+		r.outputYAMLCalled = 0
 		defer func() {
 			_ = inplaceTmp.Close()
 			_ = os.Remove(inplaceTmp.Name())
@@ -238,6 +240,7 @@ func (r *runner) evaluateInputFiles(f *inputFiles) error {
 		return fmt.Errorf("failed to evaluate %s: %w", filename, err)
 	}
 	if inplaceTmp != nil {
+		r.out, r.outputYAMLCalled = prevOut, prevCalled
 		if _, err := inplaceTmp.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
@@ -423,7 +426,7 @@ func (r *runner) effectiveOutputFormat() string {
 }
 
 func (r *runner) outputYAML(n tree.Node) error {
-	if r.outputYAMLCalled > 0 && !r.isInplace {
+	if r.outputYAMLCalled > 0 {
 		if _, err := fmt.Fprintln(r.out, "---"); err != nil {
 			return err
 		}
