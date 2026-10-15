@@ -2,11 +2,9 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"text/template"
 
 	"github.com/mojatter/io2"
@@ -40,16 +38,16 @@ const (
 	filenameStdin = "-"
 )
 
-type decodeError struct {
+type yamlDecodeError struct {
 	err error
 }
 
-func (e *decodeError) Error() string {
+func (e *yamlDecodeError) Error() string {
 	return e.err.Error()
 }
 
-func isDecodeError(err error) bool {
-	_, ok := err.(*decodeError)
+func isYAMLDecodeError(err error) bool {
+	_, ok := err.(*yamlDecodeError)
 	return ok
 }
 
@@ -262,25 +260,46 @@ func (r *runner) evaluate(in io.ReadSeekCloser) error {
 	if r.inputFormat == "yaml" || r.isInputYAML {
 		return r.evaluateYAML(in)
 	}
-	fns := []func(io.Reader) error{
-		r.evaluateJSON,
-		r.evaluateYAML,
+	jsonErr := validateJSON(in)
+	if _, err := in.Seek(0, io.SeekStart); err != nil {
+		return err
 	}
-	var errs []string
-	for _, fn := range fns {
-		if _, err := in.Seek(0, io.SeekStart); err != nil {
+	if jsonErr == nil {
+		return r.evaluateJSON(in)
+	}
+	if err := r.evaluateYAML(in); err != nil {
+		if isYAMLDecodeError(err) {
+			return fmt.Errorf("%w; %w", jsonErr, err)
+		}
+		return err
+	}
+	return nil
+}
+
+// validateJSON tokenizes the whole input before anything is output, so a YAML fallback never follows partial JSON output.
+func validateJSON(in io.Reader) error {
+	dec := json.NewDecoder(in)
+	depth := 0
+	for {
+		t, err := dec.Token()
+		if err == io.EOF {
+			if depth > 0 {
+				return io.ErrUnexpectedEOF
+			}
+			return nil
+		}
+		if err != nil {
 			return err
 		}
-		if err := fn(in); err != nil {
-			errs = append(errs, err.Error())
-			if !isDecodeError(err) {
-				break
+		if d, ok := t.(json.Delim); ok {
+			switch d {
+			case '{', '[':
+				depth++
+			default:
+				depth--
 			}
-			continue
 		}
-		return nil
 	}
-	return errors.New(strings.Join(errs, "; "))
 }
 
 func (r *runner) evaluateJSON(in io.Reader) error {
@@ -288,12 +307,16 @@ func (r *runner) evaluateJSON(in io.Reader) error {
 	for dec.More() {
 		n, err := tree.DecodeJSON(dec)
 		if err != nil {
-			return &decodeError{err}
+			return err
 		}
 		r.guessFormat = "json"
 		if err := r.evaluateNode(n); err != nil {
 			return err
 		}
+	}
+	// More stops silently at a stray } or ], so reject anything but EOF.
+	if _, err := dec.Token(); err != io.EOF {
+		return err
 	}
 	if len(r.slurpResults) > 0 {
 		defer func() { r.slurpResults = nil }()
@@ -310,7 +333,7 @@ func (r *runner) evaluateYAML(in io.Reader) error {
 			if err == io.EOF {
 				break
 			}
-			return &decodeError{err}
+			return &yamlDecodeError{err}
 		}
 		r.guessFormat = "yaml"
 		if err := r.evaluateNode(n); err != nil {

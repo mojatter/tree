@@ -185,6 +185,42 @@ func TestRun(t *testing.T) {
 			args:     []string{"-i", "yaml", ".", "testdata/invalid-yaml"},
 			errstr:   `failed to evaluate testdata/invalid-yaml: yaml: found unexpected end of stream`,
 		}, {
+			caseName: "yaml starting with a json scalar is not duplicated",
+			stdin:    "testdata/scalar-then-map.yaml",
+			args:     []string{"."},
+			want:     "1\n---\nfoo: bar\n",
+		}, {
+			caseName: "yaml with numeric keys is not duplicated",
+			args:     []string{".", "testdata/numeric-keys.yaml"},
+			golden:   "testdata/numeric-keys-out.yaml",
+		}, {
+			caseName: "json stream broken after two documents reports both errors",
+			args:     []string{".a", "testdata/broken-json-stream"},
+			want:     "1\n",
+			errstr:   `failed to evaluate testdata/broken-json-stream: invalid character 'o' in literal false (expecting 'a'); yaml: line 1: did not find expected <document start>`,
+		}, {
+			caseName: "stray closing brace is an error under -j",
+			args:     []string{"-j", ".", "testdata/stray-brace-json"},
+			want:     "{\n  \"a\": 1\n}\n",
+			errstr:   "failed to evaluate testdata/stray-brace-json: invalid character '}' looking for beginning of value",
+		}, {
+			caseName: "json rejected only by the number parser falls back to yaml",
+			args:     []string{".", "testdata/json-number-overflow"},
+			want:     "b: 1e400\n",
+		}, {
+			caseName: "truncated json container is not accepted by the pre-scan",
+			args:     []string{".", "testdata/truncated-json"},
+			errstr:   "failed to evaluate testdata/truncated-json: unexpected EOF; yaml: line 1: did not find expected node content",
+		}, {
+			caseName: "yaml folding json scalars across lines is not read as json",
+			stdin:    "testdata/folded-scalars.yaml",
+			args:     []string{"."},
+			want:     "1 2\n---\nx: 1\n",
+		}, {
+			caseName: "query error on yaml input is not joined with the json attempt",
+			args:     []string{".a[", "testdata/store.yaml"},
+			errstr:   `failed to evaluate testdata/store.yaml: syntax error: no right brackets: ".a["`,
+		}, {
 			caseName: "multiple yaml",
 			args:     []string{".", "testdata/book-0.yaml", "testdata/book-0.yaml"},
 			want:     mustReadFileString("testdata/book-0.yaml") + "---\n" + mustReadFileString("testdata/book-0.yaml"),
@@ -217,9 +253,7 @@ func TestRun(t *testing.T) {
 				if err.Error() != tc.errstr {
 					t.Errorf(`error %s; want %s`, err.Error(), tc.errstr)
 				}
-				return
-			}
-			if err != nil {
+			} else if err != nil {
 				t.Fatal(err)
 			}
 
@@ -302,22 +336,34 @@ func TestRunInplace(t *testing.T) {
 		src      string
 		args     []string
 		golden   string
+		errstr   string
 	}{
 		{
 			caseName: "json in place",
 			src:      "testdata/store.json",
-			args:     []string{"-U"},
+			args:     []string{"-U", ".store.book[0]"},
 			golden:   "testdata/book-0.json",
 		}, {
 			caseName: "yaml to json in place with -J",
 			src:      "testdata/store.yaml",
-			args:     []string{"-U", "-J"},
+			args:     []string{"-U", "-J", ".store.book[0]"},
 			golden:   "testdata/book-0.json",
 		}, {
 			caseName: "json to yaml in place with -Y",
 			src:      "testdata/store.json",
-			args:     []string{"-U", "-Y"},
+			args:     []string{"-U", "-Y", ".store.book[0]"},
 			golden:   "testdata/book-0.yaml",
+		}, {
+			caseName: "yaml with numeric keys in place is not duplicated",
+			src:      "testdata/numeric-keys.yaml",
+			args:     []string{"-U", "."},
+			golden:   "testdata/numeric-keys-out.yaml",
+		}, {
+			caseName: "broken json stream in place leaves the file untouched",
+			src:      "testdata/broken-json-stream",
+			args:     []string{"-U", ".a"},
+			golden:   "testdata/broken-json-stream",
+			errstr:   "invalid character 'o' in literal false (expecting 'a'); yaml: line 1: did not find expected <document start>",
 		},
 	}
 	for _, tc := range testCases {
@@ -335,8 +381,14 @@ func TestRunInplace(t *testing.T) {
 			r := newTestRunner(buf)
 			defer r.close()
 
-			args := slices.Concat([]string{"tq"}, tc.args, []string{".store.book[0]", target})
-			if err := r.run(args); err != nil {
+			args := slices.Concat([]string{"tq"}, tc.args, []string{target})
+			err = r.run(args)
+			if tc.errstr != "" {
+				want := "failed to evaluate " + target + ": " + tc.errstr
+				if err == nil || err.Error() != want {
+					t.Fatalf("got error %v; want %s", err, want)
+				}
+			} else if err != nil {
 				t.Fatalf("run: %v", err)
 			}
 			got, err := os.ReadFile(target)
