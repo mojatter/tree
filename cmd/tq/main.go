@@ -209,29 +209,40 @@ func (r *runner) run(args []string) error {
 }
 
 func (r *runner) evaluateInputFiles(f *inputFiles) error {
-	in, err := f.nextReader()
-	if err != nil {
-		if err == io.EOF {
-			return nil
+	for {
+		in, err := f.nextReader()
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
 		}
-		return err
+		if err := r.evaluateInputFile(in, f.filename); err != nil {
+			return err
+		}
 	}
+}
+
+// evaluateInputFile evaluates one input and releases its descriptors before returning.
+func (r *runner) evaluateInputFile(in io.ReadSeekCloser, filename string) error {
 	defer func() { _ = in.Close() }()
 
-	filename := f.filename
 	var inplaceTmp *os.File
-	prevOut, prevCalled := r.out, r.outputYAMLCalled
 	if r.outputFile == "" && r.isInplace && !r.isSlurp && filename != filenameStdin {
+		var err error
 		inplaceTmp, err = os.CreateTemp("", "*.tq.tmp")
 		if err != nil {
 			return err
 		}
-		r.out = inplaceTmp
-		r.outputYAMLCalled = 0
 		defer func() {
 			_ = inplaceTmp.Close()
 			_ = os.Remove(inplaceTmp.Name())
 		}()
+
+		prevOut, prevCalled := r.out, r.outputYAMLCalled
+		r.out = inplaceTmp
+		r.outputYAMLCalled = 0
+		defer func() { r.out, r.outputYAMLCalled = prevOut, prevCalled }()
 	}
 	if err := r.evaluate(in); err != nil {
 		if filename == filenameStdin {
@@ -240,7 +251,6 @@ func (r *runner) evaluateInputFiles(f *inputFiles) error {
 		return fmt.Errorf("failed to evaluate %s: %w", filename, err)
 	}
 	if inplaceTmp != nil {
-		r.out, r.outputYAMLCalled = prevOut, prevCalled
 		if _, err := inplaceTmp.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
@@ -253,7 +263,7 @@ func (r *runner) evaluateInputFiles(f *inputFiles) error {
 			return err
 		}
 	}
-	return r.evaluateInputFiles(f)
+	return nil
 }
 
 func (r *runner) evaluate(in io.ReadSeekCloser) error {

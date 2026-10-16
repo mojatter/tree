@@ -461,6 +461,37 @@ func TestRunInplace(t *testing.T) {
 	}
 }
 
+// TestEvaluateInputFilesInplaceErrorRestoresOutput checks that a failed in-place file restores the output and separator state.
+func TestEvaluateInputFilesInplaceErrorRestoresOutput(t *testing.T) {
+	src, err := os.ReadFile("testdata/invalid-yaml")
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "invalid-yaml")
+	if err := os.WriteFile(path, src, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	buf := new(bytes.Buffer)
+	r := newTestRunner(buf)
+	if err := r.initFlagSet([]string{"tq", "-U", "."}); err != nil {
+		t.Fatalf("initFlagSet: %v", err)
+	}
+	r.outputYAMLCalled = 2
+	if err := r.evaluateInputFiles(newInputFiles([]string{path})); err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if r.outputYAMLCalled != 2 {
+		t.Errorf("outputYAMLCalled: got %d, want 2", r.outputYAMLCalled)
+	}
+	if _, err := r.out.Write([]byte("x")); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if got := buf.String(); got != "x" {
+		t.Errorf("output not restored: got %q, want %q", got, "x")
+	}
+}
+
 // TestRunRawString covers the `-r` flag path in (*runner).output which
 // prints string values without JSON quoting.
 func TestRunRawString(t *testing.T) {
