@@ -55,10 +55,12 @@ type inputFiles struct {
 	filenames []string
 	off       int
 	filename  string
+	// rewind spools non-seekable files so that format auto-detection can rewind them.
+	rewind bool
 }
 
-func newInputFiles(filenames []string) *inputFiles {
-	return &inputFiles{filenames: filenames}
+func newInputFiles(filenames []string, rewind bool) *inputFiles {
+	return &inputFiles{filenames: filenames, rewind: rewind}
 }
 
 func (f *inputFiles) nextReader() (io.ReadSeekCloser, error) {
@@ -68,12 +70,25 @@ func (f *inputFiles) nextReader() (io.ReadSeekCloser, error) {
 	f.filename = f.filenames[f.off]
 	f.off++
 	if f.filename == filenameStdin {
-		return newStdinReader()
+		return spool(os.Stdin)
 	}
-	return os.Open(f.filename)
+	file, err := os.Open(f.filename)
+	if err != nil {
+		return nil, err
+	}
+	if !f.rewind {
+		return file, nil
+	}
+	if _, err := file.Seek(0, io.SeekCurrent); err == nil {
+		return file, nil
+	}
+	defer func() { _ = file.Close() }()
+
+	return spool(file)
 }
 
-func newStdinReader() (io.ReadSeekCloser, error) {
+// spool copies src to a temp file so that format detection can rewind it.
+func spool(src io.Reader) (io.ReadSeekCloser, error) {
 	tmp, err := os.CreateTemp("", "*.tq.tmp")
 	if err != nil {
 		return nil, err
@@ -83,11 +98,12 @@ func newStdinReader() (io.ReadSeekCloser, error) {
 		_ = tmp.Close()
 		return os.Remove(tmp.Name())
 	}
-	if _, err := io.Copy(tmp, os.Stdin); err != nil {
+	if _, err := io.Copy(tmp, src); err != nil {
 		_ = r.Close()
 		return nil, err
 	}
 	if _, err := r.Seek(0, io.SeekStart); err != nil {
+		_ = r.Close()
 		return nil, err
 	}
 	return r, nil
@@ -205,7 +221,13 @@ func (r *runner) run(args []string) error {
 		}
 		r.out = out
 	}
-	return r.evaluateInputFiles(newInputFiles(filenames))
+	// -U still fails on non-seekable inputs as before; see #139.
+	return r.evaluateInputFiles(newInputFiles(filenames, r.needsRewind() && !r.isInplaceWrite()))
+}
+
+// isInplaceWrite reports whether -U writes results back to the input files.
+func (r *runner) isInplaceWrite() bool {
+	return r.outputFile == "" && r.isInplace && !r.isSlurp
 }
 
 func (r *runner) evaluateInputFiles(f *inputFiles) error {
@@ -228,7 +250,7 @@ func (r *runner) evaluateInputFile(in io.ReadSeekCloser, filename string) error 
 	defer func() { _ = in.Close() }()
 
 	var inplaceTmp *os.File
-	if r.outputFile == "" && r.isInplace && !r.isSlurp && filename != filenameStdin {
+	if r.isInplaceWrite() && filename != filenameStdin {
 		var err error
 		inplaceTmp, err = os.CreateTemp("", "*.tq.tmp")
 		if err != nil {
@@ -266,11 +288,27 @@ func (r *runner) evaluateInputFile(in io.ReadSeekCloser, filename string) error 
 	return nil
 }
 
-func (r *runner) evaluate(in io.ReadSeekCloser) error {
-	if r.inputFormat == "json" || r.isInputJSON {
-		return r.evaluateJSON(in)
+// fixedInputFormat returns "json" or "yaml" when the input format is given, otherwise "".
+func (r *runner) fixedInputFormat() string {
+	switch {
+	case r.inputFormat == "json" || r.isInputJSON:
+		return "json"
+	case r.inputFormat == "yaml" || r.isInputYAML:
+		return "yaml"
 	}
-	if r.inputFormat == "yaml" || r.isInputYAML {
+	return ""
+}
+
+// needsRewind reports whether evaluate auto-detects the format and so rewinds the input.
+func (r *runner) needsRewind() bool {
+	return r.fixedInputFormat() == ""
+}
+
+func (r *runner) evaluate(in io.ReadSeekCloser) error {
+	switch r.fixedInputFormat() {
+	case "json":
+		return r.evaluateJSON(in)
+	case "yaml":
 		return r.evaluateYAML(in)
 	}
 	jsonErr := validateJSON(in)

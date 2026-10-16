@@ -3,9 +3,12 @@ package main
 import (
 	"bytes"
 	"flag"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/mojatter/io2"
@@ -39,6 +42,8 @@ func TestRun(t *testing.T) {
 		golden string
 		want   string
 		errstr string
+		// pipe is fed through a pipe whose /dev/fd path is appended to args.
+		pipe string
 	}{
 		{
 			caseName: "show usage",
@@ -224,10 +229,46 @@ func TestRun(t *testing.T) {
 			caseName: "multiple yaml",
 			args:     []string{".", "testdata/book-0.yaml", "testdata/book-0.yaml"},
 			want:     mustReadFileString("testdata/book-0.yaml") + "---\n" + mustReadFileString("testdata/book-0.yaml"),
+		}, {
+			caseName: "non-seekable json file is auto-detected",
+			pipe:     "testdata/store.json",
+			args:     []string{".store.book[0]"},
+			golden:   "testdata/book-0.json",
+		}, {
+			caseName: "non-seekable yaml file is auto-detected",
+			pipe:     "testdata/store.yaml",
+			args:     []string{".store.book[0]"},
+			golden:   "testdata/book-0.yaml",
+		}, {
+			caseName: "non-seekable json file with -j",
+			pipe:     "testdata/store.json",
+			args:     []string{"-j", ".store.book[0]"},
+			golden:   "testdata/book-0.json",
+		}, {
+			caseName: "non-seekable yaml file with -y",
+			pipe:     "testdata/store.yaml",
+			args:     []string{"-y", ".store.book[0]"},
+			golden:   "testdata/book-0.yaml",
+		}, {
+			caseName: "non-seekable file with -U fails as before",
+			pipe:     "testdata/store.json",
+			args:     []string{"-U", ".store.book[0]"},
+			errstr:   "failed to evaluate {pipe}: seek {pipe}: illegal seek",
+		}, {
+			caseName: "non-seekable file with -U -s is slurped",
+			pipe:     "testdata/store.json",
+			args:     []string{"-U", "-s", ".store.book[]"},
+			golden:   "testdata/book-s",
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
+			args, errstr := tc.args, tc.errstr
+			if tc.pipe != "" {
+				pipe := pipePath(t, tc.pipe)
+				args = append(slices.Clone(args), pipe)
+				errstr = strings.ReplaceAll(errstr, "{pipe}", pipe)
+			}
 			if tc.stdin != "" {
 				in, err := os.Open(tc.stdin)
 				if err != nil {
@@ -245,13 +286,13 @@ func TestRun(t *testing.T) {
 			}
 			defer r.close()
 
-			err := r.run(append([]string{"tq"}, tc.args...))
-			if tc.errstr != "" {
+			err := r.run(append([]string{"tq"}, args...))
+			if errstr != "" {
 				if err == nil {
 					t.Fatal("no error")
 				}
-				if err.Error() != tc.errstr {
-					t.Errorf(`error %s; want %s`, err.Error(), tc.errstr)
+				if err.Error() != errstr {
+					t.Errorf(`error %s; want %s`, err.Error(), errstr)
 				}
 			} else if err != nil {
 				t.Fatal(err)
@@ -273,6 +314,68 @@ func TestRun(t *testing.T) {
 			}
 			if got != tc.want {
 				t.Errorf("got %s; want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+// pipePath feeds the contents of src through a pipe and returns its /dev/fd path.
+func pipePath(t *testing.T, src string) string {
+	t.Helper()
+	if _, err := os.Stat("/dev/fd"); err != nil {
+		t.Skip("/dev/fd is not available")
+	}
+	bin, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pr.Close() })
+	go func() {
+		_, _ = pw.Write(bin)
+		_ = pw.Close()
+	}()
+	return fmt.Sprintf("/dev/fd/%d", pr.Fd())
+}
+
+// TestInputFilesNextReader checks that only non-seekable files that must be rewound are spooled.
+func TestInputFilesNextReader(t *testing.T) {
+	testCases := []struct {
+		caseName  string
+		pipe      bool
+		rewind    bool
+		wantSpool bool
+	}{
+		{caseName: "pipe without rewind is read directly", pipe: true},
+		{caseName: "pipe with rewind is spooled", pipe: true, rewind: true, wantSpool: true},
+		{caseName: "regular file with rewind is read directly", rewind: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			filename := "testdata/store.json"
+			if tc.pipe {
+				filename = pipePath(t, filename)
+			}
+			in, err := newInputFiles([]string{filename}, tc.rewind).nextReader()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = in.Close() }()
+
+			if _, isFile := in.(*os.File); isFile == tc.wantSpool {
+				t.Errorf("spooled: got %v, want %v", !isFile, tc.wantSpool)
+			}
+			if !tc.rewind {
+				return
+			}
+			if _, err := io.ReadAll(in); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := in.Seek(0, io.SeekStart); err != nil {
+				t.Errorf("Seek: %v", err)
 			}
 		})
 	}
@@ -305,26 +408,50 @@ func newTestRunner(buf *bytes.Buffer) *runner {
 // TestRunOutputFile verifies the `-O` flag writes results to a file
 // instead of stdout, covering the os.Create path in (*runner).run.
 func TestRunOutputFile(t *testing.T) {
-	dir := t.TempDir()
-	outPath := filepath.Join(dir, "out.json")
+	testCases := []struct {
+		caseName string
+		args     []string
+		pipe     string
+	}{
+		{
+			caseName: "regular file",
+			args:     []string{"tq", "-O", "{out}", ".store.book[0]", "testdata/store.json"},
+		}, {
+			caseName: "non-seekable file with -U",
+			args:     []string{"tq", "-U", "-O", "{out}", ".store.book[0]"},
+			pipe:     "testdata/store.json",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			outPath := filepath.Join(t.TempDir(), "out.json")
+			args := make([]string, len(tc.args))
+			for i, a := range tc.args {
+				args[i] = strings.ReplaceAll(a, "{out}", outPath)
+			}
+			if tc.pipe != "" {
+				args = append(args, pipePath(t, tc.pipe))
+			}
 
-	buf := new(bytes.Buffer)
-	r := newTestRunner(buf)
-	defer r.close()
+			buf := new(bytes.Buffer)
+			r := newTestRunner(buf)
+			defer r.close()
 
-	if err := r.run([]string{"tq", "-O", outPath, ".store.book[0]", "testdata/store.json"}); err != nil {
-		t.Fatalf("run: %v", err)
-	}
-	got, err := os.ReadFile(outPath)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	want, err := os.ReadFile("testdata/book-0.json")
-	if err != nil {
-		t.Fatalf("ReadFile want: %v", err)
-	}
-	if string(got) != string(want) {
-		t.Errorf("got %q\nwant %q", got, want)
+			if err := r.run(args); err != nil {
+				t.Fatalf("run: %v", err)
+			}
+			got, err := os.ReadFile(outPath)
+			if err != nil {
+				t.Fatalf("ReadFile: %v", err)
+			}
+			want, err := os.ReadFile("testdata/book-0.json")
+			if err != nil {
+				t.Fatalf("ReadFile want: %v", err)
+			}
+			if string(got) != string(want) {
+				t.Errorf("got %q\nwant %q", got, want)
+			}
+		})
 	}
 }
 
@@ -478,7 +605,7 @@ func TestEvaluateInputFilesInplaceErrorRestoresOutput(t *testing.T) {
 		t.Fatalf("initFlagSet: %v", err)
 	}
 	r.outputYAMLCalled = 2
-	if err := r.evaluateInputFiles(newInputFiles([]string{path})); err == nil {
+	if err := r.evaluateInputFiles(newInputFiles([]string{path}, false)); err == nil {
 		t.Fatal("expected error, got nil")
 	}
 	if r.outputYAMLCalled != 2 {
