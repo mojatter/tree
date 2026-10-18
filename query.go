@@ -2,8 +2,6 @@ package tree
 
 import (
 	"fmt"
-	"reflect"
-	"slices"
 	"strconv"
 	"strings"
 )
@@ -390,116 +388,97 @@ func (q WalkQuery) Exec(root Node) ([]Node, error) {
 	return r, nil
 }
 
-// walkTarget is an editable node found by a walk, with its path from the walk root.
-type walkTarget struct {
-	path []any
-	en   EditorNode
-}
-
-// live returns the target's editor if the same node is still at its path under root.
-func (t walkTarget) live(root Node) (EditorNode, bool) {
-	cur := root
-	for _, k := range t.path {
-		if cur == nil {
-			return nil, false
+// cloneEditValue gives each walk match its own copy of a built-in container and leaves any other value as given.
+func cloneEditValue(v Node) Node {
+	switch t := v.(type) {
+	case Map:
+		if t == nil {
+			return t
 		}
-		cur = cur.Get(k)
-	}
-	en, ok := cur.(EditorNode)
-	if !ok || !stillTarget(en, t.en) {
-		return nil, false
-	}
-	return en, true
-}
-
-// stillTarget reports whether en is the collected target, by instance or, for value-typed editors, by type.
-func stillTarget(en, target EditorNode) bool {
-	if hasIdentity(target) {
-		return sameNode(en, target)
-	}
-	// NOTE: the RHS is always a built-in node, so it never matches a custom value type.
-	return reflect.TypeOf(en) == reflect.TypeOf(target)
-}
-
-// hasIdentity reports whether sameNode can identify n (a map, pointer or non-empty slice).
-func hasIdentity(n Node) bool {
-	return sameNode(n, n)
-}
-
-// sameNode reports whether a and b are the same map, pointer or non-empty slice instance.
-func sameNode(a, b Node) bool {
-	va, vb := reflect.ValueOf(a), reflect.ValueOf(b)
-	if !va.IsValid() || !vb.IsValid() || va.Type() != vb.Type() {
-		return false
-	}
-	switch va.Kind() {
-	case reflect.Map, reflect.Pointer:
-		return va.UnsafePointer() == vb.UnsafePointer()
-	case reflect.Slice:
-		return va.Len() > 0 && va.Len() == vb.Len() && va.UnsafePointer() == vb.UnsafePointer()
-	}
-	return false
-}
-
-// walkTargets collects editable nodes holding key up front so edits never walk into assigned values.
-func (q WalkQuery) walkTargets(n, v Node) []walkTarget {
-	key := string(q)
-	var r []walkTarget
-	// NOTE: Walk returns no error
-	_ = Walk(n, func(wn Node, keys []any) error {
-		if sameNode(wn, v) {
-			return SkipWalk // never edit inside the value assigned by an outer match
+		m := make(Map, len(t))
+		for k, c := range t {
+			m[k] = cloneEditValue(c)
 		}
-		if wn.Has(key) {
-			if en, ok := wn.(EditorNode); ok {
-				r = append(r, walkTarget{path: slices.Clone(keys), en: en})
-			}
+		return m
+	case Array:
+		if t == nil {
+			return t
 		}
+		a := make(Array, len(t))
+		for i, c := range t {
+			a[i] = cloneEditValue(c)
+		}
+		return a
+	case *Array:
+		if t == nil {
+			return t
+		}
+		a := cloneEditValue(*t).(Array)
+		return &a
+	}
+	return v
+}
+
+// walkEdit calls fn on each editable node holding the key, descendants first, skipping values this edit has stored.
+func (q WalkQuery) walkEdit(n Node, as assigned, fn func(en EditorNode) error) error {
+	if n == nil || as.has(n) {
 		return nil
-	})
-	return r
+	}
+	if err := n.Each(func(key any, c Node) error {
+		if key == nil {
+			return nil
+		}
+		return q.walkEdit(c, as, fn)
+	}); err != nil {
+		return err
+	}
+	if en, ok := n.(EditorNode); ok && n.Has(string(q)) {
+		return fn(en)
+	}
+	return nil
 }
 
+// edit applies op at every match, descendants first, recording stored copies in as and stopping at the first error.
+func (q WalkQuery) edit(pn *Node, op string, v Node, as assigned) error {
+	key := string(q)
+	return q.walkEdit(*pn, as, func(en EditorNode) error {
+		switch op {
+		case "=":
+			c := cloneEditValue(v)
+			as.add(c)
+			return en.Set(key, c)
+		case "+=":
+			ca := en.Get(key).Array()
+			if ca == nil {
+				return nil
+			}
+			c := cloneEditValue(v)
+			as.add(c)
+			return en.Set(key, append(ca, c))
+		case "^?":
+			return en.Delete(key)
+		}
+		return fmt.Errorf("syntax error: unsupported edit operation %q", op)
+	})
+}
+
+// Set stores a copy of v (for built-in containers) at every match, descendants first, stopping at the first error.
 func (q WalkQuery) Set(pn *Node, v Node) error {
-	key := string(q)
-	for _, t := range q.walkTargets(*pn, v) {
-		en, ok := t.live(*pn)
-		if !ok {
-			continue
-		}
-		if err := en.Set(key, v); err != nil {
-			return err
-		}
-	}
-	return nil
+	as := assigned{}
+	as.add(v) // never edit inside v itself when it is part of the document
+	return q.edit(pn, "=", v, as)
 }
 
+// Append appends a copy of v (for built-in containers) to every matched array, descendants first, stopping at the first error.
 func (q WalkQuery) Append(pn *Node, v Node) error {
-	key := string(q)
-	for _, t := range q.walkTargets(*pn, v) {
-		en, ok := t.live(*pn)
-		if !ok {
-			continue
-		}
-		if ca := en.Get(key).Array(); ca != nil {
-			if err := en.Set(key, append(ca, v)); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
+	as := assigned{}
+	as.add(v) // never edit inside v itself when it is part of the document
+	return q.edit(pn, "+=", v, as)
 }
 
+// Delete removes the key at every match, descendants first, stopping at the first error.
 func (q WalkQuery) Delete(pn *Node) error {
-	key := string(q)
-	return Walk(*pn, func(n Node, keys []any) error {
-		if n.Has(key) {
-			if en, ok := n.(EditorNode); ok {
-				_ = en.Delete(key)
-			}
-		}
-		return nil
-	})
+	return q.edit(pn, "^?", nil, nil)
 }
 
 func (q WalkQuery) String() string {

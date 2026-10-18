@@ -9,10 +9,18 @@ import (
 // valueEditorNode is a value-typed EditorNode without reference identity.
 type valueEditorNode struct{ EditorNode }
 
+// pointerEditorNode is a custom EditorNode used through a pointer.
+type pointerEditorNode struct{ EditorNode }
+
 // setFailingEditorNode is an EditorNode whose Set always fails.
 type setFailingEditorNode struct{ EditorNode }
 
 func (setFailingEditorNode) Set(any, Node) error { return errors.New("set failed") }
+
+// deleteFailingEditorNode is an EditorNode whose Delete always fails.
+type deleteFailingEditorNode struct{ EditorNode }
+
+func (deleteFailingEditorNode) Delete(any) error { return errors.New("delete failed") }
 
 // mapHidingEditorNode is an EditorNode whose Map returns nil, like a struct-backed node.
 type mapHidingEditorNode struct{ EditorNode }
@@ -971,15 +979,15 @@ func TestEdit(t *testing.T) {
 			expr:     `.a[-1].b = 1`,
 			errstr:   `cannot index array with -1`,
 		}, {
-			caseName: "walk intermediate set skips subtree replaced by earlier match",
+			caseName: "walk intermediate set edits inner match first and fails on its shape",
 			n:        Map{"b": Map{"c": Map{"b": Array{}}}},
 			expr:     `..b.c = 1`,
-			want:     Map{"b": Map{"c": NumberValue(1)}},
+			errstr:   `cannot index array with c`,
 		}, {
-			caseName: "walk intermediate set skips scalar in replaced subtree",
+			caseName: "walk intermediate set fails on scalar inner match",
 			n:        Map{"b": Map{"c": Map{"b": NumberValue(1)}}},
 			expr:     `..b.c = 1`,
-			want:     Map{"b": Map{"c": NumberValue(1)}},
+			errstr:   `cannot index array with "c"`,
 		}, {
 			caseName: "walk set does not edit the assigned value",
 			n:        Map{"b": Map{"b": NumberValue(0)}},
@@ -996,17 +1004,17 @@ func TestEdit(t *testing.T) {
 			expr:     `..b.b = {"x": 1}`,
 			want:     Map{"b": Map{"b": Map{"x": NumberValue(1)}}},
 		}, {
-			caseName: "walk intermediate set skips the assigned value below a live target",
+			caseName: "walk intermediate set fails on scalar below inner match",
 			n:        Map{"b": Map{"b": Map{"b": NumberValue(0)}}},
 			expr:     `..b.b.b = {"x": 1}`,
-			want:     Map{"b": Map{"b": Map{"b": Map{"x": NumberValue(1)}}}},
+			errstr:   `cannot index array with "b"`,
 		}, {
-			caseName: "walk intermediate set skips the assigned array value",
+			caseName: "walk intermediate set fails on scalar inner match with index",
 			n:        Map{"b": Array{Map{"b": NumberValue(0)}}},
 			expr:     `..b[0].b = [{"c": 0}]`,
-			want:     Map{"b": Array{Map{"b": Array{Map{"c": NumberValue(0)}}}}},
+			errstr:   `cannot index array with 0`,
 		}, {
-			caseName: "walk intermediate append skips the assigned value",
+			caseName: "walk intermediate append edits inner matches first",
 			n:        Map{"b": Map{"b": Map{"b": Map{"c": Array{}}}}},
 			expr:     `..b.b.c += {"b": {"c": []}}`,
 			want: Map{"b": Map{"b": Map{
@@ -1014,20 +1022,30 @@ func TestEdit(t *testing.T) {
 				"c": Array{Map{"b": Map{"c": Array{}}}},
 			}}},
 		}, {
-			caseName: "walk intermediate delete skips target whose key is already deleted",
+			caseName: "walk intermediate delete edits inner matches first",
 			n:        Map{"b": Map{"b": Map{"b": Map{}}}},
 			expr:     `..b.b ^?`,
 			want:     Map{"b": Map{}},
 		}, {
-			caseName: "nested walk set skips the assigned value",
+			caseName: "nested walk set lets the outer match overwrite the inner one",
 			n:        Map{"b": Map{"b": Map{"c": NumberValue(0)}}},
 			expr:     `..b..c = {"c": 1}`,
 			want:     Map{"b": Map{"b": Map{"c": Map{"c": NumberValue(1)}}}},
 		}, {
-			caseName: "walk intermediate set into the assigned empty array fails as on main",
+			caseName: "nested walk append skips the value appended by the inner match",
+			n:        Map{"b": Map{"b": Map{"c": Array{}}}},
+			expr:     `..b..c += {"c": []}`,
+			want:     Map{"b": Map{"b": Map{"c": Array{Map{"c": Array{}}, Map{"c": Array{}}}}}},
+		}, {
+			caseName: "nested walk set with a path after it skips the value set by the inner match",
+			n:        Map{"b": Map{"b": Map{"c": Map{}}}},
+			expr:     `..b..c.d = {"c": 1}`,
+			want:     Map{"b": Map{"b": Map{"c": Map{"d": Map{"c": NumberValue(1)}}}}},
+		}, {
+			caseName: "walk intermediate set fails on scalar inner match before assigning",
 			n:        Map{"b": Map{"b": Map{"b": NumberValue(0)}}},
 			expr:     `..b.b = []`,
-			errstr:   `cannot index array with b`,
+			errstr:   `cannot index array with "b"`,
 		}, {
 			caseName: "walk set on value-typed editor node does not edit the assigned value",
 			n:        Map{"b": valueEditorNode{Map{"b": NumberValue(0)}}},
@@ -1068,6 +1086,21 @@ func TestEdit(t *testing.T) {
 			n:        Map{"x": setFailingEditorNode{Map{"b": Array{}}}},
 			expr:     `..b += 1`,
 			errstr:   `set failed`,
+		}, {
+			caseName: "walk set fails on editor node an outer match would replace",
+			n:        Map{"b": setFailingEditorNode{Map{"b": NumberValue(0)}}},
+			expr:     `..b = 1`,
+			errstr:   `set failed`,
+		}, {
+			caseName: "walk delete fails on editor node under a key an outer match would delete",
+			n:        Map{"b": deleteFailingEditorNode{Map{"b": NumberValue(0)}}},
+			expr:     `..b ^?`,
+			errstr:   `delete failed`,
+		}, {
+			caseName: "walk delete reports delete error of editor node",
+			n:        Map{"x": deleteFailingEditorNode{Map{"b": NumberValue(0)}}},
+			expr:     `..b ^?`,
+			errstr:   `delete failed`,
 		}, {
 			caseName: "intermediate map step reports set error of editor node",
 			n:        Map{"x": setFailingEditorNode{Map{"y": Map{"c": NumberValue(0)}}}},
@@ -1171,6 +1204,29 @@ func TestEditSequence(t *testing.T) {
 			exprs:    []string{`..b = []`, `.a.b += 1`, `.c.b += 2`},
 			want:     Map{"a": Map{"b": Array{NumberValue(1)}}, "c": Map{"b": Array{NumberValue(2)}}},
 		}, {
+			caseName: "walk append after select set skips the value appended to the shared map",
+			n:        Map{"a": Array{Map{}, Map{}}},
+			exprs:    []string{`.a[].x = {"b": []}`, `..b += {"b": []}`},
+			want: Map{"a": Array{
+				Map{"x": Map{"b": Array{Map{"b": Array{}}, Map{"b": Array{}}}}},
+				Map{"x": Map{"b": Array{Map{"b": Array{}}, Map{"b": Array{}}}}},
+			}},
+		}, {
+			caseName: "walk set map then edit one match leaves the others",
+			n:        Map{"a": Map{"b": Nil}, "c": Map{"b": Nil}},
+			exprs:    []string{`..b = {}`, `.a.b.x = 1`},
+			want:     Map{"a": Map{"b": Map{"x": NumberValue(1)}}, "c": Map{"b": Map{}}},
+		}, {
+			caseName: "walk intermediate set map then edit one match leaves the others",
+			n:        Map{"a": Map{"b": Map{}}, "c": Map{"b": Map{}}},
+			exprs:    []string{`..b.d = {}`, `.a.b.d.x = 1`},
+			want:     Map{"a": Map{"b": Map{"d": Map{"x": NumberValue(1)}}}, "c": Map{"b": Map{"d": Map{}}}},
+		}, {
+			caseName: "walk append map then edit one match leaves the others",
+			n:        Map{"a": Map{"b": Array{}}, "c": Map{"b": Array{}}},
+			exprs:    []string{`..b += {}`, `.a.b[0].x = 1`},
+			want:     Map{"a": Map{"b": Array{Map{"x": NumberValue(1)}}}, "c": Map{"b": Array{Map{}}}},
+		}, {
 			caseName: "select set empty array then append through separate elements",
 			n:        Array{Map{"b": NumberValue(0)}, Map{"b": NumberValue(0)}},
 			exprs:    []string{`.[].b = []`, `[0].b += 1`, `[1].b += 2`},
@@ -1216,7 +1272,7 @@ func TestEditResolveSelectStepSelectorError(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
-			err := resolveAndEdit(&tc.n, fq, 0, "=", StringValue("x"))
+			err := resolveAndEdit(&tc.n, fq, 0, "=", StringValue("x"), nil)
 			if err == nil {
 				t.Fatalf("no error; want %q", "selector boom")
 			}
@@ -1301,6 +1357,204 @@ func BenchmarkEdit(b *testing.B) {
 				if err := Edit(&n, tc.expr); err != nil {
 					b.Fatal(err)
 				}
+			}
+		})
+	}
+}
+
+func TestEditWalkValue(t *testing.T) {
+	custom := mapHidingEditorNode{Map{"k": NumberValue(1)}}
+	shared := func() Node {
+		m := Map{"b": Array{}}
+		return Map{"a": Array{m, m}}
+	}
+	sharedInner := func() Node {
+		m := Map{"b": Map{}}
+		return Map{"a": Array{m, m}}
+	}
+	appended := Map{"b": Array{Map{"b": Array{}}, Map{"b": Array{}}}}
+	ptr := &pointerEditorNode{Map{"b": NumberValue(0)}}
+	docSet := Map{"x": Map{"a": NumberValue(1)}, "a": NumberValue(0)}
+	docAppend := Map{"x": Map{"a": Array{NumberValue(1)}}, "a": Array{}}
+	docNested := Map{"y": Map{"x": Map{"a": NumberValue(1)}, "a": NumberValue(2)}}
+	resliced := Array{NumberValue(1), Map{"k": NumberValue(0)}}
+	reslicedAppend := Array{NumberValue(1), Map{"k": Array{}}}
+	sharedScalar := func() Node {
+		m := Map{"b": NumberValue(0)}
+		return Map{"a": m, "c": m}
+	}
+	sharedArray := func() Node {
+		m := Map{"b": Array{}}
+		return Map{"a": m, "c": m}
+	}
+	testCases := []struct {
+		caseName string
+		n        Node
+		q        Query
+		op       string
+		v        Node
+		want     Node
+	}{
+		{
+			caseName: "walk set stores a custom value as given",
+			n:        Map{"x": Map{}},
+			q:        WalkQuery("x"),
+			op:       "=",
+			v:        custom,
+			want:     Map{"x": custom},
+		}, {
+			caseName: "walk append stores a custom value as given",
+			n:        Map{"x": Array{}},
+			q:        WalkQuery("x"),
+			op:       "+=",
+			v:        custom,
+			want:     Map{"x": Array{custom}},
+		}, {
+			caseName: "walk set stores a nil value as given",
+			n:        Map{"x": Map{}},
+			q:        WalkQuery("x"),
+			op:       "=",
+			v:        nil,
+			want:     Map{"x": nil},
+		}, {
+			caseName: "walk set stores a custom value nested in a map as given",
+			n:        Map{"x": Map{}},
+			q:        WalkQuery("x"),
+			op:       "=",
+			v:        Map{"c": custom},
+			want:     Map{"x": Map{"c": custom}},
+		}, {
+			caseName: "walk set stores a nil map as given",
+			n:        Map{"x": Map{}},
+			q:        WalkQuery("x"),
+			op:       "=",
+			v:        Map(nil),
+			want:     Map{"x": Map(nil)},
+		}, {
+			caseName: "walk set keeps a pointer array",
+			n:        Map{"x": Map{}},
+			q:        WalkQuery("x"),
+			op:       "=",
+			v:        &Array{NumberValue(1)},
+			want:     Map{"x": &Array{NumberValue(1)}},
+		}, {
+			caseName: "walk set stores a nil element as given",
+			n:        Map{"x": Map{}},
+			q:        WalkQuery("x"),
+			op:       "=",
+			v:        Array{nil},
+			want:     Map{"x": Array{nil}},
+		}, {
+			caseName: "walk append on a shared map skips the value it appended",
+			n:        shared(),
+			q:        WalkQuery("b"),
+			op:       "+=",
+			v:        Map{"b": Array{}},
+			want:     Map{"a": Array{appended, appended}},
+		}, {
+			caseName: "walk intermediate set on a shared map skips the value it set",
+			n:        sharedInner(),
+			q:        FilterQuery{WalkQuery("b"), MapQuery("b")},
+			op:       "=",
+			v:        Array{NumberValue(1)},
+			want:     Map{"a": Array{Map{"b": Map{"b": Array{NumberValue(1)}}}, Map{"b": Map{"b": Array{NumberValue(1)}}}}},
+		}, {
+			caseName: "walk set on a shared map does not edit inside the pointer custom value it stored",
+			n:        sharedScalar(),
+			q:        WalkQuery("b"),
+			op:       "=",
+			v:        ptr,
+			want:     Map{"a": Map{"b": ptr}, "c": Map{"b": ptr}},
+		}, {
+			caseName: "walk append on a shared map does not edit inside the pointer custom value it appended",
+			n:        sharedArray(),
+			q:        WalkQuery("b"),
+			op:       "+=",
+			v:        ptr,
+			want:     Map{"a": Map{"b": Array{ptr, ptr}}, "c": Map{"b": Array{ptr, ptr}}},
+		}, {
+			caseName: "walk set with a value from the document does not edit inside it",
+			n:        docSet,
+			q:        WalkQuery("a"),
+			op:       "=",
+			v:        docSet.Get("x"),
+			want:     Map{"a": Map{"a": NumberValue(1)}, "x": Map{"a": NumberValue(1)}},
+		}, {
+			caseName: "walk append with a value from the document does not edit inside it",
+			n:        docAppend,
+			q:        WalkQuery("a"),
+			op:       "+=",
+			v:        docAppend.Get("x"),
+			want:     Map{"a": Array{Map{"a": Array{NumberValue(1)}}}, "x": Map{"a": Array{NumberValue(1)}}},
+		}, {
+			caseName: "walk set with a reslice of a document array still edits the other elements",
+			n:        Map{"a": resliced},
+			q:        WalkQuery("k"),
+			op:       "=",
+			v:        resliced[:1],
+			want:     Map{"a": Array{NumberValue(1), Map{"k": Array{NumberValue(1)}}}},
+		}, {
+			caseName: "walk append with a reslice of a document array still edits the other elements",
+			n:        Map{"a": reslicedAppend},
+			q:        WalkQuery("k"),
+			op:       "+=",
+			v:        reslicedAppend[:1],
+			want:     Map{"a": Array{NumberValue(1), Map{"k": Array{Array{NumberValue(1)}}}}},
+		}, {
+			caseName: "walk intermediate set skips a value taken from the document",
+			n:        docNested,
+			q:        FilterQuery{MapQuery("y"), WalkQuery("a")},
+			op:       "=",
+			v:        docNested.Get("y", "x"),
+			want:     Map{"y": Map{"a": Map{"a": NumberValue(1)}, "x": Map{"a": NumberValue(1)}}},
+		}, {
+			caseName: "walk intermediate set stores a custom value as given",
+			n:        Map{"x": Map{}},
+			q:        FilterQuery{WalkQuery("x"), MapQuery("y")},
+			op:       "=",
+			v:        custom,
+			want:     Map{"x": Map{"y": custom}},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			if err := editQuery(&tc.n, tc.q, tc.op, tc.v); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(tc.n, tc.want) {
+				t.Errorf("got %#v; want %#v", tc.n, tc.want)
+			}
+			if !reflect.DeepEqual(ptr.EditorNode, Map{"b": NumberValue(0)}) {
+				t.Errorf("custom value changed: %#v", ptr.EditorNode)
+			}
+		})
+	}
+}
+
+func TestNewAssigned(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		expr     string
+		want     bool
+	}{
+		{caseName: "no walk", expr: ".a.b", want: false},
+		{caseName: "leading walk", expr: "..a.b", want: true},
+		{caseName: "single walk after a step", expr: ".a..b", want: true},
+		{caseName: "two walks", expr: "..a..b", want: true},
+		{caseName: "two walks with a step between", expr: "..a.x..b", want: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			q, err := ParseQuery(tc.expr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fq, ok := q.(FilterQuery)
+			if !ok {
+				t.Fatalf("got %T; want FilterQuery", q)
+			}
+			if got := newAssigned(fq) != nil; got != tc.want {
+				t.Errorf("got %v; want %v", got, tc.want)
 			}
 		})
 	}

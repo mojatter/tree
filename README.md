@@ -349,6 +349,8 @@ node.Find(".store.book.rsort(\".price\")")  // Books ordered by descending price
 
 An edit expression is `<query> = <value>` (set), `<query> += <value>` (append) or `<query> ^?` (delete). It is split at the first operator outside quotes and parentheses, and `<value>` is parsed as YAML, so `.url = "http://x?a=1"` sets the whole URL. Comparison operators (`==`, `!=`, `<=`, `>=`, `~=`) are never read as an assignment, so `.a ==1` is a syntax error; write `.a = "=1"` to set that string.
 
+A `..key` edit gives each match its own copy of the RHS and edits inner matches before outer ones, so it never edits inside the RHS, i.e. a value it has just assigned: `..b = {"b": 1}` on `{"b": {"b": 2}}` gives `{"b": {"b": 1}}`. If an inner match does not fit the rest of the query, the edit stops with an error, as in jq: `..b.c = 1` on `{"b": {"c": {"b": []}}}` fails with `cannot index array with c`. Edits are not transactional: when a match fails, the matches edited before it stay edited.
+
 ```go
 func ExampleEdit() {
 	var group tree.Node = tree.Map{

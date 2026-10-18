@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 	"strconv"
 	"strings"
 
@@ -14,7 +15,7 @@ import (
 var editOps = []string{"+=", "^?", "="}
 
 // Edit parses the edit expression and applies it to the node tree.
-// The RHS after "=" or "+=" is parsed as YAML.
+// The RHS after "=" or "+=" is parsed as YAML; on error, matches edited before the failing one stay edited.
 func Edit(pn *Node, expr string) error {
 	left, op, right, ok := splitEdit(expr)
 	if !ok {
@@ -157,17 +158,20 @@ func execForEdit(pn *Node, fq FilterQuery, op string, v Node) error {
 		}
 	}
 
-	return resolveAndEdit(pn, fq, 0, op, v)
+	as := newAssigned(fq)
+	as.add(v) // never edit inside v itself when it is part of the document
+
+	return resolveAndEdit(pn, fq, 0, op, v, as)
 }
 
 // resolveAndEdit walks the FilterQuery path step by step, writing back
 // modified Array nodes at each level so changes propagate to the root.
-func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node) error {
-	if sameNode(*pn, v) {
-		return nil // never edit inside the value assigned by an earlier match
+func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as assigned) error {
+	if as.has(*pn) {
+		return nil // never edit inside a value this edit has stored
 	}
 	if step >= len(fq)-1 {
-		return editQuery(pn, fq[len(fq)-1], op, v)
+		return editLast(pn, fq[len(fq)-1], op, v, as)
 	}
 
 	q := fq[step]
@@ -175,7 +179,7 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node) error
 
 	switch tq := q.(type) {
 	case MapQuery:
-		return resolveMapStep(pn, n, string(tq), fq, step, op, v)
+		return resolveMapStep(pn, n, string(tq), fq, step, op, v, as)
 
 	case ArrayQuery:
 		index := int(tq)
@@ -184,29 +188,22 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node) error
 				return fmt.Errorf("cannot index array with %d", int(tq))
 			}
 		}
-		return resolveArrayStep(pn, n, index, fq, step, op, v)
+		return resolveArrayStep(pn, n, index, fq, step, op, v, as)
 
 	case WalkQuery:
 		key := string(tq)
-		for _, t := range tq.walkTargets(n, v) {
-			en, ok := t.live(n)
-			if !ok || !en.Has(key) {
-				continue
-			}
+		return tq.walkEdit(n, as, func(en EditorNode) error {
 			child := en.Get(key)
 
-			if err := resolveAndEdit(&child, fq, step+1, op, v); err != nil {
+			if err := resolveAndEdit(&child, fq, step+1, op, cloneEditValue(v), as); err != nil {
 				return err
 			}
 
-			if err := en.Set(key, child); err != nil {
-				return err
-			}
-		}
-		return nil
+			return en.Set(key, child)
+		})
 
 	case SelectQuery:
-		return resolveSelectStep(pn, n, tq, fq, step, op, v)
+		return resolveSelectStep(pn, n, tq, fq, step, op, v, as)
 
 	default:
 		// Fallback: use Exec (no write-back, works for reference types).
@@ -217,7 +214,7 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node) error
 		for _, r := range results {
 			child := r
 
-			if err := resolveAndEdit(&child, fq, step+1, op, v); err != nil {
+			if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
 				return err
 			}
 		}
@@ -226,7 +223,7 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node) error
 }
 
 // resolveMapStep handles a MapQuery intermediate step with write-back.
-func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op string, v Node) error {
+func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op string, v Node, as assigned) error {
 	if en, ok := n.(EditorNode); ok && !n.IsNil() {
 		child := en.Get(key)
 		if child.Type().IsNilValue() {
@@ -239,7 +236,7 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 			}
 		}
 
-		if err := resolveAndEdit(&child, fq, step+1, op, v); err != nil {
+		if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
 			return err
 		}
 
@@ -256,7 +253,7 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 			m[key] = child
 		}
 
-		if err := resolveAndEdit(&child, fq, step+1, op, v); err != nil {
+		if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
 			return err
 		}
 
@@ -282,7 +279,7 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 			}
 		}
 
-		if err := resolveAndEdit(&child, fq, step+1, op, v); err != nil {
+		if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
 			return err
 		}
 
@@ -298,7 +295,7 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 }
 
 // resolveArrayStep handles an ArrayQuery intermediate step with write-back.
-func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op string, v Node) error {
+func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op string, v Node, as assigned) error {
 	if en, ok := n.(EditorNode); ok {
 		child := n.Get(index)
 		if child.IsNil() {
@@ -311,7 +308,7 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 			}
 		}
 
-		if err := resolveAndEdit(&child, fq, step+1, op, v); err != nil {
+		if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
 			return err
 		}
 
@@ -333,7 +330,7 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 			}
 		}
 
-		if err := resolveAndEdit(&child, fq, step+1, op, v); err != nil {
+		if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
 			return err
 		}
 
@@ -349,7 +346,7 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 }
 
 // resolveSelectStep handles a SelectQuery intermediate step with write-back.
-func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step int, op string, v Node) error {
+func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step int, op string, v Node, as assigned) error {
 	if a := n.Array(); a != nil {
 		for i, elem := range a {
 			if sq.Selector != nil {
@@ -363,7 +360,7 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 			}
 			child := elem
 
-			if err := resolveAndEdit(&child, fq, step+1, op, v); err != nil {
+			if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
 				return err
 			}
 
@@ -387,7 +384,7 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 			}
 			child := elem
 
-			if err := resolveAndEdit(&child, fq, step+1, op, v); err != nil {
+			if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
 				return err
 			}
 
@@ -426,4 +423,68 @@ func execEdit(pn *Node, eq EditorQuery, op string, v Node) error {
 		return eq.Delete(pn)
 	}
 	return fmt.Errorf("syntax error: unsupported edit operation %q", op)
+}
+
+// assigned holds the containers this edit has stored, keyed by identity, so a later walk never edits inside them.
+type assigned map[nodeKey]Node
+
+// nodeKey identifies a container by its data pointer and, for a slice, its length.
+type nodeKey struct {
+	ptr uintptr
+	len int
+}
+
+// newAssigned returns an empty set when the query walks, the only case in which an edit can reach a stored value.
+func newAssigned(fq FilterQuery) assigned {
+	for _, q := range fq {
+		if _, ok := q.(WalkQuery); ok {
+			return assigned{}
+		}
+	}
+	return nil
+}
+
+// add records v when it has an identity, keeping it alive so its address is not reused during the edit.
+func (as assigned) add(v Node) {
+	if as == nil {
+		return
+	}
+	if id := nodeID(v); id.ptr != 0 {
+		as[id] = v
+	}
+}
+
+// has reports whether n was stored by this edit.
+func (as assigned) has(n Node) bool {
+	if len(as) == 0 {
+		return false
+	}
+	_, ok := as[nodeID(n)]
+	return ok
+}
+
+// nodeID identifies a map, pointer or non-empty slice (by data pointer and length), custom nodes included; other values have none.
+func nodeID(n Node) nodeKey {
+	v := reflect.ValueOf(n)
+	switch v.Kind() {
+	case reflect.Map, reflect.Pointer:
+		return nodeKey{ptr: v.Pointer()}
+	case reflect.Slice:
+		if v.Len() > 0 {
+			return nodeKey{ptr: v.Pointer(), len: v.Len()}
+		}
+	}
+	return nodeKey{}
+}
+
+// editLast applies the final step and records the stored value.
+func editLast(pn *Node, q Query, op string, v Node, as assigned) error {
+	if wq, ok := q.(WalkQuery); ok {
+		return wq.edit(pn, op, v, as)
+	}
+	if err := editQuery(pn, q, op, v); err != nil {
+		return err
+	}
+	as.add(v)
+	return nil
 }
