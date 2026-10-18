@@ -223,7 +223,7 @@ func (n Array) Has(keys ...any) bool {
 	if len(keys) > 0 {
 		if i, ok := n.toIndex(keys[0]); ok {
 			if len(keys) > 1 {
-				return n[i].Has(keys[1:]...)
+				return orNil(n[i]).Has(keys[1:]...)
 			}
 			return true
 		}
@@ -237,12 +237,9 @@ func (n Array) Get(keys ...any) Node {
 	if len(keys) > 0 {
 		if i, ok := n.toIndex(keys[0]); ok {
 			if len(keys) > 1 {
-				return n[i].Get(keys[1:]...)
+				return orNil(n[i]).Get(keys[1:]...)
 			}
-			if n[i] == nil {
-				return Nil
-			}
-			return n[i]
+			return orNil(n[i])
 		}
 	}
 	return Nil
@@ -362,7 +359,7 @@ func (n Map) Has(keys ...any) bool {
 	if len(keys) > 0 {
 		if k, ok := n.toKey(keys[0]); ok {
 			if len(keys) > 1 {
-				return n[k].Has(keys[1:]...)
+				return orNil(n[k]).Has(keys[1:]...)
 			}
 			return true
 		}
@@ -376,12 +373,9 @@ func (n Map) Get(keys ...any) Node {
 	if len(keys) > 0 {
 		if k, ok := n.toKey(keys[0]); ok {
 			if len(keys) > 1 {
-				return n[k].Get(keys[1:]...)
+				return orNil(n[k]).Get(keys[1:]...)
 			}
-			if n[k] == nil {
-				return Nil
-			}
-			return n[k]
+			return orNil(n[k])
 		}
 	}
 	return Nil
@@ -399,11 +393,11 @@ func (n Map) Keys() []string {
 	return keys
 }
 
-// Values returns values of the map, ordered by sorted key.
+// Values returns values of the map, ordered by sorted key, with Nil for a nil value.
 func (n Map) Values() []Node {
 	values := make([]Node, len(n))
 	for i, k := range n.Keys() {
-		values[i] = n[k]
+		values[i] = orNil(n[k])
 	}
 	return values
 }

@@ -261,14 +261,14 @@ func (q *ContainsQuery) Exec(n Node) ([]Node, error) {
 	switch n.Type() {
 	case TypeArray:
 		for _, item := range n.Array() {
-			if item.Value().String() == q.Value {
+			if orNil(item).Value().String() == q.Value {
 				return ToNodeValues(true), nil
 			}
 		}
 		return ToNodeValues(false), nil
 	case TypeMap:
 		for _, value := range n.Map() {
-			if value.Value().String() == q.Value {
+			if orNil(value).Value().String() == q.Value {
 				return ToNodeValues(true), nil
 			}
 		}
@@ -298,7 +298,7 @@ func NewFirstQuery(args ...string) (Query, error) {
 func (q *FirstQuery) Exec(n Node) ([]Node, error) {
 	if a := n.Array(); a != nil {
 		if len(a) > 0 {
-			return []Node{a[0]}, nil
+			return []Node{orNil(a[0])}, nil
 		}
 	}
 	return []Node{Nil}, nil
@@ -323,7 +323,7 @@ func NewLastQuery(args ...string) (Query, error) {
 func (q *LastQuery) Exec(n Node) ([]Node, error) {
 	if a := n.Array(); a != nil {
 		if len(a) > 0 {
-			return []Node{a[len(a)-1]}, nil
+			return []Node{orNil(a[len(a)-1])}, nil
 		}
 	}
 	return []Node{Nil}, nil
@@ -388,7 +388,7 @@ func sortNodes(a Array, q Query, desc bool) (Array, error) {
 	for i, n := range a {
 		key := n
 		if q != nil {
-			rs, err := q.Exec(n)
+			rs, err := q.Exec(orNil(n))
 			if err != nil {
 				return nil, err
 			}

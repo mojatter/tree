@@ -86,11 +86,12 @@ func (q MapQuery) Exec(n Node) ([]Node, error) {
 }
 
 func (q MapQuery) Set(pn *Node, v Node) error {
+	n := orNil(*pn)
 	key := string(q)
-	if en, ok := (*pn).(EditorNode); ok {
+	if en, ok := n.(EditorNode); ok {
 		return en.Set(key, v)
 	}
-	if a := (*pn).Array(); a != nil {
+	if a := n.Array(); a != nil {
 		if err := a.Set(key, v); err != nil {
 			return err
 		}
@@ -102,10 +103,10 @@ func (q MapQuery) Set(pn *Node, v Node) error {
 }
 
 func (q MapQuery) Append(pn *Node, v Node) error {
-	n := *pn
+	n := orNil(*pn)
 	key := string(q)
 	if en, ok := n.(EditorNode); ok {
-		if n.Has(key) {
+		if n.Has(key) && !isNull(n.Get(key)) {
 			if ca := n.Get(key).Array(); ca != nil {
 				return en.Set(key, append(ca, v))
 			}
@@ -117,13 +118,14 @@ func (q MapQuery) Append(pn *Node, v Node) error {
 }
 
 func (q MapQuery) Delete(pn *Node) error {
+	n := orNil(*pn)
 	key := string(q)
-	if en, ok := (*pn).(EditorNode); ok {
+	if en, ok := n.(EditorNode); ok {
 		if err := en.Delete(key); err == nil {
 			return nil
 		}
 	}
-	if a := (*pn).Array(); a != nil {
+	if a := n.Array(); a != nil {
 		if err := a.Delete(key); err != nil {
 			return fmt.Errorf("cannot delete %q", key)
 		}
@@ -159,7 +161,7 @@ func (q ArrayQuery) Exec(n Node) ([]Node, error) {
 	if a := n.Array(); a != nil {
 		index := q.resolveIndex(len(a))
 		if index >= 0 && index < len(a) {
-			return []Node{a[index]}, nil
+			return []Node{orNil(a[index])}, nil
 		}
 		return nil, nil
 	}
@@ -167,7 +169,7 @@ func (q ArrayQuery) Exec(n Node) ([]Node, error) {
 }
 
 func (q ArrayQuery) Set(pn *Node, v Node) error {
-	n := *pn
+	n := orNil(*pn)
 	index := int(q)
 	if a := n.Array(); a != nil {
 		index = q.resolveIndex(len(a))
@@ -190,7 +192,7 @@ func (q ArrayQuery) Set(pn *Node, v Node) error {
 }
 
 func (q ArrayQuery) Append(pn *Node, v Node) error {
-	n := *pn
+	n := orNil(*pn)
 	index := int(q)
 	if a := n.Array(); a != nil {
 		index = q.resolveIndex(len(a))
@@ -198,7 +200,7 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 		return fmt.Errorf("cannot append to array with %d", index)
 	}
 	if en, ok := n.(EditorNode); ok {
-		if n.Has(index) {
+		if n.Has(index) && !isNull(n.Get(index)) {
 			if ca := n.Get(index).Array(); ca != nil {
 				return en.Set(index, append(ca, v))
 			}
@@ -210,7 +212,7 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 		return en.Set(index, Array{v})
 	}
 	if a := n.Array(); a != nil {
-		if n.Has(index) {
+		if n.Has(index) && !isNull(a[index]) {
 			if ca := a[index].Array(); ca != nil {
 				a[index] = append(ca, v)
 				*pn = a
@@ -221,19 +223,21 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 		if index < 0 {
 			return fmt.Errorf("cannot append to array with %d", int(q))
 		}
-		na, err := growArray(a, index)
-		if err != nil {
-			return err
+		if index >= len(a) {
+			var err error
+			if a, err = growArray(a, index); err != nil {
+				return err
+			}
 		}
-		na[index] = Array{v}
-		*pn = na
+		a[index] = Array{v}
+		*pn = a
 		return nil
 	}
 	return fmt.Errorf("cannot append to array with %d", int(q))
 }
 
 func (q ArrayQuery) Delete(pn *Node) error {
-	n := *pn
+	n := orNil(*pn)
 	index := int(q)
 	if a := n.Array(); a != nil {
 		index = q.resolveIndex(len(a))
@@ -275,7 +279,7 @@ func (q ArrayRangeQuery) Exec(n Node) ([]Node, error) {
 		if from >= to {
 			return nil, nil
 		}
-		return a[from:to], nil
+		return orNilAll(a[from:to]), nil
 	}
 	return nil, fmt.Errorf("cannot index array with range %s", q)
 }
@@ -344,10 +348,7 @@ func (qs FilterQuery) Exec(n Node) ([]Node, error) {
 		}
 		var nrs []Node
 		for _, r := range rs {
-			if r == nil {
-				continue
-			}
-			nr, err := q.Exec(r)
+			nr, err := q.Exec(orNil(r))
 			if err != nil {
 				return nil, err
 			}
@@ -554,7 +555,7 @@ func (e Evaluator) Matches(n Node) (bool, error) {
 	case 0:
 		return false, nil
 	case 1:
-		r := rs[0]
+		r := orNil(rs[0])
 		switch r.Type() {
 		case TypeBoolValue:
 			return r.Value().Bool(), nil
@@ -630,10 +631,11 @@ type SelectQuery struct {
 func (q SelectQuery) Exec(n Node) ([]Node, error) {
 	if a := n.Array(); a != nil {
 		if q.Selector == nil {
-			return a, nil
+			return orNilAll(a), nil
 		}
 		var rs []Node
 		for _, nn := range a {
+			nn = orNil(nn)
 			ok, err := q.Matches(nn)
 			if err != nil {
 				return nil, err
@@ -679,7 +681,7 @@ var (
 
 // Find finds a node from n using the Query.
 func Find(n Node, expr string) ([]Node, error) {
-	if n.IsNil() {
+	if n == nil || n.IsNil() {
 		return nil, nil
 	}
 	q, err := ParseQuery(expr)

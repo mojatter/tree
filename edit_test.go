@@ -758,25 +758,115 @@ func TestEdit(t *testing.T) {
 			expr:     `.x.y.c ^?`,
 			errstr:   `cannot index array with "y"`,
 		}, {
-			caseName: "null intermediate reached through select is a no-op",
+			caseName: "null intermediate reached through select is replaced",
 			n:        Map{"a": Array{NilValue{}}},
 			expr:     `.a[].x.y = 1`,
-			want:     Map{"a": Array{NilValue{}}},
+			want:     Map{"a": Array{Map{"x": Map{"y": NumberValue(1)}}}},
 		}, {
 			caseName: "ArrayQuery intermediate on non-collection errors",
 			n:        Map{"s": StringValue("hi")},
 			expr:     `.s[0].x = 1`,
 			errstr:   `cannot index array with 0`,
 		}, {
-			caseName: "null ArrayQuery intermediate reached through select is a no-op",
+			caseName: "null ArrayQuery intermediate reached through select is replaced",
 			n:        Map{"a": Array{NilValue{}}},
 			expr:     `.a[][0].y = 1`,
-			want:     Map{"a": Array{NilValue{}}},
+			want:     Map{"a": Array{Array{Map{"y": NumberValue(1)}}}},
+		}, {
+			caseName: "nil element reached through select is replaced",
+			n:        Map{"a": Array{nil}},
+			expr:     `.a[].x = 1`,
+			want:     Map{"a": Array{Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "null reached through select is kept when a later step creates nothing",
+			n:        Map{"a": Array{Nil}},
+			expr:     `.a[].b[] = 1`,
+			want:     Map{"a": Array{Nil}},
+		}, {
+			caseName: "null reached by key is kept when a later step creates nothing",
+			n:        Map{"a": Nil},
+			expr:     `.a.b[] = 1`,
+			want:     Map{"a": Nil},
+		}, {
+			caseName: "nil element reached by index is kept when a later step creates nothing",
+			n:        Map{"a": Array{nil}},
+			expr:     `.a[0].b.first() = 1`,
+			want:     Map{"a": Array{nil}},
+		}, {
+			caseName: "nil map value reached through select is replaced",
+			n:        Map{"a": Map{"k": nil}},
+			expr:     `.a[].x = 1`,
+			want:     Map{"a": Map{"k": Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "delete through nil element reached through select keeps it nil",
+			n:        Map{"a": Array{nil}},
+			expr:     `.a[].x ^?`,
+			want:     Map{"a": Array{nil}},
+		}, {
+			caseName: "null element reached by index is replaced",
+			n:        Map{"a": Array{Nil}},
+			expr:     `.a[0].x = 1`,
+			want:     Map{"a": Array{Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "nil element reached by index is replaced",
+			n:        Map{"a": Array{nil, nil, NumberValue(1)}},
+			expr:     `.a[1].x = 1`,
+			want:     Map{"a": Array{nil, Map{"x": NumberValue(1)}, NumberValue(1)}},
+		}, {
+			caseName: "append to nil element creates an array",
+			n:        Map{"a": Array{nil, nil, NumberValue(1)}},
+			expr:     `.a[0] += 1`,
+			want:     Map{"a": Array{Array{NumberValue(1)}, nil, NumberValue(1)}},
+		}, {
+			caseName: "append to null element creates an array",
+			n:        Map{"a": Array{Nil}},
+			expr:     `.a[-1] += 1`,
+			want:     Map{"a": Array{Array{NumberValue(1)}}},
+		}, {
+			caseName: "append to null map value creates an array",
+			n:        Map{"a": Nil},
+			expr:     `.a += 1`,
+			want:     Map{"a": Array{NumberValue(1)}},
+		}, {
+			caseName: "set through nil element in a slice behaves as null",
+			n:        Map{"a": Array{nil, nil, NumberValue(1)}},
+			expr:     `.a[1:2][0].x = 1`,
+			want:     Map{"a": Array{nil, nil, NumberValue(1)}},
+		}, {
+			caseName: "nil element reached through a method step is not created",
+			n:        Map{"a": Array{nil}},
+			expr:     `.a.first().x = 1`,
+			errstr:   `cannot index array with "x"`,
+		}, {
+			caseName: "delete past null reached through walk fails",
+			n:        Map{"b": Nil},
+			expr:     `..b.c ^?`,
+			errstr:   `cannot delete "c"`,
+		}, {
+			caseName: "set on nil element in a slice errors as on null",
+			n:        Map{"a": Array{nil, NumberValue(1)}},
+			expr:     `.a[0:1][0] = 1`,
+			errstr:   `cannot index array with 0`,
 		}, {
 			caseName: "ArrayQuery intermediate on Map uses EditorNode branch",
 			n:        Map{"m": Map{"0": Map{"x": StringValue("old")}}},
 			expr:     `.m[0].x = "new"`,
 			want:     Map{"m": Map{"0": Map{"x": StringValue("new")}}},
+		}, {
+			caseName: "typed-nil map reached by index through editor node is replaced",
+			n:        Map{"m": Map{"0": Map(nil)}},
+			expr:     `.m[0].x = 1`,
+			want:     Map{"m": Map{"0": Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "typed-nil map in pointer array reached by index is replaced",
+			n:        Map{"a": &Array{Map(nil)}},
+			expr:     `.a[0].x = 1`,
+			want:     Map{"a": &Array{Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "typed-nil array in pointer array reached by index is replaced",
+			n:        Map{"a": &Array{Array(nil)}},
+			expr:     `.a[0][0] = 1`,
+			want:     Map{"a": &Array{Array{NumberValue(1)}}},
 		}, {
 			caseName: "ArrayQuery intermediate on Map creates missing key via emptyIntermediate",
 			n:        Map{"arr": Map{"x": StringValue("v")}},
@@ -1322,6 +1412,10 @@ func FuzzEdit(f *testing.F) {
 		{`{}`, `delete .a`, ``},
 		{`{"a":[]}`, `.a[2] = 1`, `.a[].x = 1`},
 		{`{"a":[]}`, `.a[2] = 1`, `.a[].x.y = 1`},
+		{`{"a":[]}`, `.a[2] = 1`, `.a[0] += 1`},
+		{`{"a":[]}`, `.a[2] = 1`, `.a[1:2][0].x = 1`},
+		{`{"a":[]}`, `.a[2] = 1`, `.a[.x == 1]`},
+		{`{"a":[]}`, `.a[2] = 1`, `.a[0].x.sort(.y)`},
 	}
 	for _, s := range seeds {
 		f.Add(s[0], s[1], s[2])
@@ -1335,6 +1429,7 @@ func FuzzEdit(f *testing.F) {
 			return
 		}
 		_ = Edit(&n, expr2)
+		_, _ = Find(n, expr2)
 	})
 }
 

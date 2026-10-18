@@ -186,6 +186,16 @@ func TestRegistry_Parse(t *testing.T) {
 			},
 			wantErrs: []string{`unknown field "bogus1"`, `unknown field "bogus2"`},
 		},
+		{
+			caseName: "nil of element is null",
+			spec:     tree.Map{"type": tree.V("and"), "of": tree.Array{nil}},
+			wantErrs: []string{"and.of[0]: rule spec must be map, got nil"},
+		},
+		{
+			caseName: "nil enum element is null",
+			spec:     tree.Map{"type": tree.V("string"), "enum": tree.Array{nil}},
+			wantErrs: []string{`"enum"[0] must be string, got nil`},
+		},
 	}
 	r := BuiltinRegistry()
 	for _, tc := range testCases {
@@ -350,6 +360,11 @@ func TestParseQueryRules(t *testing.T) {
 			caseName: "spec not a map",
 			spec:     tree.V("x"),
 			wantErrs: []string{"query rules spec must be map"},
+		},
+		{
+			caseName: "nil rule spec is null",
+			spec:     tree.Map{".a": nil},
+			wantErrs: []string{".a: rule spec must be map, got nil"},
 		},
 		{
 			caseName: "valid mixed rules",

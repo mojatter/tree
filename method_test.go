@@ -218,6 +218,31 @@ func TestMethodQuery(t *testing.T) {
 				Map{"name": StringValue("Charlie"), "age": NumberValue(35)},
 			}},
 		}, {
+			caseName: "sort by field on nil element errors as on null",
+			q:        &SortQuery{Expr: ".age", Query: MapQuery("age")},
+			n:        Array{Map{"age": NumberValue(1)}, nil},
+			errstr:   `cannot index array with "age"`,
+		}, {
+			caseName: "first nil element is null",
+			q:        &FirstQuery{},
+			n:        Array{nil},
+			want:     []Node{Nil},
+		}, {
+			caseName: "last nil element is null",
+			q:        &LastQuery{},
+			n:        Array{nil},
+			want:     []Node{Nil},
+		}, {
+			caseName: "contains reads nil array element as null",
+			q:        &ContainsQuery{Value: "1"},
+			n:        Array{nil, ToValue(1)},
+			want:     []Node{ToValue(true)},
+		}, {
+			caseName: "contains reads nil map value as null",
+			q:        &ContainsQuery{Value: "1"},
+			n:        Map{"a": nil},
+			want:     []Node{ToValue(false)},
+		}, {
 			caseName: "sort array of maps by nested field",
 			q: func() Query {
 				q, _ := NewSortQuery(".meta.id")

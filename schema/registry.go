@@ -149,7 +149,7 @@ func ParseQueryRulesWith(spec tree.Node, reg *Registry) (QueryRules, error) {
 	out := QueryRules{}
 	var errs []error
 	for _, k := range m.Keys() {
-		r, err := reg.Parse(m[k])
+		r, err := reg.Parse(m.Get(k))
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", k, err))
 			continue
@@ -282,7 +282,7 @@ func optKeyedRules(spec tree.Node, key string, reg *Registry) (map[string]Rule, 
 	out := make(map[string]Rule, len(m))
 	var errs []error
 	for _, k := range m.Keys() {
-		r, err := reg.Parse(m[k])
+		r, err := reg.Parse(m.Get(k))
 		if err != nil {
 			errs = append(errs, fmt.Errorf("%s.%s: %w", key, k, err))
 			continue
@@ -345,8 +345,8 @@ func parseOfArray(kind string, spec tree.Node, reg *Registry) ([]Rule, error) {
 	}
 	arr := of.Array()
 	rs := make([]Rule, 0, len(arr))
-	for i, child := range arr {
-		r, err := reg.Parse(child)
+	for i := range arr {
+		r, err := reg.Parse(arr.Get(i))
 		if err != nil {
 			return nil, fmt.Errorf("%s.of[%d]: %w", kind, i, err)
 		}
@@ -382,7 +382,8 @@ func optStringSlice(spec tree.Node, key string) ([]string, error) {
 	}
 	arr := n.Array()
 	out := make([]string, 0, len(arr))
-	for i, v := range arr {
+	for i := range arr {
+		v := arr.Get(i)
 		if !v.Type().IsStringValue() {
 			return nil, fmt.Errorf("%q[%d] must be string, got %s", key, i, v.Type())
 		}

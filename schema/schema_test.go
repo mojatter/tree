@@ -80,6 +80,12 @@ func TestValidate(t *testing.T) {
 			},
 			wantErrs: []string{".a: expected string, got number", ".b: expected number, got bool"},
 		},
+		{
+			caseName: "nil map value under [] is null",
+			n:        tree.Map{"m": tree.Map{"k": nil}},
+			rules:    QueryRules{".m[]": Required(String{})},
+			wantErrs: []string{`.m["k"]: required`},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {

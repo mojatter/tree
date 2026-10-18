@@ -120,9 +120,10 @@ func (r Every) Validate(n tree.Node, q string) error {
 	var errs []error
 	switch {
 	case n.Type().IsArray():
-		for i, v := range n.Array() {
+		a := n.Array()
+		for i := range a {
 			prefix := fmt.Sprintf("%s[%d]", q, i)
-			sub, fe := validateNode(v, r.Rules, prefix)
+			sub, fe := validateNode(a.Get(i), r.Rules, prefix)
 			if fe != nil {
 				return fe
 			}
@@ -132,7 +133,7 @@ func (r Every) Validate(n tree.Node, q string) error {
 		m := n.Map()
 		for _, k := range m.Keys() {
 			prefix := fmt.Sprintf("%s[%q]", q, k)
-			sub, fe := validateNode(m[k], r.Rules, prefix)
+			sub, fe := validateNode(m.Get(k), r.Rules, prefix)
 			if fe != nil {
 				return fe
 			}

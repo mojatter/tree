@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"sync"
 )
 
@@ -84,6 +85,33 @@ func ToNodeValues(vs ...any) []Node {
 		ns[i] = ToValue(v)
 	}
 	return ns
+}
+
+// orNil returns n, or Nil when n is a Go nil node, which consumers treat as null.
+func orNil(n Node) Node {
+	if n == nil {
+		return Nil
+	}
+	return n
+}
+
+// orNilAll returns ns, or a copy of it with Nil for each Go nil node when it has one.
+func orNilAll(ns []Node) []Node {
+	for i, n := range ns {
+		if n == nil {
+			c := slices.Clone(ns)
+			for j := i; j < len(c); j++ {
+				c[j] = orNil(c[j])
+			}
+			return c
+		}
+	}
+	return ns
+}
+
+// isNull reports whether n is Nil or a Go nil node.
+func isNull(n Node) bool {
+	return n == nil || n.Type().IsNilValue()
 }
 
 // ToNode converts the specified v to an Node.

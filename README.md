@@ -351,6 +351,8 @@ An edit expression is `<query> = <value>` (set), `<query> += <value>` (append) o
 
 A `..key` edit gives each match its own copy of the RHS and edits inner matches before outer ones, so it never edits inside the RHS, i.e. a value it has just assigned: `..b = {"b": 1}` on `{"b": {"b": 2}}` gives `{"b": {"b": 1}}`. If an inner match does not fit the rest of the query, the edit stops with an error, as in jq: `..b.c = 1` on `{"b": {"c": {"b": []}}}` fails with `cannot index array with c`. Edits are not transactional: when a match fails, the matches edited before it stay edited.
 
+A null reached by a key, an index or `[]`, including a Go `nil` value such as a hole left by growing an array, is treated as missing: `=` and `+=` create what the rest of the query needs when every later step is a key or an index, and otherwise, like `^?`, leave it as it is (`.a.b[] = 1` on `{"a": null}` changes nothing). `.a[0].x = 1` on `{"a": [null]}` gives `{"a": [{"x": 1}]}`, and `.a += 1` on `{"a": null}` gives `{"a": [1]}`. A null reached through `..`, a slice or a method such as `first()` is not created: the step after it fails (`=` with `cannot index array with ...`, `^?` with `cannot delete ...`), and a longer path past it is skipped (#147). Get, Find and the other queries read a Go `nil` value as null.
+
 ```go
 func ExampleEdit() {
 	var group tree.Node = tree.Map{

@@ -158,6 +158,18 @@ func TestEvery(t *testing.T) {
 			n:        tree.Nil,
 		},
 		{
+			caseName: "nil array element is null",
+			rule:     Every{Rules: QueryRules{".name": Required(String{})}},
+			n:        tree.Array{nil},
+			wantErrs: []string{".x[0].name: required"},
+		},
+		{
+			caseName: "nil map value is null",
+			rule:     Every{Rules: QueryRules{".name": Required(String{})}},
+			n:        tree.Map{"k": nil},
+			wantErrs: []string{`.x["k"].name: required`},
+		},
+		{
 			caseName: "non-collection rejected",
 			rule:     Every{Rules: QueryRules{".name": String{}}},
 			n:        tree.V("x"),

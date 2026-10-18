@@ -175,7 +175,7 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 	}
 
 	q := fq[step]
-	n := *pn
+	n := orNil(*pn)
 
 	switch tq := q.(type) {
 	case MapQuery:
@@ -226,8 +226,8 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op string, v Node, as assigned) error {
 	if en, ok := n.(EditorNode); ok && !n.IsNil() {
 		child := en.Get(key)
-		if child.Type().IsNilValue() {
-			child = emptyIntermediate(op, fq[step+1])
+		if isNull(child) {
+			child = emptyIntermediate(op, fq[step+1:])
 			if child == nil {
 				return nil
 			}
@@ -245,8 +245,8 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 
 	if m := n.Map(); m != nil {
 		child, exists := m[key]
-		if !exists || child == nil {
-			child = emptyIntermediate(op, fq[step+1])
+		if !exists || isNull(child) {
+			child = emptyIntermediate(op, fq[step+1:])
 			if child == nil {
 				return nil
 			}
@@ -272,8 +272,8 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 			}
 		}
 		child := a[i]
-		if child == nil {
-			child = emptyIntermediate(op, fq[step+1])
+		if isNull(child) {
+			child = emptyIntermediate(op, fq[step+1:])
 			if child == nil {
 				return nil
 			}
@@ -289,7 +289,7 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 	}
 
 	if n.IsNil() {
-		return nil // null not reached by a map key is skipped (#147)
+		return nil // a null reached by ".." or a slice step is skipped (#147)
 	}
 	return fmt.Errorf("cannot index array with %q", key)
 }
@@ -298,8 +298,8 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op string, v Node, as assigned) error {
 	if en, ok := n.(EditorNode); ok {
 		child := n.Get(index)
-		if child.IsNil() {
-			child = emptyIntermediate(op, fq[step+1])
+		if isNull(child) || child.IsNil() { // a typed-nil child is replaced here too, as before
+			child = emptyIntermediate(op, fq[step+1:])
 			if child == nil {
 				return nil
 			}
@@ -323,8 +323,8 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 			}
 		}
 		child := a[index]
-		if child == nil {
-			child = emptyIntermediate(op, fq[step+1])
+		if isNull(child) {
+			child = emptyIntermediate(op, fq[step+1:])
 			if child == nil {
 				return nil
 			}
@@ -340,7 +340,7 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 	}
 
 	if n.IsNil() {
-		return nil // null not reached by a map key is skipped (#147)
+		return nil // a null reached by ".." or a slice step is skipped (#147)
 	}
 	return fmt.Errorf("cannot index array with %d", index)
 }
@@ -349,9 +349,7 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step int, op string, v Node, as assigned) error {
 	if a := n.Array(); a != nil {
 		for i, elem := range a {
-			if elem == nil {
-				elem = Nil // a hole left by growArray
-			}
+			elem = orNil(elem)
 			if sq.Selector != nil {
 				ok, err := sq.Matches(elem)
 				if err != nil {
@@ -362,6 +360,11 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 				}
 			}
 			child := elem
+			if isNull(child) {
+				if child = emptyIntermediate(op, fq[step+1:]); child == nil {
+					continue // a null element stays as it is
+				}
+			}
 
 			if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
 				return err
@@ -375,7 +378,7 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 
 	if m := n.Map(); m != nil {
 		for _, k := range m.Keys() {
-			elem := m[k]
+			elem := orNil(m[k])
 			if sq.Selector != nil {
 				ok, err := sq.Matches(elem)
 				if err != nil {
@@ -386,6 +389,11 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 				}
 			}
 			child := elem
+			if isNull(child) {
+				if child = emptyIntermediate(op, fq[step+1:]); child == nil {
+					continue // a null element stays as it is
+				}
+			}
 
 			if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
 				return err
@@ -399,13 +407,19 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 	return nil
 }
 
-// emptyIntermediate returns an empty node appropriate for the next
-// query step, or nil if none should be created (always for a delete).
-func emptyIntermediate(op string, nextQuery Query) Node {
-	if op == "^?" {
+// emptyIntermediate returns an empty node for the next step of rest, or nil when a delete or a later step could not create its container.
+func emptyIntermediate(op string, rest FilterQuery) Node {
+	if op == "^?" || len(rest) == 0 {
 		return nil
 	}
-	switch nextQuery.(type) {
+	for _, q := range rest {
+		switch q.(type) {
+		case MapQuery, ArrayQuery:
+		default:
+			return nil
+		}
+	}
+	switch rest[0].(type) {
 	case MapQuery:
 		return Map{}
 	case ArrayQuery:

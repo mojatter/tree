@@ -138,7 +138,7 @@ func validateExpanded(root tree.Node, base string, vs []tree.Node, r Rule, prefi
 		var errs []error
 		for _, k := range m.Keys() {
 			qi := fmt.Sprintf("%s[%q]", display, k)
-			if err := r.Validate(m[k], qi); err != nil {
+			if err := r.Validate(m.Get(k), qi); err != nil {
 				errs = append(errs, err)
 			}
 		}

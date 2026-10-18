@@ -327,6 +327,16 @@ func TestNodeGet(t *testing.T) {
 			caseName: "NumberValue no keys",
 			n:        NumberValue(1),
 			want:     Nil,
+		}, {
+			caseName: "Array nested key through nil element",
+			n:        Array{nil},
+			keys:     []any{0, "x"},
+			want:     Nil,
+		}, {
+			caseName: "Map nested key through nil value",
+			n:        Map{"k": nil},
+			keys:     []any{"k", "x"},
+			want:     Nil,
 		},
 	}
 	for _, tc := range testCases {

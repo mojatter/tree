@@ -144,6 +144,36 @@ func TestQuery(t *testing.T) {
 				Map{"key1": ToValue(3), "key2": ToValue("c")},
 			},
 			want: []Node{ToValue(1), ToValue(2), ToValue(3)},
+		}, {
+			caseName: "array: nil element is null",
+			q:        ArrayQuery(0),
+			n:        Array{nil},
+			want:     []Node{Nil},
+		}, {
+			caseName: "range: nil element is null",
+			q:        ArrayRangeQuery{},
+			n:        Array{nil, ToValue(1)},
+			want:     []Node{Nil, ToValue(1)},
+		}, {
+			caseName: "select: nil array element is null",
+			q:        SelectQuery{},
+			n:        Array{nil},
+			want:     []Node{Nil},
+		}, {
+			caseName: "select: nil map value is null",
+			q:        SelectQuery{},
+			n:        Map{"k": nil},
+			want:     []Node{Nil},
+		}, {
+			caseName: "select: selector on nil element errors as on null",
+			q:        SelectQuery{Comparator{Left: MapQuery("x"), Op: EQ, Right: ValueQuery{ToValue(1)}}},
+			n:        Array{nil},
+			errstr:   `cannot index array with "x"`,
+		}, {
+			caseName: "filter: nil result continues as null",
+			q:        FilterQuery{ArrayQuery(0), &CountQuery{}},
+			n:        Array{nil},
+			want:     []Node{ToValue(0)},
 		},
 	}
 	for _, tc := range testCases {
