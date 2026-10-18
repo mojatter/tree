@@ -710,10 +710,25 @@ func TestEdit(t *testing.T) {
 			expr:     `.missing[].x = 1`,
 			want:     Map{},
 		}, {
-			caseName: "non-numeric map key on Array is a no-op",
+			caseName: "non-numeric map key on Array errors",
 			n:        Map{"arr": Array{NumberValue(1)}},
 			expr:     `.arr.badkey.x = 1`,
-			want:     Map{"arr": Array{NumberValue(1)}},
+			errstr:   `cannot index array with badkey`,
+		}, {
+			caseName: "non-numeric map key on empty Array errors",
+			n:        Map{"x": Array{}},
+			expr:     `.x.foo.c = 1`,
+			errstr:   `cannot index array with foo`,
+		}, {
+			caseName: "non-numeric map key on empty Array at final step errors the same way",
+			n:        Map{"x": Array{}},
+			expr:     `.x.foo = 1`,
+			errstr:   `cannot index array with foo`,
+		}, {
+			caseName: "delete through non-numeric map key on Array errors",
+			n:        Map{"x": Array{}},
+			expr:     `.x.foo.c ^?`,
+			errstr:   `cannot index array with foo`,
 		}, {
 			caseName: "nil element at Array MapQuery step with non-collection next is a no-op",
 			n:        Map{"arr": Array{nil, nil}},
@@ -725,15 +740,30 @@ func TestEdit(t *testing.T) {
 			expr:     `[0][].x = 1`,
 			want:     Array{nil, nil},
 		}, {
-			caseName: "MapQuery intermediate on non-collection is a no-op",
+			caseName: "MapQuery intermediate on non-collection errors",
 			n:        Map{"s": StringValue("hi")},
 			expr:     `.s.x.y = 1`,
-			want:     Map{"s": StringValue("hi")},
+			errstr:   `cannot index array with "x"`,
 		}, {
-			caseName: "ArrayQuery intermediate on non-collection is a no-op",
+			caseName: "delete through MapQuery intermediate on non-collection errors",
+			n:        Map{"x": NumberValue(1)},
+			expr:     `.x.y.c ^?`,
+			errstr:   `cannot index array with "y"`,
+		}, {
+			caseName: "null intermediate reached through select is a no-op",
+			n:        Map{"a": Array{NilValue{}}},
+			expr:     `.a[].x.y = 1`,
+			want:     Map{"a": Array{NilValue{}}},
+		}, {
+			caseName: "ArrayQuery intermediate on non-collection errors",
 			n:        Map{"s": StringValue("hi")},
 			expr:     `.s[0].x = 1`,
-			want:     Map{"s": StringValue("hi")},
+			errstr:   `cannot index array with 0`,
+		}, {
+			caseName: "null ArrayQuery intermediate reached through select is a no-op",
+			n:        Map{"a": Array{NilValue{}}},
+			expr:     `.a[][0].y = 1`,
+			want:     Map{"a": Array{NilValue{}}},
 		}, {
 			caseName: "ArrayQuery intermediate on Map uses EditorNode branch",
 			n:        Map{"m": Map{"0": Map{"x": StringValue("old")}}},
@@ -936,10 +966,10 @@ func TestEdit(t *testing.T) {
 			expr:     `.m[-1].x = 1`,
 			want:     Map{"m": Map{"-1": Map{"x": NumberValue(1)}}},
 		}, {
-			caseName: "negative index on scalar is a no-op",
+			caseName: "negative index on scalar errors",
 			n:        Map{"a": NumberValue(1)},
 			expr:     `.a[-1].b = 1`,
-			want:     Map{"a": NumberValue(1)},
+			errstr:   `cannot index array with -1`,
 		}, {
 			caseName: "walk intermediate set skips subtree replaced by earlier match",
 			n:        Map{"b": Map{"c": Map{"b": Array{}}}},

@@ -267,7 +267,7 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 	if a := n.Array(); a != nil {
 		i, err := strconv.Atoi(key)
 		if err != nil || i < 0 {
-			return nil
+			return fmt.Errorf("cannot index array with %v", key)
 		}
 		if i >= len(a) {
 			if a, err = growArray(a, i); err != nil {
@@ -291,7 +291,10 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 		return nil
 	}
 
-	return nil
+	if n.IsNil() {
+		return nil // null not reached by a map key is skipped (#147)
+	}
+	return fmt.Errorf("cannot index array with %q", key)
 }
 
 // resolveArrayStep handles an ArrayQuery intermediate step with write-back.
@@ -339,7 +342,10 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 		return nil
 	}
 
-	return nil
+	if n.IsNil() {
+		return nil // null not reached by a map key is skipped (#147)
+	}
+	return fmt.Errorf("cannot index array with %d", index)
 }
 
 // resolveSelectStep handles a SelectQuery intermediate step with write-back.
