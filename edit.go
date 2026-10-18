@@ -1,28 +1,30 @@
 package tree
 
 import (
+	"errors"
 	"fmt"
-	"regexp"
+	"io"
 	"strconv"
+	"strings"
+
+	"go.yaml.in/yaml/v3"
 )
 
-var editRegexp = regexp.MustCompile(`^([^\+]+) ?((=|\+=) ?(.+)|(\^\?))$`)
+// editOps lists the edit operators.
+var editOps = []string{"+=", "^?", "="}
 
 // Edit parses the edit expression and applies it to the node tree.
+// The RHS after "=" or "+=" is parsed as YAML.
 func Edit(pn *Node, expr string) error {
-	ms := editRegexp.FindStringSubmatch(expr)
-	if len(ms) != 6 {
-		return fmt.Errorf("syntax error: invalid edit expression %q, %v", expr, ms)
-	}
-	left, op, right := ms[1], ms[3], ms[4]
-	if op == "" {
-		op = ms[5]
+	left, op, right, ok := splitEdit(expr)
+	if !ok {
+		return fmt.Errorf("syntax error: invalid edit expression %q", expr)
 	}
 
 	var v Node
-	if right != "" {
+	if op != "^?" {
 		var err error
-		v, err = UnmarshalYAML([]byte(right))
+		v, err = parseEditValue(right)
 		if err != nil {
 			return err
 		}
@@ -33,6 +35,79 @@ func Edit(pn *Node, expr string) error {
 	}
 
 	return editQuery(pn, q, op, v)
+}
+
+// parseEditValue parses right as one YAML document and rejects anything after it.
+func parseEditValue(right string) (Node, error) {
+	dec := yaml.NewDecoder(strings.NewReader(right))
+	v, err := DecodeYAML(dec)
+	if errors.Is(err, io.EOF) {
+		return ToNode(nil), nil // comment-only value
+	}
+	if err != nil {
+		return nil, err
+	}
+	var rest any
+	if err := dec.Decode(&rest); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return nil, err
+		}
+		return nil, fmt.Errorf("syntax error: multiple YAML documents in edit value %q", right)
+	}
+	return v, nil
+}
+
+// splitEdit splits expr at its first edit operator outside quotes and method arguments.
+func splitEdit(expr string) (left, op, right string, ok bool) {
+	for i := 0; i < len(expr); {
+		switch expr[i] {
+		case '"', '\'':
+			i = skipQuoted(expr, i)
+			continue
+		case '(':
+			i = skipParen(expr, i)
+			continue
+		case '+':
+			if i+1 >= len(expr) || expr[i+1] != '=' {
+				return "", "", "", false // bare '+' on the LHS is a mistyped append, not a key
+			}
+		case '=', '<', '>', '!', '~':
+			if i+1 < len(expr) && expr[i+1] == '=' {
+				i += 2 // comparison operator, not an assignment
+				continue
+			}
+		}
+		for _, o := range editOps {
+			if strings.HasPrefix(expr[i:], o) {
+				// Keep the RHS verbatim apart from leading blanks so YAML block scalars survive.
+				left, right = strings.TrimSpace(expr[:i]), strings.TrimLeft(expr[i+len(o):], " \t")
+				if strings.TrimSpace(right) == "" {
+					right = ""
+				}
+				if left == "" || (o == "^?") != (right == "") {
+					return "", "", "", false
+				}
+				return left, o, right, true
+			}
+		}
+		i++
+	}
+	return "", "", "", false
+}
+
+// skipParen returns the position past the first unquoted ')' after expr[p], or p+1 when unterminated, so '=' inside parentheses never splits the edit.
+func skipParen(expr string, p int) int {
+	for i := p + 1; i < len(expr); {
+		switch expr[i] {
+		case '"', '\'':
+			i = skipQuoted(expr, i)
+			continue
+		case ')':
+			return i + 1
+		}
+		i++
+	}
+	return p + 1
 }
 
 // editQuery applies an edit operation to a node using the specified query.

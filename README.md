@@ -347,6 +347,8 @@ node.Find(".store.book.rsort(\".price\")")  // Books ordered by descending price
 
 ## Edit
 
+An edit expression is `<query> = <value>` (set), `<query> += <value>` (append) or `<query> ^?` (delete). It is split at the first operator outside quotes and parentheses, and `<value>` is parsed as YAML, so `.url = "http://x?a=1"` sets the whole URL. Comparison operators (`==`, `!=`, `<=`, `>=`, `~=`) are never read as an assignment, so `.a ==1` is a syntax error; write `.a = "=1"` to set that string.
+
 ```go
 func ExampleEdit() {
 	var group tree.Node = tree.Map{

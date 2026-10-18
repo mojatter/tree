@@ -500,12 +500,197 @@ func TestEdit(t *testing.T) {
 			caseName: "invalid query expression returns parse error",
 			n:        Map{},
 			expr:     `[ = 1`,
-			errstr:   `syntax error: no right brackets: "[ "`,
+			errstr:   `syntax error: no right brackets: "["`,
 		}, {
 			caseName: "invalid YAML on RHS returns unmarshal error",
 			n:        Map{},
 			expr:     `.a = }not yaml`,
 			errstr:   `yaml: did not find expected node content`,
+		}, {
+			caseName: "set value containing equals sign",
+			n:        Map{},
+			expr:     `.url = "http://x?a=1"`,
+			want:     Map{"url": StringValue("http://x?a=1")},
+		}, {
+			caseName: "set plain value containing equals sign",
+			n:        Map{},
+			expr:     `.s = a=b`,
+			want:     Map{"s": StringValue("a=b")},
+		}, {
+			caseName: "set value containing append operator",
+			n:        Map{},
+			expr:     `.s = "a+=b"`,
+			want:     Map{"s": StringValue("a+=b")},
+		}, {
+			caseName: "append value containing equals sign",
+			n:        Map{"a": Array{}},
+			expr:     `.a += "k=v"`,
+			want:     Map{"a": Array{StringValue("k=v")}},
+		}, {
+			caseName: "set value containing delete operator",
+			n:        Map{},
+			expr:     `.s = "x^?"`,
+			want:     Map{"s": StringValue("x^?")},
+		}, {
+			caseName: "set quoted key containing operators",
+			n:        Map{},
+			expr:     `."a+=b" = 1`,
+			want:     Map{"a+=b": NumberValue(1)},
+		}, {
+			caseName: "set key selected by comparison",
+			n:        Array{Map{"k": StringValue("a")}, Map{"k": StringValue("b")}},
+			expr:     `[.k == "b"].v = 1`,
+			want:     Array{Map{"k": StringValue("a")}, Map{"k": StringValue("b"), "v": NumberValue(1)}},
+		}, {
+			caseName: "block scalar RHS keeps trailing newline",
+			n:        Map{},
+			expr:     ".a = |\n  foo\n",
+			want:     Map{"a": StringValue("foo\n")},
+		}, {
+			caseName: "multi-line mapping RHS on following lines",
+			n:        Map{},
+			expr:     ".a =\n  x: 1\n  y: 2",
+			want:     Map{"a": Map{"x": NumberValue(1), "y": NumberValue(2)}},
+		}, {
+			caseName: "RHS with tab after operator",
+			n:        Map{},
+			expr:     ".a=\t[1]",
+			want:     Map{"a": Array{NumberValue(1)}},
+		}, {
+			caseName: "equals inside method args is not an operator",
+			n:        Array{Map{"a=b": NumberValue(1)}},
+			expr:     `[has(a=b)].v = 1`,
+			want:     Array{Map{"a=b": NumberValue(1), "v": NumberValue(1)}},
+		}, {
+			caseName: "unbalanced paren inside method args",
+			n:        Array{Map{"a(b": NumberValue(1)}},
+			expr:     `[has(a(b)].v = 1`,
+			want:     Array{Map{"a(b": NumberValue(1), "v": NumberValue(1)}},
+		}, {
+			caseName: "second YAML document on RHS returns syntax error",
+			n:        Map{},
+			expr:     ".a = 1\n---\n2",
+			errstr:   `syntax error: multiple YAML documents in edit value "1\n---\n2"`,
+		}, {
+			caseName: "trailing content after quoted RHS returns yaml error",
+			n:        Map{},
+			expr:     ".a = 'x'\n.b = 2",
+			errstr:   `yaml: line 1: did not find expected <document start>`,
+		}, {
+			caseName: "trailing content after flow sequence RHS returns yaml error",
+			n:        Map{},
+			expr:     ".a = [1]\n2",
+			errstr:   `yaml: line 1: did not find expected <document start>`,
+		}, {
+			caseName: "RHS trailing comment is ignored",
+			n:        Map{},
+			expr:     `.a = 1 # set`,
+			want:     Map{"a": NumberValue(1)},
+		}, {
+			caseName: "RHS comment line after value is ignored",
+			n:        Map{},
+			expr:     ".a = 1\n#c\n",
+			want:     Map{"a": NumberValue(1)},
+		}, {
+			caseName: "comment-only RHS assigns null",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.a = # c`,
+			want:     Map{"a": Nil},
+		}, {
+			caseName: "multi-line flow sequence RHS",
+			n:        Map{},
+			expr:     ".a = [1,\n 2]",
+			want:     Map{"a": Array{NumberValue(1), NumberValue(2)}},
+		}, {
+			caseName: "missing operator returns syntax error",
+			n:        Map{},
+			expr:     `.a`,
+			errstr:   `syntax error: invalid edit expression ".a"`,
+		}, {
+			caseName: "comparison operator is not an assignment",
+			n:        Map{},
+			expr:     `.a ==1`,
+			errstr:   `syntax error: invalid edit expression ".a ==1"`,
+		}, {
+			caseName: "not-equal operator is not an assignment",
+			n:        Map{},
+			expr:     `.a !=1`,
+			errstr:   `syntax error: invalid edit expression ".a !=1"`,
+		}, {
+			caseName: "regexp operator is not an assignment",
+			n:        Map{},
+			expr:     `.a ~=1`,
+			errstr:   `syntax error: invalid edit expression ".a ~=1"`,
+		}, {
+			caseName: "grouping parens in filter are skipped",
+			n:        Array{Map{"k": StringValue("a")}, Map{"k": StringValue("b")}},
+			expr:     `[(.k == "b")].v = 1`,
+			want:     Array{Map{"k": StringValue("a")}, Map{"k": StringValue("b"), "v": NumberValue(1)}},
+		}, {
+			caseName: "delete with trailing space",
+			n:        Map{"a": NumberValue(0)},
+			expr:     `.a ^? `,
+			want:     Map{},
+		}, {
+			caseName: "delete with trailing newline",
+			n:        Map{"a": NumberValue(0)},
+			expr:     ".a ^?\n",
+			want:     Map{},
+		}, {
+			caseName: "unterminated paren on LHS returns syntax error",
+			n:        Map{},
+			expr:     `.a(b = 1`,
+			errstr:   `syntax error: no right brackets: ".a(b"`,
+		}, {
+			caseName: "unterminated quote on LHS returns syntax error",
+			n:        Map{},
+			expr:     `.a" = 1`,
+			errstr:   `syntax error: invalid edit expression ".a\" = 1"`,
+		}, {
+			caseName: "less-or-equal filter on LHS",
+			n:        Array{Map{"n": NumberValue(1)}, Map{"n": NumberValue(2)}},
+			expr:     `[.n <= 1].v = 2`,
+			want:     Array{Map{"n": NumberValue(1), "v": NumberValue(2)}, Map{"n": NumberValue(2)}},
+		}, {
+			caseName: "greater-or-equal filter on LHS",
+			n:        Array{Map{"n": NumberValue(1)}, Map{"n": NumberValue(2)}},
+			expr:     `[.n >= 1].v = 2`,
+			want:     Array{Map{"n": NumberValue(1), "v": NumberValue(2)}, Map{"n": NumberValue(2), "v": NumberValue(2)}},
+		}, {
+			caseName: "not-equal filter on LHS",
+			n:        Array{Map{"k": StringValue("a")}, Map{"k": StringValue("b")}},
+			expr:     `[.k != "a"].v = 1`,
+			want:     Array{Map{"k": StringValue("a")}, Map{"k": StringValue("b"), "v": NumberValue(1)}},
+		}, {
+			caseName: "missing RHS returns syntax error",
+			n:        Map{},
+			expr:     `.a = `,
+			errstr:   `syntax error: invalid edit expression ".a = "`,
+		}, {
+			caseName: "delete with RHS returns syntax error",
+			n:        Map{},
+			expr:     `.a ^? 1`,
+			errstr:   `syntax error: invalid edit expression ".a ^? 1"`,
+		}, {
+			caseName: "missing LHS returns syntax error",
+			n:        Map{},
+			expr:     `= 1`,
+			errstr:   `syntax error: invalid edit expression "= 1"`,
+		}, {
+			caseName: "stray plus on LHS returns syntax error",
+			n:        Map{"list": Array{StringValue("a")}},
+			expr:     `.list + = "x"`,
+			errstr:   `syntax error: invalid edit expression ".list + = \"x\""`,
+		}, {
+			caseName: "double plus on LHS returns syntax error",
+			n:        Map{},
+			expr:     `.c++ = 1`,
+			errstr:   `syntax error: invalid edit expression ".c++ = 1"`,
+		}, {
+			caseName: "unquoted plus in key returns syntax error",
+			n:        Map{},
+			expr:     `.a+b = 1`,
+			errstr:   `syntax error: invalid edit expression ".a+b = 1"`,
 		},
 
 		// --- Intermediate-step edge cases in resolveAndEdit ---
