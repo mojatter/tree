@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"text/template"
 
 	"github.com/mojatter/io2"
@@ -221,8 +222,34 @@ func (r *runner) run(args []string) error {
 		}
 		r.out = out
 	}
-	// -U still fails on non-seekable inputs as before; see #139.
-	return r.evaluateInputFiles(newInputFiles(filenames, r.needsRewind() && !r.isInplaceWrite()))
+	if r.isInplaceWrite() {
+		if err := checkInplaceTargets(filenames); err != nil {
+			return err
+		}
+	}
+	return r.evaluateInputFiles(newInputFiles(filenames, r.needsRewind()))
+}
+
+// checkInplaceTargets rejects -U targets that are not regular or not readable before any of them is read.
+func checkInplaceTargets(filenames []string) error {
+	for _, filename := range filenames {
+		if filename == filenameStdin {
+			continue
+		}
+		fi, err := os.Stat(filename)
+		if err != nil {
+			return err
+		}
+		if !fi.Mode().IsRegular() {
+			return fmt.Errorf("cannot update %s in place: not a regular file", filename)
+		}
+		f, err := os.Open(filename) //nolint:gosec // opening the user-specified input file is intentional
+		if err != nil {
+			return err
+		}
+		_ = f.Close()
+	}
+	return nil
 }
 
 // isInplaceWrite reports whether -U writes results back to the input files.
@@ -249,43 +276,106 @@ func (r *runner) evaluateInputFiles(f *inputFiles) error {
 func (r *runner) evaluateInputFile(in io.ReadSeekCloser, filename string) error {
 	defer func() { _ = in.Close() }()
 
-	var inplaceTmp *os.File
+	var inplace *inplaceFile
 	if r.isInplaceWrite() && filename != filenameStdin {
 		var err error
-		inplaceTmp, err = os.CreateTemp("", "*.tq.tmp")
+		inplace, err = createInplaceFile(filename)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to write %s: %w", filename, err)
 		}
-		defer func() {
-			_ = inplaceTmp.Close()
-			_ = os.Remove(inplaceTmp.Name())
-		}()
+		defer inplace.discard()
 
 		prevOut, prevCalled := r.out, r.outputYAMLCalled
-		r.out = inplaceTmp
+		r.out = inplace
 		r.outputYAMLCalled = 0
 		defer func() { r.out, r.outputYAMLCalled = prevOut, prevCalled }()
 	}
-	if err := r.evaluate(in); err != nil {
+	err := r.evaluate(in)
+	if inplace != nil && inplace.writeErr != nil {
+		return fmt.Errorf("failed to write %s: %w", filename, inplace.writeErr)
+	}
+	if err != nil {
 		if filename == filenameStdin {
 			filename = "STDIN"
 		}
 		return fmt.Errorf("failed to evaluate %s: %w", filename, err)
 	}
-	if inplaceTmp != nil {
-		if _, err := inplaceTmp.Seek(0, io.SeekStart); err != nil {
-			return err
-		}
-		out, err := os.Create(filename) //nolint:gosec // inplace write to the user-specified input file is intentional
-		if err != nil {
-			return err
-		}
-		defer func() { _ = out.Close() }()
-		if _, err := io.Copy(out, inplaceTmp); err != nil {
-			return err
+	if inplace != nil {
+		// Windows cannot rename over a file that is still open.
+		_ = in.Close()
+		if err := inplace.commit(); err != nil {
+			return fmt.Errorf("failed to write %s: %w", filename, err)
 		}
 	}
 	return nil
+}
+
+// inplaceFile is a temp file next to a -U target that replaces the target on commit.
+type inplaceFile struct {
+	file      *os.File
+	target    string
+	mode      os.FileMode
+	writeErr  error
+	committed bool
+}
+
+// Write writes to the temp file and records the first error, so that it is reported as a write-back failure.
+func (f *inplaceFile) Write(p []byte) (int, error) {
+	n, err := f.file.Write(p)
+	if err != nil && f.writeErr == nil {
+		f.writeErr = err
+	}
+	return n, err
+}
+
+// Close closes the temp file.
+func (f *inplaceFile) Close() error {
+	return f.file.Close()
+}
+
+// createInplaceFile creates the temp file beside the file that filename, or the symlink it names, points to.
+func createInplaceFile(filename string) (*inplaceFile, error) {
+	target, err := filepath.EvalSymlinks(filename)
+	if err != nil {
+		return nil, err
+	}
+	fi, err := os.Stat(target)
+	if err != nil {
+		return nil, err
+	}
+	// A fixed name keeps the temp file within NAME_MAX whatever the target's name.
+	tmp, err := os.CreateTemp(filepath.Dir(target), ".tq-*.tmp")
+	if err != nil {
+		return nil, err
+	}
+	return &inplaceFile{file: tmp, target: target, mode: fi.Mode().Perm()}, nil
+}
+
+// commit sets the target's permission bits on the temp file, syncs and closes it, then renames it over the target.
+func (f *inplaceFile) commit() error {
+	if err := f.file.Chmod(f.mode); err != nil {
+		return err
+	}
+	if err := f.file.Sync(); err != nil {
+		return err
+	}
+	if err := f.file.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(f.file.Name(), f.target); err != nil {
+		return err
+	}
+	f.committed = true
+	return nil
+}
+
+// discard removes the temp file unless it was committed.
+func (f *inplaceFile) discard() {
+	if f.committed {
+		return
+	}
+	_ = f.file.Close()
+	_ = os.Remove(f.file.Name())
 }
 
 // fixedInputFormat returns "json" or "yaml" when the input format is given, otherwise "".

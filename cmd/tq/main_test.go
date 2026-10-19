@@ -2,9 +2,11 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -250,10 +252,15 @@ func TestRun(t *testing.T) {
 			args:     []string{"-y", ".store.book[0]"},
 			golden:   "testdata/book-0.yaml",
 		}, {
-			caseName: "non-seekable file with -U fails as before",
+			caseName: "non-seekable file with -U is rejected",
 			pipe:     "testdata/store.json",
 			args:     []string{"-U", ".store.book[0]"},
-			errstr:   "failed to evaluate {pipe}: seek {pipe}: illegal seek",
+			errstr:   "cannot update {pipe} in place: not a regular file",
+		}, {
+			caseName: "non-seekable file with -U -j is rejected",
+			pipe:     "testdata/store.json",
+			args:     []string{"-U", "-j", ".store.book[0]"},
+			errstr:   "cannot update {pipe} in place: not a regular file",
 		}, {
 			caseName: "non-seekable file with -U -s is slurped",
 			pipe:     "testdata/store.json",
@@ -467,6 +474,15 @@ func TestRunInplace(t *testing.T) {
 		twoFiles   bool
 		stdin      string
 		wantStdout string
+		mode       os.FileMode
+		symlink    bool
+		// wantErr is checked with errors.Is, for errors whose text holds a temp or missing path.
+		wantErr     error
+		readonlyDir bool
+		missing     bool
+		longName    bool
+		// unreadableSecond makes the second of twoFiles unreadable.
+		unreadableSecond bool
 	}{
 		{
 			caseName: "json in place",
@@ -522,6 +538,52 @@ func TestRunInplace(t *testing.T) {
 			golden:     "testdata/multi-doc.yaml",
 			stdin:      "testdata/multi-doc.yaml",
 			wantStdout: "a: 1\n---\na: 2\n",
+		}, {
+			caseName: "file mode is kept",
+			src:      "testdata/store.json",
+			args:     []string{"-U", ".store.book[0]"},
+			golden:   "testdata/book-0.json",
+			mode:     0o640,
+		}, {
+			caseName: "setuid bit is dropped",
+			src:      "testdata/store.json",
+			args:     []string{"-U", ".store.book[0]"},
+			golden:   "testdata/book-0.json",
+			mode:     os.ModeSetuid | 0o640,
+		}, {
+			caseName: "symlink is kept and its file is updated",
+			src:      "testdata/store.json",
+			args:     []string{"-U", ".store.book[0]"},
+			golden:   "testdata/book-0.json",
+			symlink:  true,
+		}, {
+			caseName:    "unwritable directory leaves the file untouched",
+			src:         "testdata/store.json",
+			args:        []string{"-U", ".store.book[0]"},
+			golden:      "testdata/store.json",
+			wantErr:     fs.ErrPermission,
+			readonlyDir: true,
+		}, {
+			caseName: "missing second target updates nothing",
+			src:      "testdata/store.json",
+			args:     []string{"-U", ".store.book[0]"},
+			golden:   "testdata/store.json",
+			wantErr:  fs.ErrNotExist,
+			missing:  true,
+		}, {
+			caseName: "target with a name near NAME_MAX",
+			src:      "testdata/store.json",
+			args:     []string{"-U", ".store.book[0]"},
+			golden:   "testdata/book-0.json",
+			longName: true,
+		}, {
+			caseName:         "unreadable second target updates nothing",
+			src:              "testdata/store.json",
+			args:             []string{"-U", ".store.book[0]"},
+			golden:           "testdata/store.json",
+			twoFiles:         true,
+			wantErr:          fs.ErrPermission,
+			unreadableSecond: true,
 		},
 	}
 	stdinOrg := os.Stdin
@@ -531,6 +593,9 @@ func TestRunInplace(t *testing.T) {
 		t.Run(tc.caseName, func(t *testing.T) {
 			dir := t.TempDir()
 			target := filepath.Join(dir, filepath.Base(tc.src))
+			if tc.longName {
+				target = filepath.Join(dir, strings.Repeat("a", 245)+".json")
+			}
 			targets := []string{target}
 			if tc.twoFiles {
 				targets = append(targets, filepath.Join(dir, "second-"+filepath.Base(tc.src)))
@@ -539,17 +604,62 @@ func TestRunInplace(t *testing.T) {
 			if err != nil {
 				t.Fatalf("ReadFile src: %v", err)
 			}
+			mode := tc.mode
+			if mode == 0 {
+				mode = 0o644
+			}
 			for _, f := range targets {
-				if err := os.WriteFile(f, src, 0o644); err != nil {
+				if err := os.WriteFile(f, src, mode.Perm()); err != nil {
 					t.Fatalf("WriteFile: %v", err)
 				}
+				// WriteFile's perm is masked by the umask.
+				if err := os.Chmod(f, mode); err != nil {
+					t.Fatalf("Chmod: %v", err)
+				}
+			}
+			// The OS may drop bits it does not grant, so want what Chmod produced.
+			fi, err := os.Stat(target)
+			if err != nil {
+				t.Fatalf("Stat: %v", err)
+			}
+			wantMode := fi.Mode().Perm()
+			wantNames := []string{filepath.Base(target)}
+			if tc.twoFiles {
+				wantNames = append(wantNames, "second-"+filepath.Base(tc.src))
+			}
+			args := slices.Concat([]string{"tq"}, tc.args, targets)
+			if tc.symlink {
+				link := filepath.Join(dir, "link")
+				if err := os.Symlink(filepath.Base(target), link); err != nil {
+					t.Fatalf("Symlink: %v", err)
+				}
+				wantNames = append(wantNames, "link")
+				args = slices.Concat([]string{"tq"}, tc.args, []string{link})
+			}
+			if tc.missing {
+				args = append(args, filepath.Join(dir, "missing.json"))
+			}
+			if tc.readonlyDir || tc.unreadableSecond {
+				if os.Geteuid() == 0 {
+					t.Skip("root ignores permissions")
+				}
+			}
+			if tc.unreadableSecond {
+				if err := os.Chmod(targets[1], 0); err != nil {
+					t.Fatalf("Chmod: %v", err)
+				}
+			}
+			if tc.readonlyDir {
+				if err := os.Chmod(dir, 0o555); err != nil {
+					t.Fatalf("Chmod dir: %v", err)
+				}
+				t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 			}
 
 			buf := new(bytes.Buffer)
 			r := newTestRunner(buf)
 			defer r.close()
 
-			args := slices.Concat([]string{"tq"}, tc.args, targets)
 			if tc.stdin != "" {
 				in, err := os.Open(tc.stdin)
 				if err != nil {
@@ -561,7 +671,19 @@ func TestRunInplace(t *testing.T) {
 				args = append(args, "-")
 			}
 			err = r.run(args)
-			if tc.errstr != "" {
+			if tc.unreadableSecond {
+				if err := os.Chmod(targets[1], wantMode); err != nil {
+					t.Fatalf("Chmod: %v", err)
+				}
+			}
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("got error %v; want %v", err, tc.wantErr)
+				}
+				if tc.readonlyDir && !strings.HasPrefix(err.Error(), "failed to write "+target+": ") {
+					t.Errorf("got error %v; want it to wrap the target", err)
+				}
+			} else if tc.errstr != "" {
 				want := "failed to evaluate " + target + ": " + tc.errstr
 				if err == nil || err.Error() != want {
 					t.Fatalf("got error %v; want %s", err, want)
@@ -583,8 +705,61 @@ func TestRunInplace(t *testing.T) {
 				if string(got) != string(want) {
 					t.Errorf("%s: got %q\nwant %q", filepath.Base(f), got, want)
 				}
+				fi, err := os.Stat(f)
+				if err != nil {
+					t.Fatalf("Stat target: %v", err)
+				}
+				if got := fi.Mode() &^ os.ModeType; got != wantMode {
+					t.Errorf("%s: mode %v; want %v", filepath.Base(f), got, wantMode)
+				}
+			}
+			if tc.symlink {
+				fi, err := os.Lstat(filepath.Join(dir, "link"))
+				if err != nil {
+					t.Fatalf("Lstat link: %v", err)
+				}
+				if fi.Mode()&os.ModeSymlink == 0 {
+					t.Errorf("link is replaced with %v", fi.Mode())
+				}
+			}
+			entries, err := os.ReadDir(dir)
+			if err != nil {
+				t.Fatalf("ReadDir: %v", err)
+			}
+			var names []string
+			for _, e := range entries {
+				names = append(names, e.Name())
+			}
+			slices.Sort(wantNames)
+			if !slices.Equal(names, wantNames) {
+				t.Errorf("files %v; want %v", names, wantNames)
 			}
 		})
+	}
+}
+
+// TestInplaceFileWrite checks that a failed write to the temp file is recorded for the write-back error.
+func TestInplaceFileWrite(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "readonly")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	f := &inplaceFile{file: file, target: path}
+	defer f.discard()
+
+	_, err = f.Write([]byte("x"))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if f.writeErr != err {
+		t.Errorf("writeErr: got %v, want %v", f.writeErr, err)
+	}
+	if _, err := f.Write([]byte("y")); err == nil || f.writeErr == err {
+		t.Errorf("writeErr is not the first error: %v", f.writeErr)
 	}
 }
 
