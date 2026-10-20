@@ -34,6 +34,19 @@ func Edit(pn *Node, expr string) error {
 	if err != nil {
 		return err
 	}
+	if isNullLike(*pn) { // a null root is replaced like a null reached by key
+		fq, ok := q.(FilterQuery)
+		if !ok {
+			fq = FilterQuery{q}
+		}
+		// Probe with "=" so that ^? stops only a query = would create containers for; others fail as on any root.
+		if c := emptyIntermediate("=", fq); c != nil {
+			if op == "^?" {
+				return nil // deleting from a null root leaves it as it is
+			}
+			*pn = c
+		}
+	}
 
 	return editQuery(pn, q, op, v)
 }
@@ -194,6 +207,11 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 		key := string(tq)
 		return tq.walkEdit(n, as, func(en EditorNode) error {
 			child := en.Get(key)
+			if isNullLike(child) {
+				if child = emptyIntermediate(op, fq[step+1:]); child == nil {
+					return nil // a null match stays as it is
+				}
+			}
 
 			if err := resolveAndEdit(&child, fq, step+1, op, cloneEditValue(v), as); err != nil {
 				return err
@@ -226,7 +244,7 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op string, v Node, as assigned) error {
 	if en, ok := n.(EditorNode); ok && !n.IsNil() {
 		child := en.Get(key)
-		if isNull(child) {
+		if isNullLike(child) {
 			child = emptyIntermediate(op, fq[step+1:])
 			if child == nil {
 				return nil
@@ -245,7 +263,7 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 
 	if m := n.Map(); m != nil {
 		child, exists := m[key]
-		if !exists || isNull(child) {
+		if !exists || isNullLike(child) {
 			child = emptyIntermediate(op, fq[step+1:])
 			if child == nil {
 				return nil
@@ -272,7 +290,7 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 			}
 		}
 		child := a[i]
-		if isNull(child) {
+		if isNullLike(child) {
 			child = emptyIntermediate(op, fq[step+1:])
 			if child == nil {
 				return nil
@@ -289,14 +307,14 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 	}
 
 	if n.IsNil() {
-		return nil // a null reached by ".." or a slice step is skipped (#147)
+		return nil // a null reached through a step without write-back, such as a slice, is skipped
 	}
 	return fmt.Errorf("cannot index array with %q", key)
 }
 
 // resolveArrayStep handles an ArrayQuery intermediate step with write-back.
 func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op string, v Node, as assigned) error {
-	if en, ok := n.(EditorNode); ok {
+	if en, ok := n.(EditorNode); ok && !isNullLike(n) {
 		child := n.Get(index)
 		if isNull(child) || child.IsNil() { // a typed-nil child is replaced here too, as before
 			child = emptyIntermediate(op, fq[step+1:])
@@ -323,7 +341,7 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 			}
 		}
 		child := a[index]
-		if isNull(child) {
+		if isNullLike(child) {
 			child = emptyIntermediate(op, fq[step+1:])
 			if child == nil {
 				return nil
@@ -340,7 +358,7 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 	}
 
 	if n.IsNil() {
-		return nil // a null reached by ".." or a slice step is skipped (#147)
+		return nil // a null reached through a step without write-back, such as a slice, is skipped
 	}
 	return fmt.Errorf("cannot index array with %d", index)
 }
@@ -360,7 +378,7 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 				}
 			}
 			child := elem
-			if isNull(child) {
+			if isNullLike(child) {
 				if child = emptyIntermediate(op, fq[step+1:]); child == nil {
 					continue // a null element stays as it is
 				}
@@ -389,7 +407,7 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 				}
 			}
 			child := elem
-			if isNull(child) {
+			if isNullLike(child) {
 				if child = emptyIntermediate(op, fq[step+1:]); child == nil {
 					continue // a null element stays as it is
 				}
@@ -405,6 +423,17 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 	}
 
 	return nil
+}
+
+// isNullLike reports whether n is null or a nil Map or Array, which an edit replaces like null.
+func isNullLike(n Node) bool {
+	switch tn := n.(type) {
+	case Map:
+		return tn == nil
+	case Array:
+		return tn == nil
+	}
+	return isNull(n)
 }
 
 // emptyIntermediate returns an empty node for the next step of rest, or nil when a delete or a later step could not create its container.

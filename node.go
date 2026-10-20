@@ -409,6 +409,9 @@ func (n Map) Append(v Node) error {
 
 // Set sets v to n[key].
 func (n Map) Set(key any, v Node) error {
+	if n == nil {
+		return fmt.Errorf("cannot set %v in a nil map", key)
+	}
 	switch tk := key.(type) {
 	case int:
 		n[strconv.Itoa(tk)] = v

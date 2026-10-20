@@ -838,10 +838,10 @@ func TestEdit(t *testing.T) {
 			expr:     `.a.first().x = 1`,
 			errstr:   `cannot index array with "x"`,
 		}, {
-			caseName: "delete past null reached through walk fails",
+			caseName: "delete past null reached through walk is a no-op",
 			n:        Map{"b": Nil},
 			expr:     `..b.c ^?`,
-			errstr:   `cannot delete "c"`,
+			want:     Map{"b": Nil},
 		}, {
 			caseName: "set on nil element in a slice errors as on null",
 			n:        Map{"a": Array{nil, NumberValue(1)}},
@@ -1256,6 +1256,143 @@ func TestEdit(t *testing.T) {
 			n:        Map{"x": Map{}},
 			expr:     `.x.y[0].z ^?`,
 			want:     Map{"x": Map{}},
+		},
+		// --- Null-like nodes are replaced however they are reached (#147) ---
+		{
+			caseName: "set past null reached through walk creates a map",
+			n:        Map{"a": Map{"b": Nil}},
+			expr:     `..b.x = 1`,
+			want:     Map{"a": Map{"b": Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "set two keys past null reached through walk creates nested maps",
+			n:        Map{"a": Map{"b": Nil}},
+			expr:     `..b.x.y = 1`,
+			want:     Map{"a": Map{"b": Map{"x": Map{"y": NumberValue(1)}}}},
+		}, {
+			caseName: "set index past null reached through walk creates an array",
+			n:        Map{"a": Map{"b": Nil}},
+			expr:     `..b[0] = 1`,
+			want:     Map{"a": Map{"b": Array{NumberValue(1)}}},
+		}, {
+			caseName: "append past null reached through walk creates an array",
+			n:        Map{"a": Map{"b": Nil}},
+			expr:     `..b.x += 1`,
+			want:     Map{"a": Map{"b": Map{"x": Array{NumberValue(1)}}}},
+		}, {
+			caseName: "set past go nil reached through walk creates a map",
+			n:        Map{"a": Map{"b": nil}},
+			expr:     `..b.x = 1`,
+			want:     Map{"a": Map{"b": Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "set on nil map value replaces it",
+			n:        Map{"m": Map(nil)},
+			expr:     `.m.k = 1`,
+			want:     Map{"m": Map{"k": NumberValue(1)}},
+		}, {
+			caseName: "append on nil map value replaces it",
+			n:        Map{"m": Map(nil)},
+			expr:     `.m.k += 1`,
+			want:     Map{"m": Map{"k": Array{NumberValue(1)}}},
+		}, {
+			caseName: "set two keys past nil map value replaces it",
+			n:        Map{"m": Map(nil)},
+			expr:     `.m.k.x = 1`,
+			want:     Map{"m": Map{"k": Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "set index on nil array value replaces it",
+			n:        Map{"m": Array(nil)},
+			expr:     `.m[0] = 1`,
+			want:     Map{"m": Array{NumberValue(1)}},
+		}, {
+			caseName: "delete on nil map value is a no-op",
+			n:        Map{"m": Map(nil)},
+			expr:     `.m.k ^?`,
+			want:     Map{"m": Map(nil)},
+		}, {
+			caseName: "set on nil map element reached through select replaces it",
+			n:        Map{"a": Array{Map(nil)}},
+			expr:     `.a[].k = 1`,
+			want:     Map{"a": Array{Map{"k": NumberValue(1)}}},
+		}, {
+			caseName: "set on nil map reached through walk replaces it",
+			n:        Map{"a": Map{"b": Map(nil)}},
+			expr:     `..b.k = 1`,
+			want:     Map{"a": Map{"b": Map{"k": NumberValue(1)}}},
+		}, {
+			caseName: "set on null root creates a map",
+			n:        Nil,
+			expr:     `.k = 1`,
+			want:     Map{"k": NumberValue(1)},
+		}, {
+			caseName: "set two keys on null root creates nested maps",
+			n:        Nil,
+			expr:     `.a.b = 1`,
+			want:     Map{"a": Map{"b": NumberValue(1)}},
+		}, {
+			caseName: "set on nil map root replaces it",
+			n:        Map(nil),
+			expr:     `.k = 1`,
+			want:     Map{"k": NumberValue(1)},
+		}, {
+			caseName: "delete on null root is a no-op",
+			n:        Nil,
+			expr:     `.k ^?`,
+			want:     Nil,
+		}, {
+			caseName: "delete through a method step on a null root is a no-op",
+			n:        Nil,
+			expr:     `.a.first().b ^?`,
+			want:     Nil,
+		}, {
+			caseName: "delete with an unsupported query on a null root is a syntax error",
+			n:        Nil,
+			expr:     `"x" ^?`,
+			errstr:   `syntax error: unsupported edit query: "x"`,
+		}, {
+			caseName: "delete with [] on a null root is a syntax error",
+			n:        Nil,
+			expr:     `.[] ^?`,
+			errstr:   `syntax error: unsupported edit query: []`,
+		}, {
+			caseName: "append to nil array value creates the array",
+			n:        Map{"m": Array(nil)},
+			expr:     `.m += 1`,
+			want:     Map{"m": Array{NumberValue(1)}},
+		}, {
+			caseName: "append to nil map value creates the array",
+			n:        Map{"m": Map(nil)},
+			expr:     `.m += 1`,
+			want:     Map{"m": Array{NumberValue(1)}},
+		}, {
+			caseName: "append to nil array element by index creates the array",
+			n:        Map{"a": Array{Array(nil)}},
+			expr:     `.a[0] += 1`,
+			want:     Map{"a": Array{Array{NumberValue(1)}}},
+		}, {
+			caseName: "walk append on null creates the array",
+			n:        Map{"b": Nil},
+			expr:     `..b += 1`,
+			want:     Map{"b": Array{NumberValue(1)}},
+		}, {
+			caseName: "walk append on nil array creates the array",
+			n:        Map{"b": Array(nil)},
+			expr:     `..b += 1`,
+			want:     Map{"b": Array{NumberValue(1)}},
+		}, {
+			caseName: "walk append on nested null creates the array",
+			n:        Map{"x": Map{"b": Nil}},
+			expr:     `..b += 1`,
+			want:     Map{"x": Map{"b": Array{NumberValue(1)}}},
+		}, {
+			caseName: "nil map reached through a method step is skipped by an index step",
+			n:        Map{"a": Array{Map(nil)}},
+			expr:     `.a.first()[0].x = 1`,
+			want:     Map{"a": Array{Map(nil)}},
+		}, {
+			caseName: "set on nil map reached through a method step errors",
+			n:        Map{"a": Array{Map(nil)}},
+			expr:     `.a.first().k = 1`,
+			errstr:   `cannot set k in a nil map`,
 		},
 	}
 	for _, tc := range testCases {

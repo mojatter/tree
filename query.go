@@ -106,7 +106,7 @@ func (q MapQuery) Append(pn *Node, v Node) error {
 	n := orNil(*pn)
 	key := string(q)
 	if en, ok := n.(EditorNode); ok {
-		if n.Has(key) && !isNull(n.Get(key)) {
+		if n.Has(key) && !isNullLike(n.Get(key)) {
 			if ca := n.Get(key).Array(); ca != nil {
 				return en.Set(key, append(ca, v))
 			}
@@ -200,7 +200,7 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 		return fmt.Errorf("cannot append to array with %d", index)
 	}
 	if en, ok := n.(EditorNode); ok {
-		if n.Has(index) && !isNull(n.Get(index)) {
+		if n.Has(index) && !isNullLike(n.Get(index)) {
 			if ca := n.Get(index).Array(); ca != nil {
 				return en.Set(index, append(ca, v))
 			}
@@ -212,7 +212,7 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 		return en.Set(index, Array{v})
 	}
 	if a := n.Array(); a != nil {
-		if n.Has(index) && !isNull(a[index]) {
+		if n.Has(index) && !isNullLike(a[index]) {
 			if ca := a[index].Array(); ca != nil {
 				a[index] = append(ca, v)
 				*pn = a
@@ -449,7 +449,13 @@ func (q WalkQuery) edit(pn *Node, op string, v Node, as assigned) error {
 			as.add(c)
 			return en.Set(key, c)
 		case "+=":
-			ca := en.Get(key).Array()
+			child := en.Get(key)
+			if isNullLike(child) {
+				c := cloneEditValue(v)
+				as.add(c)
+				return en.Set(key, Array{c})
+			}
+			ca := child.Array()
 			if ca == nil {
 				return nil
 			}
