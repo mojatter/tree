@@ -6,6 +6,9 @@ import (
 	"errors"
 	"io"
 	"reflect"
+	"runtime/debug"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/mojatter/tree/internal/testdata"
@@ -230,6 +233,81 @@ func TestDecodeJSONStream(t *testing.T) {
 	}
 }
 
+func TestDecodeJSONLong(t *testing.T) {
+	const n = 500_000 // the old per-element recursion needs about 100 MB here, well past the cap below
+	members := make([]string, n)
+	for i := range members {
+		members[i] = `"` + strconv.Itoa(i) + `":0`
+	}
+	members[n-1] = `"` + strconv.Itoa(n-1) + `":1`
+	testCases := []struct {
+		caseName string
+		data     string
+		wantType Type
+		lastKey  any
+	}{
+		{
+			caseName: "flat array",
+			data:     "[" + strings.Repeat("0,", n-1) + "1]",
+			wantType: TypeArray,
+			lastKey:  n - 1,
+		}, {
+			caseName: "flat object",
+			data:     "{" + strings.Join(members, ",") + "}",
+			wantType: TypeMap,
+			lastKey:  strconv.Itoa(n - 1),
+		},
+	}
+	// A small stack makes a decoder that recurses once per element crash; it is process-wide, so keep this test serial.
+	defer debug.SetMaxStack(debug.SetMaxStack(32 << 20))
+
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := DecodeJSON(json.NewDecoder(strings.NewReader(tc.data)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Type() != tc.wantType {
+				t.Fatalf("got type %v; want %v", got.Type(), tc.wantType)
+			}
+			if l := len(got.Array()) + len(got.Map()); l != n {
+				t.Errorf("got %d elements; want %d", l, n)
+			}
+			if v := got.Get(tc.lastKey); v != NumberValue(1) {
+				t.Errorf("got last value %v; want 1", v)
+			}
+		})
+	}
+}
+
+func TestDecodeJSONDepth(t *testing.T) {
+	nest := func(n int) string { return strings.Repeat("[", n) + strings.Repeat("]", n) }
+	testCases := []struct {
+		caseName string
+		data     string
+		wantErr  bool
+	}{
+		{caseName: "nesting at the limit", data: nest(10000)},
+		{caseName: "nesting past the limit", data: nest(10001), wantErr: true},
+		{caseName: "deep nesting", data: nest(1_000_000), wantErr: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			_, err := DecodeJSON(json.NewDecoder(strings.NewReader(tc.data)))
+			if !tc.wantErr {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			// json/v2 reports the depth from Token as a SyntaxError, older decoders from our own limit.
+			if err == nil || !strings.Contains(err.Error(), "exceeded max depth") {
+				t.Errorf("got %v; want exceeded max depth", err)
+			}
+		})
+	}
+}
+
 func TestUnmarshalJSON(t *testing.T) {
 	testCases := []struct {
 		caseName string
@@ -411,8 +489,25 @@ func FuzzUnmarshalJSON(f *testing.F) {
 	})
 }
 
-// BenchmarkUnmarshalJSON measures decoding the embedded sample
-// document into a Node tree.
+func TestJSONElemDelim(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		delim    json.Delim
+	}{
+		{caseName: "closing brace", delim: '}'},
+		{caseName: "closing bracket", delim: ']'},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			_, err := jsonElem(json.NewDecoder(strings.NewReader("")), tc.delim, 1)
+			if err == nil || !strings.Contains(err.Error(), "unknown token") {
+				t.Errorf("got %v; want unknown token", err)
+			}
+		})
+	}
+}
+
+// BenchmarkUnmarshalJSON measures decoding the embedded sample document into a Node tree.
 func BenchmarkUnmarshalJSON(b *testing.B) {
 	data := []byte(testdata.StoreJSON)
 	for i := 0; i < b.N; i++ {
