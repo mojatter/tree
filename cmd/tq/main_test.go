@@ -277,7 +277,11 @@ func TestRun(t *testing.T) {
 		}, {
 			caseName: "truncated json container is not read as yaml",
 			args:     []string{".", "testdata/truncated-json"},
-			errstr:   "failed to evaluate testdata/truncated-json: EOF",
+			errstr:   "failed to evaluate testdata/truncated-json: unexpected EOF",
+		}, {
+			caseName: "truncated json container with -j",
+			args:     []string{"-j", ".", "testdata/truncated-json"},
+			errstr:   "failed to evaluate testdata/truncated-json: unexpected EOF",
 		}, {
 			caseName: "yaml folding json scalars across lines is not read as json",
 			stdin:    "testdata/folded-scalars.yaml",

@@ -75,12 +75,52 @@ func TestDecodeJSONErrors(t *testing.T) {
 	testCases := []struct {
 		caseName string
 		data     []byte
-		wantEOF  bool
+		wantErr  error
 	}{
 		{
+			caseName: "empty input",
+			data:     []byte(""),
+			wantErr:  io.EOF,
+		}, {
 			caseName: "unterminated string",
 			data:     []byte(`"`),
-			wantEOF:  true,
+			wantErr:  io.ErrUnexpectedEOF,
+		}, {
+			caseName: "open brace only",
+			data:     []byte(`{`),
+			wantErr:  io.ErrUnexpectedEOF,
+		}, {
+			caseName: "open bracket only",
+			data:     []byte(`[`),
+			wantErr:  io.ErrUnexpectedEOF,
+		}, {
+			caseName: "object cut off after a key",
+			data:     []byte(`{"a":`),
+			wantErr:  io.ErrUnexpectedEOF,
+		}, {
+			caseName: "array cut off after a comma",
+			data:     []byte(`[1,`),
+			wantErr:  io.ErrUnexpectedEOF,
+		}, {
+			caseName: "nested container cut off",
+			data:     []byte(`{"a":[1`),
+			wantErr:  io.ErrUnexpectedEOF,
+		}, {
+			caseName: "object cut off before the colon",
+			data:     []byte(`{"a"`),
+			wantErr:  io.ErrUnexpectedEOF,
+		}, {
+			caseName: "object cut off before the closing brace",
+			data:     []byte(`{"a":1`),
+			wantErr:  io.ErrUnexpectedEOF,
+		}, {
+			caseName: "object cut off inside an array",
+			data:     []byte(`[{"a":1`),
+			wantErr:  io.ErrUnexpectedEOF,
+		}, {
+			caseName: "object cut off inside an object",
+			data:     []byte(`{"a":{`),
+			wantErr:  io.ErrUnexpectedEOF,
 		}, {
 			caseName: "stray closing brace",
 			data:     []byte(`}`),
@@ -96,16 +136,95 @@ func TestDecodeJSONErrors(t *testing.T) {
 			if err == nil {
 				t.Fatal("no error")
 			}
-			// Match on type, not message: Go 1.27's json/v2-backed decoder rewords syntax errors.
-			if tc.wantEOF {
-				if !errors.Is(err, io.ErrUnexpectedEOF) {
-					t.Errorf("got %v; want io.ErrUnexpectedEOF", err)
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Errorf("got %v; want %v", err, tc.wantErr)
+				}
+				unmarshalers := []json.Unmarshaler{new(Any)}
+				switch {
+				case bytes.HasPrefix(tc.data, []byte("{")):
+					unmarshalers = append(unmarshalers, new(Map))
+				case bytes.HasPrefix(tc.data, []byte("[")):
+					unmarshalers = append(unmarshalers, new(Array))
+				}
+				for _, u := range unmarshalers {
+					if err := u.UnmarshalJSON(tc.data); !errors.Is(err, tc.wantErr) {
+						t.Errorf("%T.UnmarshalJSON: got %v; want %v", u, err, tc.wantErr)
+					}
 				}
 				return
 			}
+			// Match on type, not message: Go 1.27's json/v2-backed decoder rewords syntax errors.
 			var syntaxErr *json.SyntaxError
 			if !errors.As(err, &syntaxErr) {
 				t.Errorf("got %T %v; want *json.SyntaxError", err, err)
+			}
+		})
+	}
+}
+
+func TestDecodeJSONStream(t *testing.T) {
+	testCases := []struct {
+		caseName  string
+		data      string
+		openOuter bool
+		wantNodes int
+		wantErr   error
+	}{
+		{
+			caseName:  "second document cut off",
+			data:      `{"a":1} {"b":`,
+			wantNodes: 1,
+			wantErr:   io.ErrUnexpectedEOF,
+		}, {
+			caseName:  "two complete documents",
+			data:      `{"a":1} {"b":2}`,
+			wantNodes: 2,
+			wantErr:   io.EOF,
+		}, {
+			caseName:  "array opened at the end",
+			data:      `[1] [`,
+			wantNodes: 1,
+			wantErr:   io.ErrUnexpectedEOF,
+		}, {
+			caseName: "empty input",
+			wantErr:  io.EOF,
+		}, {
+			// DecodeJSON cannot see a container the caller opened, so the cut is a plain io.EOF; only dec.Token() for the closer errors.
+			caseName:  "elements of a caller-opened array cut off",
+			data:      `[{"a":1},`,
+			openOuter: true,
+			wantNodes: 1,
+			wantErr:   io.EOF,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			dec := json.NewDecoder(bytes.NewReader([]byte(tc.data)))
+			if tc.openOuter {
+				if _, err := dec.Token(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			nodes := 0
+			var err error
+			for {
+				if _, err = DecodeJSON(dec); err != nil {
+					break
+				}
+				nodes++
+			}
+			if !errors.Is(err, tc.wantErr) {
+				t.Errorf("got %v; want %v", err, tc.wantErr)
+			}
+			if nodes != tc.wantNodes {
+				t.Errorf("got %d nodes; want %d", nodes, tc.wantNodes)
+			}
+			if tc.openOuter {
+				// The closer's error is io.EOF before Go 1.27 and a *json.SyntaxError with json/v2.
+				if _, err := dec.Token(); err == nil {
+					t.Error("closing delimiter: no error")
+				}
 			}
 		})
 	}

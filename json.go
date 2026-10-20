@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 )
 
 // MarshalJSON returns the JSON encoding of the specified node.
@@ -11,7 +12,8 @@ func MarshalJSON(n Node) ([]byte, error) {
 	return json.Marshal(n)
 }
 
-// DecodeJSON decodes JSON as a node using the provided decoder.
+// DecodeJSON decodes the next JSON value from dec; io.EOF means the input ended before a top-level value, io.ErrUnexpectedEOF inside one.
+// Inside a container opened by the caller with dec.Token, a cut between its elements is also io.EOF; read the closing delimiter to detect it.
 func DecodeJSON(dec *json.Decoder) (Node, error) {
 	t, err := dec.Token()
 	if err != nil {
@@ -40,6 +42,14 @@ func DecodeJSON(dec *json.Decoder) (Node, error) {
 		}
 	}
 	return nil, fmt.Errorf("unknown token %#v", t)
+}
+
+// unexpectedEOF turns io.EOF inside a container into io.ErrUnexpectedEOF, as encoding/json does.
+func unexpectedEOF(err error) error {
+	if err == io.EOF {
+		return io.ErrUnexpectedEOF
+	}
+	return err
 }
 
 // UnmarshalJSON parses the JSON-encoded data to a Node.
@@ -117,7 +127,7 @@ func (n NilValue) MarshalJSON() ([]byte, error) {
 func jsonMap(dec *json.Decoder, m *Map) error {
 	t, err := dec.Token()
 	if err != nil {
-		return err
+		return unexpectedEOF(err)
 	}
 	if d, ok := t.(json.Delim); ok {
 		if d.String() == "}" {
@@ -133,7 +143,7 @@ func jsonMap(dec *json.Decoder, m *Map) error {
 
 	t, err = dec.Token()
 	if err != nil {
-		return err
+		return unexpectedEOF(err)
 	}
 	if d, ok := t.(json.Delim); ok {
 		switch ds := d.String(); ds {
@@ -163,7 +173,7 @@ func jsonMap(dec *json.Decoder, m *Map) error {
 func jsonArray(dec *json.Decoder, a Array) (Array, error) {
 	t, err := dec.Token()
 	if err != nil {
-		return nil, err
+		return nil, unexpectedEOF(err)
 	}
 	if d, ok := t.(json.Delim); ok {
 		switch ds := d.String(); ds {
