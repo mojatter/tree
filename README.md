@@ -454,7 +454,7 @@ Flags:
   -x, --expand                 expand results
   -h, --help                   help for tq
   -U, --inplace                update files, inplace
-  -i, --input-format string    input format (json or yaml)
+  -i, --input-format string    input format (json or yaml, default: json if the input starts with { or [, else json then yaml)
   -j, --input-json             alias --input-format json
   -y, --input-yaml             alias --input-format yaml
   -O, --output string          output file

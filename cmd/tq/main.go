@@ -162,7 +162,7 @@ func (r *runner) initFlagSet(args []string) error {
 	s.BoolVarP(&r.isOutputYAML, "output-yaml", "Y", false, "alias --output-format yaml")
 	s.StringVarP(&r.outputFile, "output", "O", "", "output file")
 	s.StringVarP(&r.tmplText, "template", "t", "", "golang text/template string")
-	s.StringVarP(&r.inputFormat, "input-format", "i", "", "input format (json or yaml)")
+	s.StringVarP(&r.inputFormat, "input-format", "i", "", "input format (json or yaml, default: json if the input starts with { or [, else json then yaml)")
 	s.StringVarP(&r.outputFormat, "output-format", "o", "", "output format (json or yaml, default: input format)")
 	s.StringArrayVarP(&r.editExprs, "edit", "e", nil, "edit expression")
 	s.Usage = func() {
@@ -401,7 +401,7 @@ func (r *runner) evaluate(in io.ReadSeekCloser) error {
 	case "yaml":
 		return r.evaluateYAML(in)
 	}
-	jsonErr := validateJSON(in)
+	jsonErr := detectJSON(in)
 	if _, err := in.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
@@ -417,28 +417,20 @@ func (r *runner) evaluate(in io.ReadSeekCloser) error {
 	return nil
 }
 
-// validateJSON tokenizes the whole input before anything is output, so a YAML fallback never follows partial JSON output.
-func validateJSON(in io.Reader) error {
+// detectJSON returns nil when the input is read as JSON: it reaches a { or [ before any syntax error, or holds only JSON scalars.
+func detectJSON(in io.Reader) error {
 	dec := json.NewDecoder(in)
-	depth := 0
+	dec.UseNumber()
 	for {
 		t, err := dec.Token()
 		if err == io.EOF {
-			if depth > 0 {
-				return io.ErrUnexpectedEOF
-			}
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		if d, ok := t.(json.Delim); ok {
-			switch d {
-			case '{', '[':
-				depth++
-			default:
-				depth--
-			}
+		if _, ok := t.(json.Delim); ok {
+			return nil
 		}
 	}
 }

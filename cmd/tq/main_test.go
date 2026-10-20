@@ -201,23 +201,83 @@ func TestRun(t *testing.T) {
 			args:     []string{".", "testdata/numeric-keys.yaml"},
 			golden:   "testdata/numeric-keys-out.yaml",
 		}, {
-			caseName: "json stream broken after two documents reports both errors",
+			caseName: "json stream broken after two documents is not read as yaml",
 			args:     []string{".a", "testdata/broken-json-stream"},
+			want:     "1\n2\n",
+			errstr:   `failed to evaluate testdata/broken-json-stream: invalid character 'o' in literal false (expecting 'a')`,
+		}, {
+			caseName: "malformed json object is not read as yaml",
+			args:     []string{".", "testdata/invalid-json-object"},
+			errstr:   `failed to evaluate testdata/invalid-json-object: invalid character '}' in literal null (expecting 'l')`,
+		}, {
+			caseName: "indented malformed json object is not read as yaml",
+			args:     []string{".", "testdata/invalid-json-object-indented"},
+			errstr:   `failed to evaluate testdata/invalid-json-object-indented: invalid character '}' in literal null (expecting 'l')`,
+		}, {
+			caseName: "json stream starting with a scalar is not read as yaml",
+			args:     []string{".", "testdata/scalar-first-broken-json"},
+			want:     "\"x\"\n",
+			errstr:   `failed to evaluate testdata/scalar-first-broken-json: invalid character '}' in literal null (expecting 'l')`,
+		}, {
+			caseName: "yaml scalar folded into a flow sequence without -y fails as json",
+			args:     []string{".", "testdata/folded-flow.yaml"},
 			want:     "1\n",
-			errstr:   `failed to evaluate testdata/broken-json-stream: invalid character 'o' in literal false (expecting 'a'); yaml: line 1: did not find expected <document start>`,
+			errstr:   `failed to evaluate testdata/folded-flow.yaml: invalid character 'a' looking for beginning of value`,
+		}, {
+			caseName: "yaml scalar folded into a flow sequence with -y",
+			args:     []string{"-y", ".", "testdata/folded-flow.yaml"},
+			want:     "1 [a]\n",
+		}, {
+			caseName: "json documents separated by --- without -y fail as json",
+			args:     []string{".", "testdata/json-then-yaml-separator"},
+			want:     "{\n  \"a\": 1\n}\n",
+			errstr:   `failed to evaluate testdata/json-then-yaml-separator: invalid character '-' in numeric literal`,
+		}, {
+			caseName: "json documents separated by --- with -y",
+			args:     []string{"-y", ".", "testdata/json-then-yaml-separator"},
+			want:     "a: 1\n---\na: 2\n",
+		}, {
+			caseName: "yaml flow sequence without -y fails as json",
+			args:     []string{".", "testdata/flow-sequence.yaml"},
+			errstr:   `failed to evaluate testdata/flow-sequence.yaml: invalid character 'a' looking for beginning of value`,
+		}, {
+			caseName: "yaml flow sequence with -y",
+			args:     []string{"-y", ".", "testdata/flow-sequence.yaml"},
+			want:     "- a\n- b\n",
+		}, {
+			caseName: "yaml flow mapping without -y fails as json",
+			args:     []string{".", "testdata/flow-mapping.yaml"},
+			errstr:   `failed to evaluate testdata/flow-mapping.yaml: invalid character 'b' looking for beginning of value`,
+		}, {
+			caseName: "yaml flow mapping with -y",
+			args:     []string{"-y", ".", "testdata/flow-mapping.yaml"},
+			want:     "a: b\n",
 		}, {
 			caseName: "stray closing brace is an error under -j",
 			args:     []string{"-j", ".", "testdata/stray-brace-json"},
 			want:     "{\n  \"a\": 1\n}\n",
 			errstr:   "failed to evaluate testdata/stray-brace-json: invalid character '}' looking for beginning of value",
 		}, {
-			caseName: "json rejected only by the number parser falls back to yaml",
+			caseName: "json rejected only by the number parser is not read as yaml",
 			args:     []string{".", "testdata/json-number-overflow"},
-			want:     "b: 1e400\n",
+			errstr:   "failed to evaluate testdata/json-number-overflow: json: cannot unmarshal number 1e400 into Go value of type float64",
 		}, {
-			caseName: "truncated json container is not accepted by the pre-scan",
+			caseName: "out-of-range number before a json array is not read as yaml",
+			args:     []string{".", "testdata/number-overflow-stream"},
+			errstr:   "failed to evaluate testdata/number-overflow-stream: json: cannot unmarshal number 1e400 into Go value of type float64",
+		}, {
+			caseName: "out-of-range number before a json array with -y",
+			args:     []string{"-y", ".", "testdata/number-overflow-stream"},
+			want:     "1e400 [1]\n",
+		}, {
+			caseName: "malformed json object from stdin is not read as yaml",
+			stdin:    "testdata/invalid-json-object",
+			args:     []string{"."},
+			errstr:   `failed to evaluate STDIN: invalid character '}' in literal null (expecting 'l')`,
+		}, {
+			caseName: "truncated json container is not read as yaml",
 			args:     []string{".", "testdata/truncated-json"},
-			errstr:   "failed to evaluate testdata/truncated-json: unexpected EOF; yaml: line 1: did not find expected node content",
+			errstr:   "failed to evaluate testdata/truncated-json: EOF",
 		}, {
 			caseName: "yaml folding json scalars across lines is not read as json",
 			stdin:    "testdata/folded-scalars.yaml",
@@ -509,7 +569,7 @@ func TestRunInplace(t *testing.T) {
 			src:      "testdata/broken-json-stream",
 			args:     []string{"-U", ".a"},
 			golden:   "testdata/broken-json-stream",
-			errstr:   "invalid character 'o' in literal false (expecting 'a'); yaml: line 1: did not find expected <document start>",
+			errstr:   "invalid character 'o' in literal false (expecting 'a')",
 		}, {
 			caseName: "multi-document yaml in place keeps its documents",
 			src:      "testdata/multi-doc.yaml",
