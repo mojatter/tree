@@ -708,10 +708,95 @@ func TestEdit(t *testing.T) {
 			expr:     `| [0] = "x"`,
 			want:     Map{"a": StringValue("v")},
 		}, {
-			caseName: "NopQuery as intermediate step uses default branch",
+			caseName: "bare .. before an index is dropped like .",
 			n:        Map{},
 			expr:     `..[0] = 1`,
 			want:     Map{"0": NumberValue(1)},
+		}, {
+			caseName: "dot before an index appends to an empty array",
+			n:        Array{},
+			expr:     `.[0] = 1`,
+			want:     Array{NumberValue(1)},
+		}, {
+			caseName: "dot before an index creates an array under a null key",
+			n:        Map{"a": Nil},
+			expr:     `.a.[0] = 1`,
+			want:     Map{"a": Array{NumberValue(1)}},
+		}, {
+			caseName: "dot before an index replaces a null root",
+			n:        Nil,
+			expr:     `.[0] = 1`,
+			want:     Array{NumberValue(1)},
+		}, {
+			caseName: "dot before an index deletes the element",
+			n:        Array{NumberValue(1)},
+			expr:     `.[0] ^?`,
+			want:     Array{},
+		}, {
+			caseName: "dot before an index appends under a null root",
+			n:        Nil,
+			expr:     `.[0] += 1`,
+			want:     Array{Array{NumberValue(1)}},
+		}, {
+			caseName: "edit ending in a piped dot is a no-op",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.a | . = 1`,
+			want:     Map{"a": NumberValue(1)},
+		}, {
+			caseName: "trailing bare dot on a null root sets the key",
+			n:        Nil,
+			expr:     `.a. = 1`,
+			want:     Map{"a": NumberValue(1)},
+		}, {
+			caseName: "trailing bare dot on a missing key sets it",
+			n:        Map{},
+			expr:     `.a. = 1`,
+			want:     Map{"a": NumberValue(1)},
+		}, {
+			caseName: "two trailing bare dots on a missing key set it",
+			n:        Map{},
+			expr:     `.a.. = 1`,
+			want:     Map{"a": NumberValue(1)},
+		}, {
+			caseName: "trailing bare dot after a walk",
+			n:        Map{"a": Map{"b": NumberValue(1)}},
+			expr:     `..b. = 2`,
+			want:     Map{"a": Map{"b": NumberValue(2)}},
+		}, {
+			caseName: "trailing bare dot after [] edits every element",
+			n:        Map{"a": Array{NumberValue(1), NumberValue(2)}},
+			expr:     `.a[]. = 9`,
+			want:     Map{"a": Array{NumberValue(9), NumberValue(9)}},
+		}, {
+			caseName: "trailing bare dot after a select edits the matches",
+			n:        Array{Map{"b": NumberValue(1)}, Map{"b": NumberValue(2)}},
+			expr:     `.[.b == 1]. = 9`,
+			want:     Array{NumberValue(9), Map{"b": NumberValue(2)}},
+		}, {
+			caseName: "trailing bare dot after a slice is a no-op",
+			n:        Array{NumberValue(1), NumberValue(2)},
+			expr:     `.[0:1]. = 9`,
+			want:     Array{NumberValue(1), NumberValue(2)},
+		}, {
+			caseName: "bare dot between [] and an index is dropped",
+			n:        Array{Array{NumberValue(1)}, Array{NumberValue(2)}},
+			expr:     `.[].[0] = 9`,
+			want:     Array{Array{NumberValue(9)}, Array{NumberValue(9)}},
+		}, {
+			caseName: "delete through a trailing bare dot after a key",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.a. ^?`,
+			want:     Map{},
+		}, {
+			caseName: "delete through a trailing bare dot after a walk",
+			n:        Map{"a": Map{"b": NumberValue(1)}},
+			expr:     `..b. ^?`,
+			want:     Map{"a": Map{}},
+		}, {
+			caseName: "delete through a trailing bare dot after [] fails",
+			n:        Array{NumberValue(1), NumberValue(2)},
+			expr:     `.[]. ^?`,
+			errstr:   `cannot delete .`,
 		}, {
 			caseName: "missing map key with non-collection next is a no-op",
 			n:        Map{},
@@ -1820,6 +1905,27 @@ func TestNewAssigned(t *testing.T) {
 			}
 			if got := newAssigned(fq) != nil; got != tc.want {
 				t.Errorf("got %v; want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestEditNopQuerySteps(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		q        Query
+	}{
+		{caseName: "value", q: FilterQuery{NopQuery{}, ArrayQuery(0)}},
+		{caseName: "pointer", q: FilterQuery{&NopQuery{}, ArrayQuery(0)}},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			var n Node = Array{}
+			if err := editQuery(&n, tc.q, "=", NumberValue(1)); err != nil {
+				t.Fatal(err)
+			}
+			if want := (Array{NumberValue(1)}); !reflect.DeepEqual(n, want) {
+				t.Errorf("got %#v; want %#v", n, want)
 			}
 		})
 	}

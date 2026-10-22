@@ -40,7 +40,7 @@ func Edit(pn *Node, expr string) error {
 			fq = FilterQuery{q}
 		}
 		// Probe with "=" so that ^? stops only a query = would create containers for; others fail as on any root.
-		if c := emptyIntermediate("=", fq); c != nil {
+		if c := emptyIntermediate("=", dropNopSteps(fq)); c != nil {
 			if op == "^?" {
 				return nil // deleting from a null root leaves it as it is
 			}
@@ -145,11 +145,7 @@ func execForEdit(pn *Node, fq FilterQuery, op string, v Node) error {
 	if l == 0 {
 		return nil
 	}
-	if l == 1 {
-		return editQuery(pn, fq[0], op, v)
-	}
-
-	// Split at SlurpQuery (pipe) if present among intermediate steps.
+	// Split at SlurpQuery (pipe) if present among intermediate steps; pipes first, so a lone . next to one is kept.
 	for i, q := range fq[:l-1] {
 		if _, ok := q.(SlurpQuery); ok {
 			left := FilterQuery(fq[:i])
@@ -171,10 +167,43 @@ func execForEdit(pn *Node, fq FilterQuery, op string, v Node) error {
 		}
 	}
 
+	if fq = dropNopSteps(fq); len(fq) == 1 {
+		return editQuery(pn, fq[0], op, v)
+	}
+
 	as := newAssigned(fq)
 	as.add(v) // never edit inside v itself when it is part of the document
 
 	return resolveAndEdit(pn, fq, 0, op, v, as)
+}
+
+// dropNopSteps removes bare . and .. steps, which pass the node through, keeping one when nothing else is left.
+func dropNopSteps(fq FilterQuery) FilterQuery {
+	kept := make(FilterQuery, 0, len(fq))
+	for i, q := range fq {
+		if !isNopQuery(q) {
+			kept = append(kept, q)
+			continue
+		}
+		if i == len(fq)-1 && len(kept) > 0 {
+			if _, ok := kept[len(kept)-1].(EditorQuery); !ok {
+				kept = append(kept, q) // a trailing . after a step without write-back, such as [] or a slice, is the editable last step
+			}
+		}
+	}
+	if len(kept) == 0 {
+		return FilterQuery{NopQuery{}}
+	}
+	return kept
+}
+
+// isNopQuery reports whether q is a bare . or .., by value or pointer.
+func isNopQuery(q Query) bool {
+	switch q.(type) {
+	case NopQuery, *NopQuery:
+		return true
+	}
+	return false
 }
 
 // resolveAndEdit walks the FilterQuery path step by step, writing back

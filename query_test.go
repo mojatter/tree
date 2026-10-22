@@ -252,6 +252,22 @@ func TestQueryString(t *testing.T) {
 			caseName: "filter walk",
 			q:        FilterQuery{MapQuery("key1"), WalkQuery("key2")},
 			want:     ".key1..key2",
+		}, {
+			caseName: "bare dot before a key",
+			q:        FilterQuery{MapQuery("a"), NopQuery{}, MapQuery("b")},
+			want:     ".a.b",
+		}, {
+			caseName: "bare dot before an index",
+			q:        FilterQuery{NopQuery{}, ArrayQuery(0)},
+			want:     ".[0]",
+		}, {
+			caseName: "bare pointer dot before a key",
+			q:        FilterQuery{MapQuery("a"), &NopQuery{}, MapQuery("b")},
+			want:     ".a.b",
+		}, {
+			caseName: "bare dots around a pipe",
+			q:        FilterQuery{NopQuery{}, SlurpQuery{}, NopQuery{}},
+			want:     ". | .",
 		},
 	}
 	for _, tc := range testCases {
@@ -276,6 +292,9 @@ func TestFind(t *testing.T) {
 		{
 			expr: `.store`,
 			want: []Node{n.Get("store")},
+		}, {
+			expr: `. | .`,
+			want: []Node{Array{n}},
 		}, {
 			expr: `.store[]`,
 			want: []Node{

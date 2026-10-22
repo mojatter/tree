@@ -14,6 +14,12 @@ func TestParseQuery(t *testing.T) {
 			expr: `.`,
 			want: NopQuery{},
 		}, {
+			expr: `.[0]`,
+			want: FilterQuery{NopQuery{}, ArrayQuery(0)},
+		}, {
+			expr: `. | .`,
+			want: FilterQuery{NopQuery{}, SlurpQuery{}, NopQuery{}},
+		}, {
 			expr: `[]`,
 			want: SelectQuery{},
 		}, {

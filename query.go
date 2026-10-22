@@ -364,6 +364,11 @@ func (qs FilterQuery) String() string {
 	for i, q := range qs {
 		ss[i] = q.String()
 	}
+	for i := range len(ss) - 1 {
+		if isNopQuery(qs[i]) && strings.HasPrefix(ss[i+1], ".") {
+			ss[i] = "" // a bare . before .b would print ..b, which parses as a walk
+		}
+	}
 	return strings.Join(ss, "")
 }
 
