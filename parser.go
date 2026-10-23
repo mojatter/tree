@@ -91,9 +91,8 @@ type lexer struct {
 
 // scanQuoted parses the quoted string literal at l.pos and unconditionally
 // advances l.pos: past the closing quote on a terminated literal, or just
-// past the opening quote on an unterminated one. ok=true means the result
-// is worth emitting (terminated and non-empty); empty literals and
-// unterminated ones both return ok=false.
+// past the opening quote on an unterminated one. ok=true means the literal
+// is terminated (possibly empty); unterminated ones return ok=false.
 func (l *lexer) scanQuoted() (tok token, ok bool) {
 	var sb strings.Builder
 	quote := l.expr[l.pos]
@@ -109,9 +108,6 @@ func (l *lexer) scanQuoted() (tok token, ok bool) {
 	}
 	if end < len(l.expr) {
 		l.pos = end + 1
-		if sb.Len() == 0 {
-			return token{}, false
-		}
 		return token{kind: tkString, text: sb.String()}, true
 	}
 	l.pos++
