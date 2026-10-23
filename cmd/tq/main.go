@@ -397,28 +397,27 @@ func (r *runner) needsRewind() bool {
 
 var utf8BOM = [3]byte{0xEF, 0xBB, 0xBF}
 
-// skipBOM reads a leading UTF-8 BOM once if present.
-// For a seekable reader, it leaves the reader at offset 3 (if BOM) or 0 (if not), returning the offset.
-// For a non-seekable reader without a BOM, it returns a reader prepending the un-consumed bytes.
-func skipBOM(in io.ReadSeeker) (io.Reader, int64, error) {
-	var bom [3]byte
-	n, err := io.ReadFull(in, bom[:])
+// skipBOM drops a leading UTF-8 BOM and returns the rest of in and the number of bytes dropped.
+func skipBOM(in io.Reader) (io.Reader, int64, error) {
+	var head [3]byte
+	n, err := io.ReadFull(in, head[:])
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		return nil, 0, err
 	}
-	if n == 3 && bom == utf8BOM {
+	if n == 3 && head == utf8BOM {
 		return in, 3, nil
 	}
-	if n == 0 {
-		return in, 0, nil
-	}
-	if _, err := in.Seek(0, io.SeekStart); err != nil {
-		return io.MultiReader(bytes.NewReader(bom[:n]), in), 0, nil
-	}
-	return in, 0, nil
+	return io.MultiReader(bytes.NewReader(head[:n]), in), 0, nil
 }
 
 func (r *runner) evaluate(in io.ReadSeekCloser) error {
+	var base int64
+	if r.needsRewind() {
+		var err error
+		if base, err = in.Seek(0, io.SeekCurrent); err != nil {
+			return err
+		}
+	}
 	reader, startOffset, err := skipBOM(in)
 	if err != nil {
 		return err
@@ -429,10 +428,9 @@ func (r *runner) evaluate(in io.ReadSeekCloser) error {
 	case "yaml":
 		return r.evaluateYAML(reader)
 	}
-	// Auto-detection always receives a seekable stream (non-seekable inputs are spooled
-	// beforehand via r.needsRewind()), so it operates directly on in and startOffset.
-	jsonErr := detectJSON(in)
-	if _, err := in.Seek(startOffset, io.SeekStart); err != nil {
+	jsonErr := detectJSON(reader)
+	// Auto-detection rewinds in, which nextReader keeps seekable by spooling non-seekable inputs.
+	if _, err := in.Seek(base+startOffset, io.SeekStart); err != nil {
 		return err
 	}
 	if jsonErr == nil {
