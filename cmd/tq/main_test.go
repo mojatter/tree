@@ -996,6 +996,13 @@ func TestSkipBOM(t *testing.T) {
 			wantOffset: 0,
 			wantOutput: []byte(`{"a":1}`),
 		},
+		{
+			caseName:   "UTF-8 BOM after consumed bytes",
+			input:      append([]byte("xx\xEF\xBB\xBF"), []byte(`{"a":1}`)...),
+			consumed:   2,
+			wantOffset: 3,
+			wantOutput: []byte(`{"a":1}`),
+		},
 	}
 
 	for _, tc := range testCases {
@@ -1073,6 +1080,20 @@ func TestEvaluateFromOffset(t *testing.T) {
 			input:    "skip\nfoo: bar\n",
 			consumed: 5,
 			want:     "foo: bar\n",
+		},
+		{
+			caseName: "json with -j and utf-8 bom after consumed bytes",
+			args:     []string{"-j", "."},
+			input:    "skip\n" + bom + "{\"a\":1}\n",
+			consumed: 5,
+			want:     "{\n  \"a\": 1\n}\n",
+		},
+		{
+			caseName: "json with -y and utf-8 bom after consumed bytes",
+			args:     []string{"-y", "."},
+			input:    "skip\n" + bom + "{\"a\":1}\n",
+			consumed: 5,
+			want:     "a: 1\n",
 		},
 	}
 
