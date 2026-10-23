@@ -945,108 +945,64 @@ func TestRunErrors(t *testing.T) {
 	}
 }
 
-type nonSeekableReader struct {
-	io.Reader
-}
-
-func (n nonSeekableReader) Seek(offset int64, whence int) (int64, error) {
-	return 0, errors.New("cannot seek")
-}
-
 func TestSkipBOM(t *testing.T) {
 	testCases := []struct {
 		caseName   string
 		input      []byte
-		seekable   bool
+		consumed   int
 		wantOffset int64
 		wantOutput []byte
 	}{
 		{
-			caseName:   "empty seekable",
+			caseName:   "empty",
 			input:      []byte{},
-			seekable:   true,
 			wantOffset: 0,
 			wantOutput: []byte{},
 		},
 		{
-			caseName:   "1-byte seekable",
+			caseName:   "1-byte",
 			input:      []byte("{"),
-			seekable:   true,
 			wantOffset: 0,
 			wantOutput: []byte("{"),
 		},
 		{
-			caseName:   "2-byte seekable",
+			caseName:   "2-byte",
 			input:      []byte("{}"),
-			seekable:   true,
 			wantOffset: 0,
 			wantOutput: []byte("{}"),
 		},
 		{
-			caseName:   "3-byte non-BOM seekable",
+			caseName:   "3-byte non-BOM",
 			input:      []byte("foo"),
-			seekable:   true,
 			wantOffset: 0,
 			wantOutput: []byte("foo"),
 		},
 		{
-			caseName:   "UTF-8 BOM seekable",
+			caseName:   "UTF-8 BOM",
 			input:      append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"a":1}`)...),
-			seekable:   true,
 			wantOffset: 3,
 			wantOutput: []byte(`{"a":1}`),
 		},
 		{
-			caseName:   "double UTF-8 BOM seekable skips only first BOM",
+			caseName:   "double UTF-8 BOM skips only first BOM",
 			input:      append([]byte{0xEF, 0xBB, 0xBF, 0xEF, 0xBB, 0xBF}, []byte(`{"a":1}`)...),
-			seekable:   true,
 			wantOffset: 3,
 			wantOutput: append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"a":1}`)...),
 		},
 		{
-			caseName:   "empty non-seekable",
-			input:      []byte{},
-			seekable:   false,
+			caseName:   "non-BOM input keeps its current position",
+			input:      []byte(`xx{"a":1}`),
+			consumed:   2,
 			wantOffset: 0,
-			wantOutput: []byte{},
-		},
-		{
-			caseName:   "1-byte non-seekable",
-			input:      []byte("{"),
-			seekable:   false,
-			wantOffset: 0,
-			wantOutput: []byte("{"),
-		},
-		{
-			caseName:   "2-byte non-seekable",
-			input:      []byte("{}"),
-			seekable:   false,
-			wantOffset: 0,
-			wantOutput: []byte("{}"),
-		},
-		{
-			caseName:   "3-byte non-BOM non-seekable",
-			input:      []byte("foo"),
-			seekable:   false,
-			wantOffset: 0,
-			wantOutput: []byte("foo"),
-		},
-		{
-			caseName:   "UTF-8 BOM non-seekable",
-			input:      append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"a":1}`)...),
-			seekable:   false,
-			wantOffset: 3,
 			wantOutput: []byte(`{"a":1}`),
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
-			var in io.ReadSeeker
-			if tc.seekable {
-				in = bytes.NewReader(tc.input)
-			} else {
-				in = nonSeekableReader{Reader: bytes.NewReader(tc.input)}
+			in := bytes.NewReader(tc.input)
+			if _, err := in.Seek(int64(tc.consumed), io.SeekStart); err != nil {
+				t.Fatal(err)
 			}
 
 			reader, offset, err := skipBOM(in)
@@ -1062,6 +1018,81 @@ func TestSkipBOM(t *testing.T) {
 			}
 			if !bytes.Equal(got, tc.wantOutput) {
 				t.Errorf("got %q, want %q", got, tc.wantOutput)
+			}
+		})
+	}
+}
+
+func TestEvaluateFromOffset(t *testing.T) {
+	bom := "\xEF\xBB\xBF"
+	testCases := []struct {
+		caseName string
+		args     []string
+		input    string
+		consumed int
+		want     string
+	}{
+		{
+			caseName: "auto-detected json after consumed bytes",
+			args:     []string{"."},
+			input:    "skip\n{\"a\":1}\n",
+			consumed: 5,
+			want:     "{\n  \"a\": 1\n}\n",
+		},
+		{
+			caseName: "auto-detected json with utf-8 bom after consumed bytes",
+			args:     []string{"."},
+			input:    "skip\n" + bom + "{\"a\":1}\n",
+			consumed: 5,
+			want:     "{\n  \"a\": 1\n}\n",
+		},
+		{
+			caseName: "auto-detected second json document",
+			args:     []string{"."},
+			input:    "{\"a\":1}\n{\"a\":2}\n",
+			consumed: 8,
+			want:     "{\n  \"a\": 2\n}\n",
+		},
+		{
+			caseName: "json with -j after consumed bytes",
+			args:     []string{"-j", "."},
+			input:    "skip\n{\"a\":1}\n",
+			consumed: 5,
+			want:     "{\n  \"a\": 1\n}\n",
+		},
+		{
+			caseName: "json with -y after consumed bytes",
+			args:     []string{"-y", "."},
+			input:    "skip\n{\"a\":1}\n",
+			consumed: 5,
+			want:     "a: 1\n",
+		},
+		{
+			caseName: "auto-detected yaml after consumed bytes",
+			args:     []string{"."},
+			input:    "skip\nfoo: bar\n",
+			consumed: 5,
+			want:     "foo: bar\n",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			buf := new(bytes.Buffer)
+			r := newTestRunner(buf)
+			if err := r.initFlagSet(append([]string{"tq"}, tc.args...)); err != nil {
+				t.Fatalf("initFlagSet: %v", err)
+			}
+			in := io2.NopReadSeekCloser(strings.NewReader(tc.input))
+			if _, err := in.Seek(int64(tc.consumed), io.SeekStart); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := r.evaluate(in); err != nil {
+				t.Fatalf("evaluate: %v", err)
+			}
+			if got := buf.String(); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
 			}
 		})
 	}
