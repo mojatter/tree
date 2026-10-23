@@ -138,6 +138,15 @@ func TestParseQuery(t *testing.T) {
 			expr: `[.x == ""]`,
 			want: SelectQuery{And{Comparator{MapQuery("x"), EQ, ValueQuery{StringValue("")}}}},
 		}, {
+			expr: "[.k == \"a\nb\"]",
+			want: SelectQuery{And{Comparator{MapQuery("k"), EQ, ValueQuery{StringValue("a\nb")}}}},
+		}, {
+			expr: `[.k == "<&>"]`,
+			want: SelectQuery{And{Comparator{MapQuery("k"), EQ, ValueQuery{StringValue("<&>")}}}},
+		}, {
+			expr: `[.k == "a\"b\\c"]`,
+			want: SelectQuery{And{Comparator{MapQuery("k"), EQ, ValueQuery{StringValue(`a"b\c`)}}}},
+		}, {
 			expr: `sort("(.foo)")`,
 			want: &SortQuery{
 				Expr:  "(.foo)",

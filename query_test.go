@@ -291,6 +291,30 @@ func TestQueryString(t *testing.T) {
 			caseName: "walk quoted with escape",
 			q:        WalkQuery(`foo"bar`),
 			want:     `.."foo\"bar"`,
+		}, {
+			caseName: "map empty key",
+			q:        MapQuery(""),
+			want:     `.""`,
+		}, {
+			caseName: "value string",
+			q:        ValueQuery{StringValue("a")},
+			want:     `"a"`,
+		}, {
+			caseName: "value string with escapes",
+			q:        ValueQuery{StringValue(`a"b\c`)},
+			want:     `"a\"b\\c"`,
+		}, {
+			caseName: "value string with newline",
+			q:        ValueQuery{StringValue("a\nb")},
+			want:     "\"a\nb\"",
+		}, {
+			caseName: "value string with html",
+			q:        ValueQuery{StringValue("<&>")},
+			want:     `"<&>"`,
+		}, {
+			caseName: "value number",
+			q:        ValueQuery{NumberValue(1.5)},
+			want:     `1.5`,
 		},
 	}
 	for _, tc := range testCases {
