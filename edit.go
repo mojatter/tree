@@ -110,10 +110,19 @@ func splitEdit(expr string) (left, op, right string, ok bool) {
 }
 
 // skipParen returns the position past the first unquoted ')' after expr[p], or p+1 when unterminated, so '=' inside parentheses never splits the edit.
+// Like scanMethod, a '"' in method args (after a lowercase name) is skipped by CSV rules.
 func skipParen(expr string, p int) int {
+	method := p > 0 && isLower(expr[p-1])
 	for i := p + 1; i < len(expr); {
 		switch expr[i] {
-		case '"', '\'':
+		case '"':
+			if method {
+				i = skipCSVQuoted(expr, i)
+			} else {
+				i = skipQuoted(expr, i)
+			}
+			continue
+		case '\'':
 			i = skipQuoted(expr, i)
 			continue
 		case ')':

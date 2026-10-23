@@ -120,6 +120,7 @@ func (l *lexer) scanQuoted() (tok token, ok bool) {
 // closing `)`. Returns ok=false (and leaves l.pos unchanged) when there
 // is no `(` after the lowercase run, or when the args parenthesis is
 // unterminated; the caller then falls through to plain ident scanning.
+// A '"' in the args is skipped by CSV rules, as the args are read as CSV.
 func (l *lexer) scanMethod() (tok token, ok bool) {
 	nameEnd := l.pos + 1
 	for nameEnd < len(l.expr) && isLower(l.expr[nameEnd]) {
@@ -130,7 +131,11 @@ func (l *lexer) scanMethod() (tok token, ok bool) {
 	}
 	closeIdx := nameEnd + 1
 	for closeIdx < len(l.expr) && l.expr[closeIdx] != ')' {
-		if l.expr[closeIdx] == '"' || l.expr[closeIdx] == '\'' {
+		switch l.expr[closeIdx] {
+		case '"':
+			closeIdx = skipCSVQuoted(l.expr, closeIdx)
+			continue
+		case '\'':
 			closeIdx = skipQuoted(l.expr, closeIdx)
 			continue
 		}
@@ -237,6 +242,23 @@ func skipQuoted(expr string, p int) int {
 		p++
 	}
 	if p < len(expr) {
+		return p + 1
+	}
+	return p
+}
+
+// skipCSVQuoted returns the position past the CSV-quoted field at expr[p]
+// (where expr[p] is '"'): a doubled '"' is literal and '\' is not special.
+// Returns len(expr) for an unterminated field.
+func skipCSVQuoted(expr string, p int) int {
+	for p++; p < len(expr); p++ {
+		if expr[p] != '"' {
+			continue
+		}
+		if p+1 < len(expr) && expr[p+1] == '"' {
+			p++
+			continue
+		}
 		return p + 1
 	}
 	return p

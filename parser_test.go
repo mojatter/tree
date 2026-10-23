@@ -147,6 +147,24 @@ func TestParseQuery(t *testing.T) {
 			expr: `[.k == "a\"b\\c"]`,
 			want: SelectQuery{And{Comparator{MapQuery("k"), EQ, ValueQuery{StringValue(`a"b\c`)}}}},
 		}, {
+			expr: `has("a""b")`,
+			want: &HasQuery{Key: `a"b`},
+		}, {
+			expr: `has("a\""b")`,
+			want: &HasQuery{Key: `a\"b`},
+		}, {
+			expr: `has("a\")`,
+			want: &HasQuery{Key: `a\`},
+		}, {
+			expr: `contains("x,y")`,
+			want: &ContainsQuery{Value: "x,y"},
+		}, {
+			expr: `sort(".""b c""")`,
+			want: &SortQuery{Expr: `."b c"`, Query: MapQuery("b c")},
+		}, {
+			expr: `rsort(".""b\""c""")`,
+			want: &RSortQuery{Expr: `."b\"c"`, Query: MapQuery(`b"c`)},
+		}, {
 			expr: `sort("(.foo)")`,
 			want: &SortQuery{
 				Expr:  "(.foo)",

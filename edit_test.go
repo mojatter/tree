@@ -575,6 +575,16 @@ func TestEdit(t *testing.T) {
 			expr:     `[has(a(b)].v = 1`,
 			want:     Array{Map{"a(b": NumberValue(1), "v": NumberValue(1)}},
 		}, {
+			caseName: "CSV-quoted method arg with backslash before doubled quote",
+			n:        Array{Map{`a\"b`: NumberValue(1)}},
+			expr:     `[has("a\""b")].v = 1`,
+			want:     Array{Map{`a\"b`: NumberValue(1), "v": NumberValue(1)}},
+		}, {
+			caseName: "escaped quote inside grouping parens keeps lexer rules",
+			n:        Array{Map{"k": StringValue(`a"=)`)}},
+			expr:     `[(.k == "a\"=)")].v = 1`,
+			want:     Array{Map{"k": StringValue(`a"=)`), "v": NumberValue(1)}},
+		}, {
 			caseName: "second YAML document on RHS returns syntax error",
 			n:        Map{},
 			expr:     ".a = 1\n---\n2",

@@ -646,6 +646,10 @@ func TestMethodQueryString(t *testing.T) {
 		{"sort expr", sortByName, `sort(".name")`},
 		{"rsort noarg", &RSortQuery{}, "rsort()"},
 		{"rsort expr", rsortByAge, `rsort(".age")`},
+		{"has quote", &HasQuery{Key: `a"b`}, `has("a""b")`},
+		{"has backslash", &HasQuery{Key: `a\`}, `has("a\")`},
+		{"contains comma", &ContainsQuery{Value: "x,y"}, `contains("x,y")`},
+		{"sort quoted key", &SortQuery{Expr: `."b c"`, Query: MapQuery("b c")}, `sort(".""b c""")`},
 	}
 
 	for _, tc := range testCases {

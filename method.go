@@ -236,7 +236,7 @@ func (q *HasQuery) Exec(n Node) ([]Node, error) {
 }
 
 func (q *HasQuery) String() string {
-	return fmt.Sprintf("has(%q)", q.Key)
+	return "has(" + quoteArg(q.Key) + ")"
 }
 
 // ContainsQuery checks if the node contains the specified value.
@@ -280,7 +280,7 @@ func (q *ContainsQuery) Exec(n Node) ([]Node, error) {
 }
 
 func (q *ContainsQuery) String() string {
-	return fmt.Sprintf("contains(%q)", q.Value)
+	return "contains(" + quoteArg(q.Value) + ")"
 }
 
 // FirstQuery returns the first element of an array.
@@ -451,7 +451,7 @@ func (q *SortQuery) Exec(n Node) ([]Node, error) {
 
 func (q *SortQuery) String() string {
 	if q.Expr != "" {
-		return fmt.Sprintf("sort(%q)", q.Expr)
+		return "sort(" + quoteArg(q.Expr) + ")"
 	}
 	return "sort()"
 }
@@ -494,9 +494,14 @@ func (q *RSortQuery) Exec(n Node) ([]Node, error) {
 
 func (q *RSortQuery) String() string {
 	if q.Expr != "" {
-		return fmt.Sprintf("rsort(%q)", q.Expr)
+		return "rsort(" + quoteArg(q.Expr) + ")"
 	}
 	return "rsort()"
+}
+
+// quoteArg double-quotes s as a method argument, which is read as CSV: only '"' is escaped, by doubling.
+func quoteArg(s string) string {
+	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
 
 // init automatically registers the built-in method queries.
