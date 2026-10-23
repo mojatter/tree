@@ -283,6 +283,41 @@ func TestRun(t *testing.T) {
 			args:     []string{"-j", ".", "testdata/truncated-json"},
 			errstr:   "failed to evaluate testdata/truncated-json: unexpected EOF",
 		}, {
+			caseName: "json container with utf-8 bom is auto-detected as json",
+			args:     []string{".", "testdata/bom.json"},
+			want:     "{\n  \"a\": 1\n}\n",
+		}, {
+			caseName: "json container with utf-8 bom with -j",
+			args:     []string{"-j", ".", "testdata/bom.json"},
+			want:     "{\n  \"a\": 1\n}\n",
+		}, {
+			caseName: "json container with utf-8 bom with -y",
+			args:     []string{"-y", ".", "testdata/bom.json"},
+			want:     "a: 1\n",
+		}, {
+			caseName: "yaml document with utf-8 bom is auto-detected as yaml",
+			args:     []string{".", "testdata/bom.yaml"},
+			want:     "a: 1\n",
+		}, {
+			caseName: "truncated json container with utf-8 bom is not read as yaml",
+			args:     []string{".", "testdata/truncated-bom-json"},
+			errstr:   "failed to evaluate testdata/truncated-bom-json: unexpected EOF",
+		}, {
+			caseName: "non-seekable json file with utf-8 bom is auto-detected",
+			pipe:     "testdata/bom.json",
+			args:     []string{"."},
+			want:     "{\n  \"a\": 1\n}\n",
+		}, {
+			caseName: "non-seekable json file with utf-8 bom with -j",
+			pipe:     "testdata/bom.json",
+			args:     []string{"-j", "."},
+			want:     "{\n  \"a\": 1\n}\n",
+		}, {
+			caseName: "non-seekable json file with utf-8 bom with -y",
+			pipe:     "testdata/bom.json",
+			args:     []string{"-y", "."},
+			want:     "a: 1\n",
+		}, {
 			caseName: "yaml folding json scalars across lines is not read as json",
 			stdin:    "testdata/folded-scalars.yaml",
 			args:     []string{"."},
@@ -905,6 +940,128 @@ func TestRunErrors(t *testing.T) {
 
 			if err := r.run(tc.args); err == nil {
 				t.Fatalf("expected error, got nil")
+			}
+		})
+	}
+}
+
+type nonSeekableReader struct {
+	io.Reader
+}
+
+func (n nonSeekableReader) Seek(offset int64, whence int) (int64, error) {
+	return 0, errors.New("cannot seek")
+}
+
+func TestSkipBOM(t *testing.T) {
+	testCases := []struct {
+		caseName   string
+		input      []byte
+		seekable   bool
+		wantOffset int64
+		wantOutput []byte
+	}{
+		{
+			caseName:   "empty seekable",
+			input:      []byte{},
+			seekable:   true,
+			wantOffset: 0,
+			wantOutput: []byte{},
+		},
+		{
+			caseName:   "1-byte seekable",
+			input:      []byte("{"),
+			seekable:   true,
+			wantOffset: 0,
+			wantOutput: []byte("{"),
+		},
+		{
+			caseName:   "2-byte seekable",
+			input:      []byte("{}"),
+			seekable:   true,
+			wantOffset: 0,
+			wantOutput: []byte("{}"),
+		},
+		{
+			caseName:   "3-byte non-BOM seekable",
+			input:      []byte("foo"),
+			seekable:   true,
+			wantOffset: 0,
+			wantOutput: []byte("foo"),
+		},
+		{
+			caseName:   "UTF-8 BOM seekable",
+			input:      append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"a":1}`)...),
+			seekable:   true,
+			wantOffset: 3,
+			wantOutput: []byte(`{"a":1}`),
+		},
+		{
+			caseName:   "double UTF-8 BOM seekable skips only first BOM",
+			input:      append([]byte{0xEF, 0xBB, 0xBF, 0xEF, 0xBB, 0xBF}, []byte(`{"a":1}`)...),
+			seekable:   true,
+			wantOffset: 3,
+			wantOutput: append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"a":1}`)...),
+		},
+		{
+			caseName:   "empty non-seekable",
+			input:      []byte{},
+			seekable:   false,
+			wantOffset: 0,
+			wantOutput: []byte{},
+		},
+		{
+			caseName:   "1-byte non-seekable",
+			input:      []byte("{"),
+			seekable:   false,
+			wantOffset: 0,
+			wantOutput: []byte("{"),
+		},
+		{
+			caseName:   "2-byte non-seekable",
+			input:      []byte("{}"),
+			seekable:   false,
+			wantOffset: 0,
+			wantOutput: []byte("{}"),
+		},
+		{
+			caseName:   "3-byte non-BOM non-seekable",
+			input:      []byte("foo"),
+			seekable:   false,
+			wantOffset: 0,
+			wantOutput: []byte("foo"),
+		},
+		{
+			caseName:   "UTF-8 BOM non-seekable",
+			input:      append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"a":1}`)...),
+			seekable:   false,
+			wantOffset: 3,
+			wantOutput: []byte(`{"a":1}`),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			var in io.ReadSeeker
+			if tc.seekable {
+				in = bytes.NewReader(tc.input)
+			} else {
+				in = nonSeekableReader{Reader: bytes.NewReader(tc.input)}
+			}
+
+			reader, offset, err := skipBOM(in)
+			if err != nil {
+				t.Fatalf("skipBOM: unexpected error %v", err)
+			}
+			if offset != tc.wantOffset {
+				t.Errorf("offset = %d, want %d", offset, tc.wantOffset)
+			}
+			got, err := io.ReadAll(reader)
+			if err != nil {
+				t.Fatalf("ReadAll: unexpected error %v", err)
+			}
+			if !bytes.Equal(got, tc.wantOutput) {
+				t.Errorf("got %q, want %q", got, tc.wantOutput)
 			}
 		})
 	}
