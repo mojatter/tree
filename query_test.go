@@ -117,6 +117,13 @@ func TestQuery(t *testing.T) {
 			}},
 			n: Map{},
 		}, {
+			caseName: "select: multiple match error formats quoted query without double escaping",
+			q: SelectQuery{And{
+				Comparator{WalkQuery("b c"), EQ, ValueQuery{ToValue(1)}},
+			}},
+			n:      Array{Map{"x": Map{"b c": ToValue(1)}, "y": Map{"b c": ToValue(2)}}},
+			errstr: `.."b c" returns no single value [1 2]`,
+		}, {
 			caseName: "select: complex",
 			q: SelectQuery{
 				And{
@@ -268,6 +275,22 @@ func TestQueryString(t *testing.T) {
 			caseName: "bare dots around a pipe",
 			q:        FilterQuery{NopQuery{}, SlurpQuery{}, NopQuery{}},
 			want:     ". | .",
+		}, {
+			caseName: "map quoted with spaces",
+			q:        MapQuery("b c"),
+			want:     `."b c"`,
+		}, {
+			caseName: "map quoted with escape",
+			q:        MapQuery(`foo"bar`),
+			want:     `."foo\"bar"`,
+		}, {
+			caseName: "walk quoted with spaces",
+			q:        WalkQuery("b c"),
+			want:     `.."b c"`,
+		}, {
+			caseName: "walk quoted with escape",
+			q:        WalkQuery(`foo"bar`),
+			want:     `.."foo\"bar"`,
 		},
 	}
 	for _, tc := range testCases {
