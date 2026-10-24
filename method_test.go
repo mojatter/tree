@@ -218,6 +218,11 @@ func TestMethodQuery(t *testing.T) {
 				Map{"name": StringValue("Charlie"), "age": NumberValue(35)},
 			}},
 		}, {
+			caseName: "sort by a method expression",
+			q:        &SortQuery{Expr: ".b.count()", Query: FilterQuery{MapQuery("b"), &CountQuery{}}},
+			n:        Array{Map{"b": ToArrayValues(1, 2)}, Map{"b": ToArrayValues(1)}},
+			want:     []Node{Array{Map{"b": ToArrayValues(1)}, Map{"b": ToArrayValues(1, 2)}}},
+		}, {
 			caseName: "sort by field on nil element errors as on null",
 			q:        &SortQuery{Expr: ".age", Query: MapQuery("age")},
 			n:        Array{Map{"age": NumberValue(1)}, nil},
@@ -533,6 +538,18 @@ func TestNewMethodQuery(t *testing.T) {
 			caseName: "rsort method with field",
 			method:   "rsort",
 			args:     []string{"name"},
+			wantType: "*tree.RSortQuery",
+		},
+		{
+			caseName: "sort method with a method argument",
+			method:   "sort",
+			args:     []string{"count()"},
+			wantType: "*tree.SortQuery",
+		},
+		{
+			caseName: "rsort method with a method argument",
+			method:   "rsort",
+			args:     []string{`has("a")`},
 			wantType: "*tree.RSortQuery",
 		},
 		{

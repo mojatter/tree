@@ -18,6 +18,7 @@ var (
 
 // NewMethodQueryFunc is a factory function type for creating method queries.
 // It takes string arguments and returns a Query implementation.
+// It is called without the registry lock held, so it may itself parse a query or call NewMethodQuery, as sort does.
 type NewMethodQueryFunc func(args ...string) (Query, error)
 
 // RegisterNewMethodQueryFunc registers a factory function for a method query.
@@ -33,9 +34,8 @@ func RegisterNewMethodQueryFunc(method string, fn NewMethodQueryFunc) {
 // Returns an error if the method is not registered.
 func NewMethodQuery(method string, args ...string) (Query, error) {
 	methodQueryMux.Lock()
-	defer methodQueryMux.Unlock()
-
 	fn, ok := newMethodQueryFuncs[method]
+	methodQueryMux.Unlock() // unlock before fn, which may re-enter NewMethodQuery
 	if !ok {
 		return nil, fmt.Errorf("unknown method: %s", method)
 	}
