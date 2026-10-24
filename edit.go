@@ -310,6 +310,9 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 	case SelectQuery:
 		return resolveSelectStep(pn, n, tq, fq, step, op, v, as)
 
+	case ArrayRangeQuery:
+		return resolveRangeStep(pn, n, tq, fq, step, op, v, as)
+
 	default:
 		// Fallback: use Exec (no write-back, works for reference types).
 		results, err := q.Exec(n)
@@ -509,6 +512,35 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 		return nil
 	}
 
+	return nil
+}
+
+// resolveRangeStep handles an ArrayRangeQuery intermediate step with write-back, like [i] for each index in range.
+func resolveRangeStep(pn *Node, n Node, rq ArrayRangeQuery, fq FilterQuery, step int, op string, v Node, as assigned) error {
+	a := n.Array()
+	if a == nil {
+		if isNullLike(n) {
+			return nil // a null root the edit creates nothing for stays as it is
+		}
+		return fmt.Errorf("cannot index array with range %s", rq)
+	}
+	from := resolveRangeBound(rq.From, len(a), 0)
+	to := resolveRangeBound(rq.To, len(a), len(a))
+	for i := from; i < to; i++ {
+		child := orNil(a[i])
+		if isNullLike(child) {
+			if child = emptyIntermediate(op, fq[step+1:]); child == nil {
+				continue // a null element stays as it is
+			}
+		}
+
+		if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
+			return err
+		}
+
+		a[i] = child
+	}
+	*pn = a
 	return nil
 }
 
