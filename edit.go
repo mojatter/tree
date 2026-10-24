@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -34,11 +35,11 @@ func Edit(pn *Node, expr string) error {
 	if err != nil {
 		return err
 	}
+	fq, err := editPath(q)
+	if err != nil {
+		return err
+	}
 	if isNullLike(*pn) { // a null root is replaced like a null reached by key
-		fq, ok := q.(FilterQuery)
-		if !ok {
-			fq = FilterQuery{q}
-		}
 		// Probe with "=" so that ^? stops only a query = would create containers for; others fail as on any root.
 		if c := emptyIntermediate("=", dropNopSteps(fq)); c != nil {
 			if op == "^?" {
@@ -48,7 +49,39 @@ func Edit(pn *Node, expr string) error {
 		}
 	}
 
-	return editQuery(pn, q, op, v)
+	return execForEdit(pn, fq, op, v)
+}
+
+// editPath flattens the parenthesised groups without a pipe in q into one path of steps.
+func editPath(q Query) (FilterQuery, error) {
+	return flattenGroups(q), nil
+}
+
+// flattenGroups returns q as a FilterQuery with its parenthesised groups without a pipe spliced in.
+func flattenGroups(q Query) FilterQuery {
+	fq, ok := q.(FilterQuery)
+	if !ok {
+		return FilterQuery{q}
+	}
+	flat := make(FilterQuery, 0, len(fq))
+	for _, s := range fq {
+		if g, ok := s.(FilterQuery); ok && lastPipe(g) < 0 {
+			flat = append(flat, flattenGroups(g)...)
+			continue
+		}
+		flat = append(flat, s)
+	}
+	return flat
+}
+
+// lastPipe returns the index of the last pipe in fq, or -1.
+func lastPipe(fq FilterQuery) int {
+	for i, q := range slices.Backward(fq) {
+		if _, ok := q.(SlurpQuery); ok {
+			return i
+		}
+	}
+	return -1
 }
 
 // parseEditValue parses right as one YAML document and rejects anything after it.
