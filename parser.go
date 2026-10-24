@@ -117,10 +117,11 @@ func (l *lexer) scanQuoted() (tok token, ok bool) {
 // scanMethod parses a method-call token (`name(args)`) starting at l.pos
 // (where l.expr[l.pos] is a lowercase letter). On success returns the
 // tkMethod token with name and raw args text, advancing l.pos past the
-// closing `)`. Returns ok=false (and leaves l.pos unchanged) when there
-// is no `(` after the lowercase run, or when the args parenthesis is
-// unterminated; the caller then falls through to plain ident scanning.
-// A '"' in the args is skipped by CSV rules, as the args are read as CSV.
+// closing `)`. A '"' in the args is skipped by CSV rules, as the args are
+// read as CSV; an unterminated '"' keeps the call with the rest of the
+// input as args so the CSV reader reports it. Returns ok=false (and
+// leaves l.pos unchanged) when there is no `(` after the lowercase run,
+// or when the `)` is missing; the caller then scans a plain ident.
 func (l *lexer) scanMethod() (tok token, ok bool) {
 	nameEnd := l.pos + 1
 	for nameEnd < len(l.expr) && isLower(l.expr[nameEnd]) {
@@ -134,6 +135,12 @@ func (l *lexer) scanMethod() (tok token, ok bool) {
 		switch l.expr[closeIdx] {
 		case '"':
 			closeIdx = skipCSVQuoted(l.expr, closeIdx)
+			if closeIdx >= len(l.expr) {
+				// Let the CSV reader report it rather than reading the name as an ident.
+				tok = token{kind: tkMethod, text: l.expr[l.pos:nameEnd], args: l.expr[nameEnd+1:]}
+				l.pos = len(l.expr)
+				return tok, true
+			}
 			continue
 		case '\'':
 			closeIdx = skipQuoted(l.expr, closeIdx)

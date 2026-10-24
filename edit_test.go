@@ -605,6 +605,11 @@ func TestEdit(t *testing.T) {
 			expr:     `[.k == "x" or(has("a\""=)"))].v = 1`,
 			want:     Array{Map{`a\"=)`: NumberValue(1), "v": NumberValue(1)}},
 		}, {
+			caseName: "unterminated CSV-quoted method arg is an error, not a match-all filter",
+			n:        Array{Map{"v": NumberValue(0)}},
+			expr:     `[has("a\"b")].v = 1`,
+			errstr:   `syntax error: invalid edit expression "[has(\"a\\\"b\")].v = 1"`,
+		}, {
 			caseName: "escaped quote in parens after an uppercase-led key keeps lexer rules",
 			n:        Array{Map{"Xa": NumberValue(1)}},
 			expr:     `[.Xa("a\"=)")].v = 1`,

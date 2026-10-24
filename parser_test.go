@@ -409,6 +409,12 @@ func TestParseQueryErrors(t *testing.T) {
 		}, {
 			expr:   `[foo-bar]`,
 			errstr: `syntax error: invalid token -: "[foo-bar]"`,
+		}, {
+			expr:   `has("a\"b")`,
+			errstr: `failed to parse args: parse error on line 1, column 4: extraneous or missing " in quoted-field`,
+		}, {
+			expr:   `[has("abc]`,
+			errstr: `failed to parse args: parse error on line 1, column 6: extraneous or missing " in quoted-field`,
 		},
 	}
 	for _, tc := range testCases {
