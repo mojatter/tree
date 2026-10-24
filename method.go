@@ -18,7 +18,8 @@ var (
 
 // NewMethodQueryFunc is a factory function type for creating method queries.
 // It takes string arguments and returns a Query implementation.
-// It is called without the registry lock held, so it may itself parse a query or call NewMethodQuery, as sort does.
+// It is called without the registry lock held, so it may itself parse a query or call NewMethodQuery, as sort does,
+// and it may run concurrently with other factories, so it must be safe for concurrent use.
 type NewMethodQueryFunc func(args ...string) (Query, error)
 
 // RegisterNewMethodQueryFunc registers a factory function for a method query.
