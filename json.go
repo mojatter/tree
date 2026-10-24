@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"reflect"
 )
 
 // MarshalJSON returns the JSON encoding of the specified node.
@@ -15,34 +16,13 @@ func MarshalJSON(n Node) ([]byte, error) {
 
 // DecodeJSON decodes the next JSON value from dec; io.EOF means the input ended before a top-level value, io.ErrUnexpectedEOF inside one.
 // Inside a container the caller opened with dec.Token, a cut between its elements is also io.EOF, so read the closing delimiter to detect it; tree caps nesting at 10,000 levels from the value, json/v2 from the stream root.
+// With dec.UseNumber, numbers still become float64 NumberValues, so integers beyond 2^53 lose precision.
 func DecodeJSON(dec *json.Decoder) (Node, error) {
 	t, err := dec.Token()
 	if err != nil {
 		return nil, err
 	}
-	if t == nil {
-		return Nil, nil
-	}
-	switch tt := t.(type) {
-	case string:
-		return StringValue(tt), nil
-	case float64:
-		return NumberValue(tt), nil
-	case bool:
-		return BoolValue(tt), nil
-	case json.Delim:
-		switch ds := tt.String(); ds {
-		case "{":
-			m := Map{}
-			if err := jsonMap(dec, &m, 1); err != nil {
-				return nil, err
-			}
-			return m, nil
-		case "[":
-			return jsonArray(dec, Array{}, 1)
-		}
-	}
-	return nil, fmt.Errorf("unknown token %#v", t)
+	return jsonElem(dec, t, 1)
 }
 
 // unexpectedEOF turns io.EOF inside a container into io.ErrUnexpectedEOF, as encoding/json does.
@@ -207,7 +187,7 @@ var errMaxDepth = errors.New("exceeded max depth")
 func jsonElem(dec *json.Decoder, t json.Token, depth int) (Node, error) {
 	d, ok := t.(json.Delim)
 	if !ok {
-		return jsonValue(t), nil
+		return jsonValue(dec, t)
 	}
 	if d != '{' && d != '[' {
 		return nil, fmt.Errorf("unknown token %#v", t)
@@ -229,21 +209,25 @@ func jsonElem(dec *json.Decoder, t json.Token, depth int) (Node, error) {
 	return a, nil
 }
 
-// jsonValue converts a JSON token to a Node value.
-// Handles primitive types: string, bool, float64, and nil.
-func jsonValue(t json.Token) Node {
-	if t == nil {
-		return Nil
-	}
+// jsonValue converts a scalar JSON token, including a json.Number from UseNumber, to a Node value.
+func jsonValue(dec *json.Decoder, t json.Token) (Node, error) {
 	switch tt := t.(type) {
+	case nil:
+		return Nil, nil
 	case string:
-		return StringValue(tt)
+		return StringValue(tt), nil
 	case bool:
-		return BoolValue(tt)
+		return BoolValue(tt), nil
 	case float64:
-		return NumberValue(tt)
+		return NumberValue(tt), nil
+	case json.Number:
+		f, err := tt.Float64()
+		if err != nil {
+			return nil, &json.UnmarshalTypeError{Value: "number " + tt.String(), Type: reflect.TypeFor[float64](), Offset: dec.InputOffset()} // as without UseNumber
+		}
+		return NumberValue(f), nil
 	}
-	return StringValue(fmt.Sprintf("%#v", t))
+	return nil, fmt.Errorf("unknown token %#v", t)
 }
 
 // MarshalViaJSON returns the node encoding of v via "encoding/json".

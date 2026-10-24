@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"maps"
+	"math"
 	"reflect"
 	"runtime/debug"
 	"strconv"
@@ -164,6 +166,59 @@ func TestDecodeJSONErrors(t *testing.T) {
 				t.Errorf("got %T %v; want *json.SyntaxError", err, err)
 			}
 		})
+	}
+}
+
+func TestDecodeJSONUseNumber(t *testing.T) {
+	decode := func(data string, useNumber bool) (Node, error) {
+		dec := json.NewDecoder(strings.NewReader(data))
+		if useNumber {
+			dec.UseNumber()
+		}
+		return DecodeJSON(dec)
+	}
+	testCases := []struct {
+		caseName  string
+		data      string
+		want      Node
+		wantValue string // the UnmarshalTypeError Value, when decoding fails
+		// wantOffset is the end of the number, checked with UseNumber only: the stdlib's own Offset differs between v1 and v2.
+		wantOffset int64
+		negZero    bool // DeepEqual treats -0 as 0, so the sign is checked separately
+	}{
+		{caseName: "top-level number", data: `1`, want: NumberValue(1)},
+		{caseName: "nested numbers", data: `[1, {"a":2.5}]`, want: Array{NumberValue(1), Map{"a": NumberValue(2.5)}}},
+		{caseName: "negative zero", data: `[-0]`, want: Array{NumberValue(math.Copysign(0, -1))}, negZero: true},
+		{caseName: "underflow to zero", data: `[1e-400]`, want: Array{NumberValue(0)}},
+		{caseName: "decimal fraction", data: `[0.1]`, want: Array{NumberValue(0.1)}},
+		{caseName: "integer beyond 2^53 loses precision", data: `[12345678901234567891]`, want: Array{NumberValue(12345678901234567891)}},
+		{caseName: "out of float64 range", data: `{"a":[1e400]}`, wantValue: "number 1e400", wantOffset: 11},
+	}
+	for _, tc := range testCases {
+		for _, useNumber := range []bool{true, false} {
+			t.Run(fmt.Sprintf("%s/UseNumber=%v", tc.caseName, useNumber), func(t *testing.T) {
+				got, err := decode(tc.data, useNumber)
+				if tc.wantValue != "" {
+					var ute *json.UnmarshalTypeError
+					if !errors.As(err, &ute) || ute.Value != tc.wantValue || ute.Type != reflect.TypeFor[float64]() {
+						t.Fatalf("got %v; want an UnmarshalTypeError for %s into float64", err, tc.wantValue)
+					}
+					if useNumber && ute.Offset != tc.wantOffset {
+						t.Errorf("got Offset %d; want %d", ute.Offset, tc.wantOffset)
+					}
+					return
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(got, tc.want) {
+					t.Errorf("got %#v; want %#v", got, tc.want)
+				}
+				if tc.negZero && !math.Signbit(float64(got.(Array)[0].(NumberValue))) {
+					t.Errorf("got %#v; want negative zero", got)
+				}
+			})
+		}
 	}
 }
 
@@ -683,17 +738,18 @@ func FuzzUnmarshalJSON(f *testing.F) {
 	})
 }
 
-func TestJSONElemDelim(t *testing.T) {
+func TestJSONElemUnknownToken(t *testing.T) {
 	testCases := []struct {
 		caseName string
-		delim    json.Delim
+		tok      json.Token
 	}{
-		{caseName: "closing brace", delim: '}'},
-		{caseName: "closing bracket", delim: ']'},
+		{caseName: "closing brace", tok: json.Delim('}')},
+		{caseName: "closing bracket", tok: json.Delim(']')},
+		{caseName: "unknown token type", tok: struct{}{}},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
-			_, err := jsonElem(json.NewDecoder(strings.NewReader("")), tc.delim, 1)
+			_, err := jsonElem(json.NewDecoder(strings.NewReader("")), tc.tok, 1)
 			if err == nil || !strings.Contains(err.Error(), "unknown token") {
 				t.Errorf("got %v; want unknown token", err)
 			}
