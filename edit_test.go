@@ -1696,6 +1696,21 @@ func TestEdit(t *testing.T) {
 			expr:     `.a.sort().b = 1`,
 			errstr:   `syntax error: unsupported edit query: sort()`,
 		}, {
+			caseName: "trailing pipe is an unsupported edit query on missing data",
+			n:        Map{},
+			expr:     `.a |= 1`,
+			errstr:   `syntax error: unsupported edit query: |`,
+		}, {
+			caseName: "trailing pipe is an unsupported edit query on present data",
+			n:        Map{"a": Map{"b": NumberValue(1)}},
+			expr:     `.a.b |= 2`,
+			errstr:   `syntax error: unsupported edit query: |`,
+		}, {
+			caseName: "trailing pipe after a select is an unsupported edit query",
+			n:        Map{},
+			expr:     `.a[] |= 1`,
+			errstr:   `syntax error: unsupported edit query: |`,
+		}, {
 			caseName: "slice step keeps a *Array",
 			n:        Map{"a": &Array{Map{"x": NumberValue(1)}}},
 			expr:     `.a[0:1].x = 9`,

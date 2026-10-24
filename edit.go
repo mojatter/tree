@@ -72,10 +72,10 @@ func editStep(n Node, q Query) (Query, error) {
 }
 
 // editPath flattens groups without a pipe and rejects a step the edit cannot write through, before any data is read.
-// Steps before the last pipe are only read, so only the steps after it are checked.
+// Steps before the last pipe are only read, so only the steps after it are checked; a trailing pipe, as in |=, is a step.
 func editPath(q Query) (FilterQuery, error) {
 	fq := flattenGroups(q)
-	seg := dropNopSteps(fq[lastPipe(fq)+1:])
+	seg := dropNopSteps(fq[lastPipe(fq[:max(len(fq)-1, 0)])+1:])
 	for i, s := range seg {
 		if !canEditStep(s, i == len(seg)-1) {
 			return nil, errUnsupportedEditQuery(s)
@@ -131,7 +131,7 @@ func errUnsupportedEditQuery(q Query) error {
 	if _, ok := q.(FilterQuery); ok {
 		return fmt.Errorf("syntax error: unsupported edit query: (%s)", q)
 	}
-	return fmt.Errorf("syntax error: unsupported edit query: %s", q)
+	return fmt.Errorf("syntax error: unsupported edit query: %s", strings.TrimSpace(q.String()))
 }
 
 // parseEditValue parses right as one YAML document and rejects anything after it.
