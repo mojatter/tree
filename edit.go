@@ -52,6 +52,24 @@ func Edit(pn *Node, expr string) error {
 	return execForEdit(pn, fq, op, v)
 }
 
+// indexQuery is a method query that an edit writes through as the array index it returns.
+type indexQuery interface {
+	Query
+	editIndex() ArrayQuery
+}
+
+// editStep returns the step an edit applies for q on n: the index of an indexQuery, rejecting a map, which [0] would edit by key "0", and q itself otherwise.
+func editStep(n Node, q Query) (Query, error) {
+	iq, ok := q.(indexQuery)
+	if !ok {
+		return q, nil
+	}
+	if !isNullLike(n) && n.Type().IsMap() {
+		return nil, fmt.Errorf("cannot edit %s of a map", q)
+	}
+	return iq.editIndex(), nil
+}
+
 // editPath flattens the parenthesised groups without a pipe in q into one path of steps.
 func editPath(q Query) (FilterQuery, error) {
 	return flattenGroups(q), nil
@@ -183,8 +201,12 @@ func skipWord(expr string, p int) int {
 }
 
 // editQuery applies an edit operation to a node using the specified query.
-// Supports FilterQuery and EditorQuery types.
+// Supports FilterQuery, EditorQuery and indexQuery types.
 func editQuery(pn *Node, q Query, op string, v Node) error {
+	q, err := editStep(orNil(*pn), q)
+	if err != nil {
+		return err
+	}
 	switch tq := q.(type) {
 	case FilterQuery:
 		return execForEdit(pn, tq, op, v)
@@ -244,7 +266,7 @@ func dropNopSteps(fq FilterQuery) FilterQuery {
 			continue
 		}
 		if i == len(fq)-1 && len(kept) > 0 {
-			if _, ok := kept[len(kept)-1].(EditorQuery); !ok {
+			if !isEditorStep(kept[len(kept)-1]) {
 				kept = append(kept, q) // a trailing . after a step without write-back, such as [] or a slice, is the editable last step
 			}
 		}
@@ -253,6 +275,15 @@ func dropNopSteps(fq FilterQuery) FilterQuery {
 		return FilterQuery{NopQuery{}}
 	}
 	return kept
+}
+
+// isEditorStep reports whether an edit can apply q as its last step.
+func isEditorStep(q Query) bool {
+	switch q.(type) {
+	case EditorQuery, indexQuery:
+		return true
+	}
+	return false
 }
 
 // isNopQuery reports whether q is a bare . or .., by value or pointer.
@@ -274,8 +305,11 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 		return editLast(pn, fq[len(fq)-1], op, v, as)
 	}
 
-	q := fq[step]
 	n := orNil(*pn)
+	q, err := editStep(n, fq[step])
+	if err != nil {
+		return err
+	}
 
 	switch tq := q.(type) {
 	case MapQuery:
@@ -562,7 +596,7 @@ func emptyIntermediate(op string, rest FilterQuery) Node {
 	}
 	for _, q := range rest {
 		switch q.(type) {
-		case MapQuery, ArrayQuery:
+		case MapQuery, ArrayQuery, indexQuery:
 		default:
 			return nil
 		}
@@ -570,7 +604,7 @@ func emptyIntermediate(op string, rest FilterQuery) Node {
 	switch rest[0].(type) {
 	case MapQuery:
 		return Map{}
-	case ArrayQuery:
+	case ArrayQuery, indexQuery:
 		return Array{}
 	}
 	return nil

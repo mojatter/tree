@@ -1347,6 +1347,16 @@ func TestEdit(t *testing.T) {
 			expr:     `.x.y.c = 1`,
 			want:     Map{"x": mapHidingEditorNode{Map{"y": Map{"c": NumberValue(1)}}}},
 		}, {
+			caseName: "first() on an editor node without map errors as on a map",
+			n:        Map{"x": mapHidingEditorNode{Map{"k": NumberValue(1)}}},
+			expr:     `.x.first() = 1`,
+			errstr:   `cannot edit first() of a map`,
+		}, {
+			caseName: "last() step on an editor node without map errors as on a map",
+			n:        Map{"x": mapHidingEditorNode{Map{"k": NumberValue(1)}}},
+			expr:     `.x.last().y = 1`,
+			errstr:   `cannot edit last() of a map`,
+		}, {
 			caseName: "intermediate map step leaves editor node wrapping nil map",
 			n:        Map{"x": valueEditorNode{Map(nil)}},
 			expr:     `.x.y.c = 1`,
