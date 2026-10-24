@@ -120,6 +120,51 @@ func TestParseQuery(t *testing.T) {
 			expr: `.."b c"`,
 			want: WalkQuery("b c"),
 		}, {
+			expr: `.""`,
+			want: MapQuery(""),
+		}, {
+			expr: `."".b`,
+			want: FilterQuery{MapQuery(""), MapQuery("b")},
+		}, {
+			expr: `..""`,
+			want: WalkQuery(""),
+		}, {
+			expr: `[""]`,
+			want: MapQuery(""),
+		}, {
+			expr: `''`,
+			want: ValueQuery{StringValue("")},
+		}, {
+			expr: `[.x == ""]`,
+			want: SelectQuery{And{Comparator{MapQuery("x"), EQ, ValueQuery{StringValue("")}}}},
+		}, {
+			expr: "[.k == \"a\nb\"]",
+			want: SelectQuery{And{Comparator{MapQuery("k"), EQ, ValueQuery{StringValue("a\nb")}}}},
+		}, {
+			expr: `[.k == "<&>"]`,
+			want: SelectQuery{And{Comparator{MapQuery("k"), EQ, ValueQuery{StringValue("<&>")}}}},
+		}, {
+			expr: `[.k == "a\"b\\c"]`,
+			want: SelectQuery{And{Comparator{MapQuery("k"), EQ, ValueQuery{StringValue(`a"b\c`)}}}},
+		}, {
+			expr: `has("a""b")`,
+			want: &HasQuery{Key: `a"b`},
+		}, {
+			expr: `has("a\""b")`,
+			want: &HasQuery{Key: `a\"b`},
+		}, {
+			expr: `has("a\")`,
+			want: &HasQuery{Key: `a\`},
+		}, {
+			expr: `contains("x,y")`,
+			want: &ContainsQuery{Value: "x,y"},
+		}, {
+			expr: `sort(".""b c""")`,
+			want: &SortQuery{Expr: `."b c"`, Query: MapQuery("b c")},
+		}, {
+			expr: `rsort(".""b\""c""")`,
+			want: &RSortQuery{Expr: `."b\"c"`, Query: MapQuery(`b"c`)},
+		}, {
 			expr: `sort("(.foo)")`,
 			want: &SortQuery{
 				Expr:  "(.foo)",
@@ -364,6 +409,12 @@ func TestParseQueryErrors(t *testing.T) {
 		}, {
 			expr:   `[foo-bar]`,
 			errstr: `syntax error: invalid token -: "[foo-bar]"`,
+		}, {
+			expr:   `has("a\"b")`,
+			errstr: `failed to parse args: parse error on line 1, column 4: extraneous or missing " in quoted-field`,
+		}, {
+			expr:   `[has("abc]`,
+			errstr: `failed to parse args: parse error on line 1, column 6: extraneous or missing " in quoted-field`,
 		},
 	}
 	for _, tc := range testCases {

@@ -575,6 +575,51 @@ func TestEdit(t *testing.T) {
 			expr:     `[has(a(b)].v = 1`,
 			want:     Array{Map{"a(b": NumberValue(1), "v": NumberValue(1)}},
 		}, {
+			caseName: "CSV-quoted method arg with backslash before doubled quote",
+			n:        Array{Map{`a\"b`: NumberValue(1)}},
+			expr:     `[has("a\""b")].v = 1`,
+			want:     Array{Map{`a\"b`: NumberValue(1), "v": NumberValue(1)}},
+		}, {
+			caseName: "escaped quote inside grouping parens keeps lexer rules",
+			n:        Array{Map{"k": StringValue(`a"=)`)}},
+			expr:     `[(.k == "a\"=)")].v = 1`,
+			want:     Array{Map{"k": StringValue(`a"=)`), "v": NumberValue(1)}},
+		}, {
+			caseName: "escaped quote inside parens after and keeps lexer rules",
+			n:        Array{Map{"a": NumberValue(1), "k": StringValue(`a"=)`)}},
+			expr:     `[.a == 1 and(.k == "a\"=)")].v = 1`,
+			want:     Array{Map{"a": NumberValue(1), "k": StringValue(`a"=)`), "v": NumberValue(1)}},
+		}, {
+			caseName: "escaped quote inside parens after or keeps lexer rules",
+			n:        Array{Map{"a": NumberValue(1), "k": StringValue(`a"=)`)}},
+			expr:     `[.a == 2 or(.k == "a\"=)")].v = 1`,
+			want:     Array{Map{"a": NumberValue(1), "k": StringValue(`a"=)`), "v": NumberValue(1)}},
+		}, {
+			caseName: "CSV-quoted method arg inside grouping parens",
+			n:        Array{Map{`a\`: NumberValue(1)}},
+			expr:     `[(has("a\") == true)].v = "x)"`,
+			want:     Array{Map{`a\`: NumberValue(1), "v": StringValue("x)")}},
+		}, {
+			caseName: "CSV-quoted method arg inside parens after or",
+			n:        Array{Map{`a\"=)`: NumberValue(1)}},
+			expr:     `[.k == "x" or(has("a\""=)"))].v = 1`,
+			want:     Array{Map{`a\"=)`: NumberValue(1), "v": NumberValue(1)}},
+		}, {
+			caseName: "unterminated CSV-quoted method arg is an error, not a match-all filter",
+			n:        Array{Map{"v": NumberValue(0)}},
+			expr:     `[has("a\"b")].v = 1`,
+			errstr:   `syntax error: invalid edit expression "[has(\"a\\\"b\")].v = 1"`,
+		}, {
+			caseName: "escaped quote in parens after an uppercase-led key keeps lexer rules",
+			n:        Array{Map{"Xa": NumberValue(1)}},
+			expr:     `[.Xa("a\"=)")].v = 1`,
+			want:     Array{Map{"Xa": NumberValue(1), "v": NumberValue(1)}},
+		}, {
+			caseName: "exponent sign on the LHS is not an append",
+			n:        Array{Map{"x": NumberValue(1000)}},
+			expr:     `[.x == 1e+3].v = 1`,
+			want:     Array{Map{"x": NumberValue(1000), "v": NumberValue(1)}},
+		}, {
 			caseName: "second YAML document on RHS returns syntax error",
 			n:        Map{},
 			expr:     ".a = 1\n---\n2",

@@ -90,6 +90,11 @@ func splitEdit(expr string) (left, op, right string, ok bool) {
 				i += 2 // comparison operator, not an assignment
 				continue
 			}
+		default:
+			if isWord(expr[i]) {
+				i = skipWord(expr, i)
+				continue
+			}
 		}
 		for _, o := range editOps {
 			if strings.HasPrefix(expr[i:], o) {
@@ -109,7 +114,7 @@ func splitEdit(expr string) (left, op, right string, ok bool) {
 	return "", "", "", false
 }
 
-// skipParen returns the position past the first unquoted ')' after expr[p], or p+1 when unterminated, so '=' inside parentheses never splits the edit.
+// skipParen returns the position past the first unquoted ')' after the grouping '(' at expr[p], or p+1 when unterminated, so '=' inside parentheses never splits the edit.
 func skipParen(expr string, p int) int {
 	for i := p + 1; i < len(expr); {
 		switch expr[i] {
@@ -119,9 +124,29 @@ func skipParen(expr string, p int) int {
 		case ')':
 			return i + 1
 		}
+		if isWord(expr[i]) {
+			i = skipWord(expr, i)
+			continue
+		}
 		i++
 	}
 	return p + 1
+}
+
+// skipWord returns the position past the keyword, method call or identifier the lexer reads at expr[p] (an isWord byte).
+func skipWord(expr string, p int) int {
+	afterDot := p > 0 && expr[p-1] == '.'
+	if kw := matchOp(expr, p, afterDot); kw != "" {
+		return p + len(kw)
+	}
+	l := lexer{expr: expr, pos: p}
+	if isLower(expr[p]) {
+		if _, ok := l.scanMethod(); ok {
+			return l.pos
+		}
+	}
+	l.scanIdent(afterDot)
+	return l.pos
 }
 
 // editQuery applies an edit operation to a node using the specified query.

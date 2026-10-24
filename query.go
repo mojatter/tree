@@ -65,6 +65,9 @@ func (q ValueQuery) Exec(n Node) ([]Node, error) {
 }
 
 func (q ValueQuery) String() string {
+	if q.Node != nil && q.Node.Type().IsStringValue() {
+		return quoteString(q.Node.Value().String())
+	}
 	s, _ := MarshalJSON(q.Node)
 	return string(s)
 }
@@ -144,18 +147,14 @@ func formatKey(prefix, key string) string {
 	if isIdent(key) {
 		return prefix + key
 	}
-	var sb strings.Builder
-	sb.WriteString(prefix)
-	sb.WriteByte('"')
-	for i := 0; i < len(key); i++ {
-		c := key[i]
-		if c == '"' || c == '\\' {
-			sb.WriteByte('\\')
-		}
-		sb.WriteByte(c)
-	}
-	sb.WriteByte('"')
-	return sb.String()
+	return prefix + quoteString(key)
+}
+
+var quoteReplacer = strings.NewReplacer(`"`, `\"`, `\`, `\\`)
+
+// quoteString double-quotes s as the lexer reads it back: only '"' and '\' are escaped.
+func quoteString(s string) string {
+	return `"` + quoteReplacer.Replace(s) + `"`
 }
 
 func isIdent(s string) bool {
