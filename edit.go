@@ -17,6 +17,7 @@ var editOps = []string{"+=", "^?", "="}
 
 // Edit parses the edit expression and applies it to the node tree.
 // The RHS after "=" or "+=" is parsed as YAML; on error, matches edited before the failing one stay edited.
+// A step the edit cannot write through, such as a method other than first() and last(), is a syntax error.
 func Edit(pn *Node, expr string) error {
 	left, op, right, ok := splitEdit(expr)
 	if !ok {
@@ -70,9 +71,17 @@ func editStep(n Node, q Query) (Query, error) {
 	return iq.editIndex(), nil
 }
 
-// editPath flattens the parenthesised groups without a pipe in q into one path of steps.
+// editPath flattens groups without a pipe and rejects a step the edit cannot write through, before any data is read.
+// Steps before the last pipe are only read, so only the steps after it are checked.
 func editPath(q Query) (FilterQuery, error) {
-	return flattenGroups(q), nil
+	fq := flattenGroups(q)
+	seg := dropNopSteps(fq[lastPipe(fq)+1:])
+	for i, s := range seg {
+		if !canEditStep(s, i == len(seg)-1) {
+			return nil, errUnsupportedEditQuery(s)
+		}
+	}
+	return fq, nil
 }
 
 // flattenGroups returns q as a FilterQuery with its parenthesised groups without a pipe spliced in.
@@ -100,6 +109,29 @@ func lastPipe(fq FilterQuery) int {
 		}
 	}
 	return -1
+}
+
+// canEditStep reports whether an edit can write through q, as the last step when last is true.
+func canEditStep(q Query, last bool) bool {
+	switch q.(type) {
+	case MapQuery, ArrayQuery, WalkQuery, indexQuery:
+		return true
+	case SelectQuery, ArrayRangeQuery:
+		return !last
+	}
+	_, ok := q.(EditorQuery)
+	return last && ok
+}
+
+// errUnsupportedEditQuery reports a step an edit cannot write through, with a group in parentheses.
+func errUnsupportedEditQuery(q Query) error {
+	if vq, ok := q.(ValueQuery); ok && isNull(vq.Node) {
+		return errors.New("syntax error: unsupported edit query: ()") // an empty group parses as a null literal
+	}
+	if _, ok := q.(FilterQuery); ok {
+		return fmt.Errorf("syntax error: unsupported edit query: (%s)", q)
+	}
+	return fmt.Errorf("syntax error: unsupported edit query: %s", q)
 }
 
 // parseEditValue parses right as one YAML document and rejects anything after it.
@@ -213,7 +245,7 @@ func editQuery(pn *Node, q Query, op string, v Node) error {
 	case EditorQuery:
 		return execEdit(pn, tq, op, v)
 	}
-	return fmt.Errorf("syntax error: unsupported edit query: %s", q)
+	return errUnsupportedEditQuery(q)
 }
 
 // execForEdit executes a FilterQuery for edit operations.
@@ -266,7 +298,7 @@ func dropNopSteps(fq FilterQuery) FilterQuery {
 			continue
 		}
 		if i == len(fq)-1 && len(kept) > 0 {
-			if !isEditorStep(kept[len(kept)-1]) {
+			if !canEditStep(kept[len(kept)-1], true) {
 				kept = append(kept, q) // a trailing . after a step without write-back, such as [] or a slice, is the editable last step
 			}
 		}
@@ -275,15 +307,6 @@ func dropNopSteps(fq FilterQuery) FilterQuery {
 		return FilterQuery{NopQuery{}}
 	}
 	return kept
-}
-
-// isEditorStep reports whether an edit can apply q as its last step.
-func isEditorStep(q Query) bool {
-	switch q.(type) {
-	case EditorQuery, indexQuery:
-		return true
-	}
-	return false
 }
 
 // isNopQuery reports whether q is a bare . or .., by value or pointer.
@@ -346,22 +369,8 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 
 	case ArrayRangeQuery:
 		return resolveRangeStep(pn, n, tq, fq, step, op, v, as)
-
-	default:
-		// Fallback: use Exec (no write-back, works for reference types).
-		results, err := q.Exec(n)
-		if err != nil {
-			return err
-		}
-		for _, r := range results {
-			child := r
-
-			if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
-				return err
-			}
-		}
-		return nil
 	}
+	return errUnsupportedEditQuery(q)
 }
 
 // resolveMapStep handles a MapQuery intermediate step with write-back.
@@ -431,7 +440,7 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 	}
 
 	if n.IsNil() {
-		return nil // a null reached through a step without write-back, such as a slice, is skipped
+		return nil // a null root the edit creates nothing for stays as it is
 	}
 	return fmt.Errorf("cannot index array with %q", key)
 }
@@ -482,7 +491,7 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 	}
 
 	if n.IsNil() {
-		return nil // a null reached through a step without write-back, such as a slice, is skipped
+		return nil // a null root the edit creates nothing for stays as it is
 	}
 	return fmt.Errorf("cannot index array with %d", index)
 }
