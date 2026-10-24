@@ -502,32 +502,11 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 // resolveSelectStep handles a SelectQuery intermediate step with write-back.
 func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step int, op string, v Node, as assigned) error {
 	if a := n.Array(); a != nil {
-		for i, elem := range a {
-			elem = orNil(elem)
-			if sq.Selector != nil {
-				ok, err := sq.Matches(elem)
-				if err != nil {
-					return err
-				}
-				if !ok {
-					continue
-				}
-			}
-			child := elem
-			if isNullLike(child) {
-				if child = emptyIntermediate(op, fq[step+1:]); child == nil {
-					continue // a null element stays as it is
-				}
-			}
-
-			if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
-				return err
-			}
-
-			a[i] = child
+		var match func(Node) (bool, error)
+		if sq.Selector != nil {
+			match = sq.Matches
 		}
-		*pn = a
-		return nil
+		return editElements(pn, n, a, 0, len(a), match, fq, step, op, v, as)
 	}
 
 	if m := n.Map(); m != nil {
@@ -572,8 +551,23 @@ func resolveRangeStep(pn *Node, n Node, rq ArrayRangeQuery, fq FilterQuery, step
 	}
 	from := resolveRangeBound(rq.From, len(a), 0)
 	to := resolveRangeBound(rq.To, len(a), len(a))
+	return editElements(pn, n, a, from, to, nil, fq, step, op, v, as)
+}
+
+// editElements edits a[from:to], skipping elements match rejects, and writes them back through n when it is an EditorNode.
+func editElements(pn *Node, n Node, a Array, from, to int, match func(Node) (bool, error), fq FilterQuery, step int, op string, v Node, as assigned) error {
+	en, isEditor := n.(EditorNode)
 	for i := from; i < to; i++ {
 		child := orNil(a[i])
+		if match != nil {
+			ok, err := match(child)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				continue
+			}
+		}
 		if isNullLike(child) {
 			if child = emptyIntermediate(op, fq[step+1:]); child == nil {
 				continue // a null element stays as it is
@@ -584,9 +578,17 @@ func resolveRangeStep(pn *Node, n Node, rq ArrayRangeQuery, fq FilterQuery, step
 			return err
 		}
 
+		if isEditor {
+			if err := en.Set(i, child); err != nil {
+				return err
+			}
+			continue
+		}
 		a[i] = child
 	}
-	*pn = a
+	if !isEditor {
+		*pn = a
+	}
 	return nil
 }
 

@@ -1690,6 +1690,26 @@ func TestEdit(t *testing.T) {
 			n:        Map{},
 			expr:     `.a.sort().b = 1`,
 			errstr:   `syntax error: unsupported edit query: sort()`,
+		}, {
+			caseName: "slice step keeps a *Array",
+			n:        Map{"a": &Array{Map{"x": NumberValue(1)}}},
+			expr:     `.a[0:1].x = 9`,
+			want:     Map{"a": &Array{Map{"x": NumberValue(9)}}},
+		}, {
+			caseName: "slice step creates a nil element in a *Array",
+			n:        Map{"a": &Array{nil}},
+			expr:     `.a[0:1].x = 1`,
+			want:     Map{"a": &Array{Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "select step creates a nil element in a *Array",
+			n:        Map{"a": &Array{nil}},
+			expr:     `.a[].x = 1`,
+			want:     Map{"a": &Array{Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "slice step keeps a custom EditorNode",
+			n:        Map{"a": &pointerEditorNode{&Array{nil}}},
+			expr:     `.a[0:1].x = 1`,
+			want:     Map{"a": &pointerEditorNode{&Array{Map{"x": NumberValue(1)}}}},
 		},
 	}
 	for _, tc := range testCases {
