@@ -165,6 +165,12 @@ func TestParseQuery(t *testing.T) {
 			expr: `rsort(".""b\""c""")`,
 			want: &RSortQuery{Expr: `."b\"c"`, Query: MapQuery(`b"c`)},
 		}, {
+			expr: `sort("count()")`,
+			want: &SortQuery{Expr: "count()", Query: &CountQuery{}},
+		}, {
+			expr: `rsort("has(""a"")")`,
+			want: &RSortQuery{Expr: `has("a")`, Query: &HasQuery{Key: "a"}},
+		}, {
 			expr: `sort("(.foo)")`,
 			want: &SortQuery{
 				Expr:  "(.foo)",
