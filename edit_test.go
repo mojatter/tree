@@ -1596,6 +1596,56 @@ func TestEdit(t *testing.T) {
 			expr:     `.a.first().x = 1`,
 			want:     Map{"a": Array{Map{"x": NumberValue(1)}}},
 		}, {
+			caseName: "last() on null creates nothing",
+			n:        Map{"a": Nil},
+			expr:     `.a.last() = 1`,
+			want:     Map{"a": Nil},
+		}, {
+			caseName: "last() step on null creates nothing",
+			n:        Map{"a": Nil},
+			expr:     `.a.last().c = 1`,
+			want:     Map{"a": Nil},
+		}, {
+			caseName: "negative index on null creates nothing",
+			n:        Map{"a": Nil},
+			expr:     `.a[-1] = 1`,
+			want:     Map{"a": Nil},
+		}, {
+			caseName: "negative index after a created map creates nothing",
+			n:        Map{"a": Nil},
+			expr:     `.a.b[-1].c = 1`,
+			want:     Map{"a": Nil},
+		}, {
+			caseName: "last() on a null root leaves it null",
+			n:        Nil,
+			expr:     `.last() = 1`,
+			want:     Nil,
+		}, {
+			caseName: "negative index on a null root leaves it null",
+			n:        Nil,
+			expr:     `.[-1] = 1`,
+			want:     Nil,
+		}, {
+			caseName: "append at a negative index on a null root leaves it null",
+			n:        Nil,
+			expr:     `.[-1] += 1`,
+			want:     Nil,
+		}, {
+			caseName: "delete at a negative index on a null root is a no-op",
+			n:        Nil,
+			expr:     `.[-1] ^?`,
+			want:     Nil,
+		}, {
+			caseName: "delete last() on a null root is a no-op",
+			n:        Nil,
+			expr:     `.last() ^?`,
+			want:     Nil,
+		}, {
+			caseName: "last() step on a null root leaves it null",
+			n:        Nil,
+			expr:     `.last().a = 1`,
+			want:     Nil,
+		}, {
 			caseName: "first() step on a map errors",
 			n:        Map{"m": Map{"k": NumberValue(1)}},
 			expr:     `.m.first().x = 1`,

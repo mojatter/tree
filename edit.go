@@ -41,7 +41,7 @@ func Edit(pn *Node, expr string) error {
 		return err
 	}
 	if isNullLike(*pn) { // a null root is replaced like a null reached by key
-		// Probe with "=" so that ^? stops only a query = would create containers for; others fail as on any root.
+		// Probe with "=" so that ^? stops only a query = would create containers for; others leave the root as under a key.
 		if c := emptyIntermediate("=", dropNopSteps(fq)); c != nil {
 			if op == "^?" {
 				return nil // deleting from a null root leaves it as it is
@@ -238,6 +238,9 @@ func editQuery(pn *Node, q Query, op string, v Node) error {
 	q, err := editStep(orNil(*pn), q)
 	if err != nil {
 		return err
+	}
+	if aq, ok := q.(ArrayQuery); ok && aq < 0 && isNullLike(*pn) {
+		return nil // a null root has no element to count from the end and stays as it is, as under a key
 	}
 	switch tq := q.(type) {
 	case FilterQuery:
@@ -604,8 +607,16 @@ func emptyIntermediate(op string, rest FilterQuery) Node {
 		return nil
 	}
 	for _, q := range rest {
-		switch q.(type) {
-		case MapQuery, ArrayQuery, indexQuery:
+		switch tq := q.(type) {
+		case MapQuery:
+		case ArrayQuery:
+			if tq < 0 {
+				return nil // an empty array has no element to count from the end
+			}
+		case indexQuery:
+			if tq.editIndex() < 0 {
+				return nil
+			}
 		default:
 			return nil
 		}
