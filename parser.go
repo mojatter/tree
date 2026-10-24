@@ -247,9 +247,7 @@ func skipQuoted(expr string, p int) int {
 	return p
 }
 
-// skipCSVQuoted returns the position past the CSV-quoted field at expr[p]
-// (where expr[p] is '"'): a doubled '"' is literal and '\' is not special.
-// Returns len(expr) for an unterminated field.
+// skipCSVQuoted returns the position past the CSV-quoted field at expr[p] (a doubled '"' is literal, '\' is plain), or len(expr) when unterminated.
 func skipCSVQuoted(expr string, p int) int {
 	for p++; p < len(expr); p++ {
 		if expr[p] != '"' {
