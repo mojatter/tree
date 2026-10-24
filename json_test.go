@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"reflect"
 	"runtime/debug"
 	"strconv"
@@ -367,34 +368,222 @@ func TestUnmarshalJSON(t *testing.T) {
 }
 
 func TestMapUnmarshalJSON(t *testing.T) {
-	want := Map{
-		"a": NumberValue(1),
-		"b": BoolValue(true),
-		"c": Nil,
+	testCases := []struct {
+		caseName string
+		init     Map
+		data     string
+		want     Map
+		wantErr  bool
+	}{
+		{
+			caseName: "nil map",
+			data:     `{"a":1,"b":true,"c":null}`,
+			want:     Map{"a": NumberValue(1), "b": BoolValue(true), "c": Nil},
+		}, {
+			caseName: "reused map keeps other keys",
+			init:     Map{"a": NumberValue(0), "x": NumberValue(0)},
+			data:     `{"a":1,"b":true,"c":null}`,
+			want:     Map{"a": NumberValue(1), "b": BoolValue(true), "c": Nil, "x": NumberValue(0)},
+		}, {
+			caseName: "null leaves the map as it is",
+			init:     Map{"x": NumberValue(0)},
+			data:     `null`,
+			want:     Map{"x": NumberValue(0)},
+		}, {
+			caseName: "null with trailing data is an error",
+			init:     Map{"x": NumberValue(0)},
+			data:     `null x`,
+			want:     Map{"x": NumberValue(0)},
+			wantErr:  true,
+		}, {
+			caseName: "trailing data after the object keeps the keys already set",
+			init:     Map{"k": NumberValue(1)},
+			data:     `{"a":1} x`,
+			want:     Map{"a": NumberValue(1), "k": NumberValue(1)},
+			wantErr:  true,
+		}, {
+			caseName: "nil map stays nil on a syntax error",
+			data:     `{"a":`,
+			wantErr:  true,
+		},
 	}
-	data := []byte(`{"a":1,"b":true,"c":null}`)
-	var got Map
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatal(err)
-	}
-	if !Equal(got, want) {
-		t.Errorf("got %#v; want %#v", got, want)
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got := maps.Clone(tc.init)
+			if err := got.UnmarshalJSON([]byte(tc.data)); (err != nil) != tc.wantErr {
+				t.Fatalf("got %v; wantErr %v", err, tc.wantErr)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %#v; want %#v", got, tc.want)
+			}
+			if tc.wantErr {
+				return
+			}
+			s := struct{ M Map }{M: maps.Clone(tc.init)}
+			if err := json.Unmarshal([]byte(`{"M":`+tc.data+`}`), &s); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(s.M, tc.want) {
+				t.Errorf("json.Unmarshal: got %#v; want %#v", s.M, tc.want)
+			}
+		})
 	}
 }
 
 func TestArrayUnmarshalJSON(t *testing.T) {
-	want := Array{
-		StringValue("1"),
-		NumberValue(2),
-		BoolValue(true),
+	// exactCopy keeps nil and has cap == len, so growth past len reallocates as the rows assume.
+	exactCopy := func(a Array) Array {
+		if a == nil {
+			return nil
+		}
+		c := make(Array, len(a))
+		copy(c, a)
+		return c
 	}
-	data := []byte(`["1",2,true]`)
-	got := Array{}
-	if err := json.Unmarshal(data, &got); err != nil {
-		t.Fatal(err)
+	testCases := []struct {
+		caseName string
+		init     Array
+		data     string
+		want     Array
+		wantErr  bool
+	}{
+		{
+			caseName: "empty array",
+			init:     Array{},
+			data:     `["1",2,true]`,
+			want:     Array{StringValue("1"), NumberValue(2), BoolValue(true)},
+		}, {
+			caseName: "nil array",
+			data:     `["1",2,true]`,
+			want:     Array{StringValue("1"), NumberValue(2), BoolValue(true)},
+		}, {
+			caseName: "reused array is reset",
+			init:     Array{NumberValue(0), NumberValue(0), NumberValue(0), NumberValue(0)},
+			data:     `["1",2,true]`,
+			want:     Array{StringValue("1"), NumberValue(2), BoolValue(true)},
+		}, {
+			caseName: "empty input into a nil array is empty, not null",
+			data:     `[]`,
+			want:     Array{},
+		}, {
+			caseName: "null leaves the array as it is",
+			init:     Array{NumberValue(1)},
+			data:     `null`,
+			want:     Array{NumberValue(1)},
+		}, {
+			caseName: "null with trailing data is an error",
+			init:     Array{NumberValue(1)},
+			data:     `null x`,
+			want:     Array{NumberValue(1)},
+			wantErr:  true,
+		}, {
+			caseName: "syntax error keeps the length with the elements already decoded",
+			init:     Array{NumberValue(9), NumberValue(9)},
+			data:     `[1, {`,
+			want:     Array{NumberValue(1), NumberValue(9)},
+			wantErr:  true,
+		}, {
+			caseName: "error past capacity keeps the old length",
+			init:     Array{NumberValue(1)},
+			data:     `[5,6,{`,
+			want:     Array{NumberValue(5)},
+			wantErr:  true,
+		}, {
+			caseName: "trailing data after the value keeps the old length",
+			init:     Array{NumberValue(9)},
+			data:     `[1,2] x`,
+			want:     Array{NumberValue(1)},
+			wantErr:  true,
+		}, {
+			caseName: "an object is rejected",
+			init:     Array{NumberValue(1)},
+			data:     `{"a":1}`,
+			want:     Array{NumberValue(1)},
+			wantErr:  true,
+		},
 	}
-	if !Equal(got, want) {
-		t.Errorf("got %#v; want %#v", got, want)
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got := exactCopy(tc.init)
+			if err := got.UnmarshalJSON([]byte(tc.data)); (err != nil) != tc.wantErr {
+				t.Fatalf("got %v; wantErr %v", err, tc.wantErr)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %#v; want %#v", got, tc.want)
+			}
+			if tc.wantErr {
+				return
+			}
+			s := struct{ A Array }{A: exactCopy(tc.init)}
+			if err := json.Unmarshal([]byte(`{"A":`+tc.data+`}`), &s); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(s.A, tc.want) {
+				t.Errorf("json.Unmarshal: got %#v; want %#v", s.A, tc.want)
+			}
+		})
+	}
+}
+
+func TestAnyUnmarshalJSON(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		data     string
+		want     Node
+		wantErr  error
+	}{
+		{caseName: "null gives Nil", data: `null`, want: Nil},
+		{caseName: "error leaves the node as it is", data: `{"a":`, want: NumberValue(1), wantErr: io.ErrUnexpectedEOF},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			a := Any{Node: NumberValue(1)}
+			if err := a.UnmarshalJSON([]byte(tc.data)); !errors.Is(err, tc.wantErr) {
+				t.Errorf("got %v; want %v", err, tc.wantErr)
+			}
+			if !reflect.DeepEqual(a.Node, tc.want) {
+				t.Errorf("got %#v; want %#v", a.Node, tc.want)
+			}
+		})
+	}
+}
+
+func TestUnmarshalJSONTrailingData(t *testing.T) {
+	unmarshalers := map[string]func([]byte) error{
+		"tree":  func(b []byte) error { _, err := UnmarshalJSON(b); return err },
+		"Any":   func(b []byte) error { var n Any; return n.UnmarshalJSON(b) },
+		"Map":   func(b []byte) error { var n Map; return n.UnmarshalJSON(b) },
+		"Array": func(b []byte) error { var n Array; return n.UnmarshalJSON(b) },
+		"json":  func(b []byte) error { var n Any; return json.Unmarshal(b, &n) },
+	}
+	testCases := []struct {
+		caseName string
+		via      []string
+		data     string
+		wantErr  bool
+		errText  string
+	}{
+		{caseName: "trailing whitespace", via: []string{"tree", "Any", "Map", "json"}, data: "{\"a\":1} \n"},
+		{caseName: "trailing whitespace after an array", via: []string{"tree", "Any", "Array", "json"}, data: "[1] \n"},
+		{caseName: "trailing word", via: []string{"tree", "Any", "Map", "json"}, data: `{"a":1} x`, wantErr: true, errText: "invalid character 'x' after top-level value"},
+		{caseName: "extra closing brace", via: []string{"tree", "Any", "Map", "json"}, data: `{"a":1}}`, wantErr: true, errText: "invalid character '}' after top-level value"},
+		{caseName: "second array", via: []string{"tree", "Any", "Array", "json"}, data: `[1] [2]`, wantErr: true, errText: "invalid character '[' after top-level value"},
+		{caseName: "second scalar", via: []string{"tree", "Any", "json"}, data: `1 2`, wantErr: true, errText: "invalid character '2' after top-level value"},
+		{caseName: "trailing string", via: []string{"tree", "Any", "Array", "json"}, data: `[1] "foo"`, wantErr: true, errText: `invalid character '"' after top-level value`},
+		{caseName: "trailing null", via: []string{"tree", "Any", "Map", "json"}, data: `{} null`, wantErr: true, errText: "invalid character 'n' after top-level value"},
+	}
+	for _, tc := range testCases {
+		for _, via := range tc.via {
+			t.Run(tc.caseName+"/"+via, func(t *testing.T) {
+				err := unmarshalers[via]([]byte(tc.data))
+				if (err != nil) != tc.wantErr {
+					t.Fatalf("got %v; wantErr %v", err, tc.wantErr)
+				}
+				if tc.errText != "" && err.Error() != tc.errText {
+					t.Errorf("got %q; want %q", err.Error(), tc.errText)
+				}
+			})
+		}
 	}
 }
 
@@ -480,12 +669,17 @@ func FuzzUnmarshalJSON(f *testing.F) {
 		[]byte(`[]`),
 		[]byte(`{}`),
 		[]byte(`{"a": [1, 2, {"b": null}]}`),
+		[]byte(`[1] x`),
+		[]byte(`[1] [2]`),
+		[]byte(`{"a":1}}`),
 	}
 	for _, s := range seeds {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
-		_, _ = UnmarshalJSON(data)
+		if _, err := UnmarshalJSON(data); err == nil && !json.Valid(data) {
+			t.Errorf("accepted invalid JSON %q", data) // the reverse does not hold: 1e400 is valid but overflows float64
+		}
 	})
 }
 

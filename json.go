@@ -53,69 +53,95 @@ func unexpectedEOF(err error) error {
 	return err
 }
 
-// UnmarshalJSON parses the JSON-encoded data to a Node.
+// UnmarshalJSON parses the JSON-encoded data to a Node, rejecting trailing data as json.Unmarshal does.
 func UnmarshalJSON(data []byte) (Node, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
-	return DecodeJSON(dec)
+	n, err := DecodeJSON(dec)
+	if err != nil {
+		return nil, err
+	}
+	if err := jsonEnd(dec, data); err != nil {
+		return nil, err
+	}
+	return n, nil
 }
 
-// UnmarshalJSON is an implementation of json.Unmarshaler.
+// jsonEnd rejects anything but whitespace after the top-level value, with json.Unmarshal's message.
+func jsonEnd(dec *json.Decoder, data []byte) error {
+	rest := bytes.TrimLeft(data[dec.InputOffset():], " \t\r\n")
+	if len(rest) == 0 {
+		return nil
+	}
+	return fmt.Errorf("invalid character %q after top-level value", rune(rest[0]))
+}
+
+// UnmarshalJSON implements json.Unmarshaler, leaving n as it is on error.
 func (n *Any) UnmarshalJSON(data []byte) error {
-	dec := json.NewDecoder(bytes.NewReader(data))
-	t, err := dec.Token()
+	v, err := UnmarshalJSON(data)
 	if err != nil {
 		return err
 	}
-	d, ok := t.(json.Delim)
-	if ok {
-		switch d.String() {
-		case "{":
-			m := Map{}
-			n.Node = m
-			return jsonMap(dec, &m, 1)
-		case "[":
-			a, err := jsonArray(dec, Array{}, 1)
-			if err != nil {
-				return err
-			}
-			n.Node = a
-			return nil
-		}
-	}
-	n.Node = jsonValue(t)
+	n.Node = v
 	return nil
 }
 
-// UnmarshalJSON is an implementation of json.Unmarshaler.
+// UnmarshalJSON implements json.Unmarshaler: it sets each key of the object in n, keeping n's other keys, and leaves n as it is on null.
+// Like encoding/json, it decodes in place, so on error n may hold some of the new keys.
 func (n *Map) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	t, err := dec.Token()
 	if err != nil {
 		return err
 	}
+	if t == nil {
+		return jsonEnd(dec, data)
+	}
 	d, ok := t.(json.Delim)
-	if !ok || d.String() != "{" {
+	if !ok || d != '{' {
 		return fmt.Errorf("unknown token %#v", t)
 	}
-	if *n == nil {
-		*n = make(Map)
+	m := *n
+	if m == nil {
+		m = make(Map) // a nil n stays nil on error
 	}
-	return jsonMap(dec, n, 1)
+	if err := jsonMap(dec, &m, 1); err != nil {
+		return err
+	}
+	if err := jsonEnd(dec, data); err != nil {
+		return err
+	}
+	*n = m
+	return nil
 }
 
-// UnmarshalJSON is an implementation of json.Unmarshaler.
+// UnmarshalJSON implements json.Unmarshaler: it resets n to length zero and refills it, leaving n as it is on null.
+// Like encoding/json, it reuses n's backing array, which other nodes may share, so on error that array may hold some of the new elements while n keeps its length.
 func (n *Array) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	t, err := dec.Token()
 	if err != nil {
 		return err
 	}
+	if t == nil {
+		return jsonEnd(dec, data)
+	}
 	d, ok := t.(json.Delim)
-	if !ok || d.String() != "[" {
+	if !ok || d != '[' {
 		return fmt.Errorf("unknown token %#v", t)
 	}
-	*n, err = jsonArray(dec, *n, 1)
-	return err
+	base := (*n)[:0]
+	if base == nil {
+		base = Array{} // [] gives an empty Array, not a nil one that marshals as null
+	}
+	a, err := jsonArray(dec, base, 1)
+	if err != nil {
+		return err
+	}
+	if err := jsonEnd(dec, data); err != nil {
+		return err
+	}
+	*n = a
+	return nil
 }
 
 // MarshalJSON is an implementation of json.Marshaler.
