@@ -1551,6 +1551,11 @@ func TestEdit(t *testing.T) {
 			expr:     `(.a | .[0]).b = 1`,
 			errstr:   `syntax error: unsupported edit query: (.a | .[0])`,
 		}, {
+			caseName: "group around the whole query edits like a top-level pipe",
+			n:        Map{"a": Array{Map{"x": NumberValue(1)}}},
+			expr:     `(.a | .[0]) = 9`,
+			want:     Map{"a": Array{Map{"x": NumberValue(1)}}},
+		}, {
 			caseName: "slice step edits each element in range",
 			n:        Map{"a": Array{Map{"b": NumberValue(0)}, Map{"b": NumberValue(5)}}},
 			expr:     `.a[1:].b = 1`,
