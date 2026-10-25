@@ -622,8 +622,8 @@ func (c Comparator) Matches(n Node) (bool, error) {
 	default:
 		return false, fmt.Errorf("%s returns no single value %+v", c.Right, r)
 	}
-	if l0 == nil || r0 == nil {
-		return (l0 == nil && r0 == nil), nil
+	if isGoNil(l0) || isGoNil(r0) {
+		return (isGoNil(l0) && isGoNil(r0)), nil
 	}
 	return l0.Value().Compare(c.Op, r0.Value()), nil
 }

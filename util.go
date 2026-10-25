@@ -96,14 +96,18 @@ func orNil(n Node) Node {
 	return n
 }
 
-// isGoNil reports whether n is a nil interface or a nil pointer node such as (*Array)(nil).
+// isGoNil reports whether n is a nil interface, a nil pointer node such as (*Array)(nil), or an Any wrapping one.
 func isGoNil(n Node) bool {
 	switch tn := n.(type) {
 	case nil:
 		return true
-	case Map, Array, StringValue, NumberValue, BoolValue, NilValue, Any:
+	case Map, Array, StringValue, NumberValue, BoolValue, NilValue:
 		return false
+	case Any:
+		return isGoNil(tn.Node)
 	case *Array:
+		return tn == nil
+	case *Map:
 		return tn == nil
 	}
 	v := reflect.ValueOf(n)

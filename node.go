@@ -457,8 +457,8 @@ func (n Map) Find(expr string) ([]Node, error) {
 //
 //   - Type tags must match. NumberValue(1) and StringValue("1") are
 //     not equal even though they format to the same string.
-//   - Untyped nil and the Nil sentinel (NilValue{}) compare equal to
-//     each other.
+//   - Untyped nil, a nil pointer node such as (*Array)(nil) and the
+//     Nil sentinel (NilValue{}) compare equal to each other.
 //   - Map equality is order-independent. Map{"a":1, "b":2} equals
 //     Map{"b":2, "a":1}.
 //   - Array equality is order-dependent. Array{1, 2} does not equal

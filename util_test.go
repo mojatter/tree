@@ -332,7 +332,10 @@ func TestIsGoNil(t *testing.T) {
 		{caseName: "non-nil *Array", n: &Array{}, want: false},
 		{caseName: "Map(nil)", n: Map(nil), want: false},
 		{caseName: "Nil", n: Nil, want: false},
-		{caseName: "Any wrapping nil", n: Any{}, want: false},
+		{caseName: "non-nil *Map", n: &Map{}, want: false},
+		{caseName: "Any wrapping nil", n: Any{}, want: true},
+		{caseName: "Any wrapping a nil pointer", n: Any{Node: (*Array)(nil)}, want: true},
+		{caseName: "Any wrapping a Map", n: Any{Node: Map{}}, want: false},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {

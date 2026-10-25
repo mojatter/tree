@@ -448,6 +448,11 @@ func TestNodeFind(t *testing.T) {
 			n:        Array{Map{"a": (*Array)(nil)}, Map{"a": NumberValue(1)}},
 			expr:     ".[.a == 1]",
 			want:     []Node{Map{"a": NumberValue(1)}},
+		}, {
+			caseName: "Any wrapping a nil pointer child walked",
+			n:        Map{"a": Any{Node: (*Array)(nil)}},
+			expr:     "..x",
+			want:     nil,
 		},
 	}
 	for _, tc := range testCases {
