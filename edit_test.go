@@ -1866,6 +1866,21 @@ func TestEdit(t *testing.T) {
 			n:        (*Map)(nil),
 			expr:     `.x = 1`,
 			want:     Map{"x": NumberValue(1)},
+		}, {
+			caseName: "pointer Any wrapping nil treated as null on set through it",
+			n:        Map{"a": &Any{}},
+			expr:     `.a.x = 1`,
+			want:     Map{"a": Map{"x": NumberValue(1)}},
+		}, {
+			caseName: "append to a nil pointer root",
+			n:        (*Array)(nil),
+			expr:     `. += 1`,
+			errstr:   "cannot append to .",
+		}, {
+			caseName: "append to a nil root",
+			n:        nil,
+			expr:     `. += 1`,
+			errstr:   "cannot append to .",
 		},
 	}
 	for _, tc := range testCases {

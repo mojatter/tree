@@ -186,6 +186,11 @@ func TestQuery(t *testing.T) {
 			q:        &SelectQuery{Selector: Comparator{Left: MapQuery("a"), Op: EQ, Right: ValueQuery{ToValue(1)}}},
 			n:        Array{rawGetNode{Map{"a": (*Array)(nil)}}, Map{"a": NumberValue(1)}},
 			want:     []Node{Map{"a": NumberValue(1)}},
+		}, {
+			caseName: "select: typed nil children from a custom Get are not unequal",
+			q:        &SelectQuery{Selector: Comparator{Left: MapQuery("a"), Op: NE, Right: MapQuery("b")}},
+			n:        Array{rawGetNode{Map{"a": (*Array)(nil), "b": (*Map)(nil)}}},
+			want:     nil,
 		},
 	}
 	for _, tc := range testCases {

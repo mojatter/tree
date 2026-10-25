@@ -682,6 +682,7 @@ func TestEqual(t *testing.T) {
 		{"nil pointer and Nil", (*Map)(nil), Nil, true},
 		{"nil and nil pointer", nil, (*Array)(nil), true},
 		{"nil pointer and Map(nil)", (*Array)(nil), Map(nil), false},
+		{"pointer Any wrapping nil and Nil", &Any{}, Nil, true},
 
 		// Scalars: same type, same value
 		{"StringValue same", StringValue("x"), StringValue("x"), true},

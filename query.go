@@ -40,7 +40,7 @@ func (q NopQuery) Set(pn *Node, v Node) error {
 }
 
 func (q NopQuery) Append(pn *Node, v Node) error {
-	if a := (*pn).Array(); a != nil {
+	if a := orNil(*pn).Array(); a != nil {
 		*pn = append(a, v)
 		return nil
 	}
@@ -610,7 +610,7 @@ func (c Comparator) Matches(n Node) (bool, error) {
 	case 0:
 		l0 = nil
 	case 1:
-		l0 = l[0]
+		l0 = orNil(l[0])
 	default:
 		return false, fmt.Errorf("%s returns no single value %+v", c.Left, l)
 	}
@@ -618,12 +618,12 @@ func (c Comparator) Matches(n Node) (bool, error) {
 	case 0:
 		r0 = nil
 	case 1:
-		r0 = r[0]
+		r0 = orNil(r[0])
 	default:
 		return false, fmt.Errorf("%s returns no single value %+v", c.Right, r)
 	}
-	if isGoNil(l0) || isGoNil(r0) {
-		return (isGoNil(l0) && isGoNil(r0)), nil
+	if l0 == nil || r0 == nil {
+		return (l0 == nil && r0 == nil), nil
 	}
 	return l0.Value().Compare(c.Op, r0.Value()), nil
 }
