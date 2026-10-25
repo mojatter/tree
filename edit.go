@@ -360,7 +360,7 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 				}
 			}
 
-			if err := resolveAndEdit(&child, fq, step+1, op, cloneEditValue(v), as); err != nil {
+			if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
 				return err
 			}
 
@@ -698,14 +698,46 @@ func nodeID(n Node) nodeKey {
 	return nodeKey{}
 }
 
-// editLast applies the final step and records the stored value.
+// editLast applies the final step to its own copy of v and records the stored value.
 func editLast(pn *Node, q Query, op string, v Node, as assigned) error {
 	if wq, ok := q.(WalkQuery); ok {
 		return wq.edit(pn, op, v, as)
 	}
+	v = cloneEditValue(v)
 	if err := editQuery(pn, q, op, v); err != nil {
 		return err
 	}
 	as.add(v)
 	return nil
+}
+
+// cloneEditValue copies a built-in container so that each stored match owns its value, and leaves any other value as given.
+func cloneEditValue(v Node) Node {
+	switch t := v.(type) {
+	case Map:
+		if t == nil {
+			return t
+		}
+		m := make(Map, len(t))
+		for k, c := range t {
+			m[k] = cloneEditValue(c)
+		}
+		return m
+	case Array:
+		if t == nil {
+			return t
+		}
+		a := make(Array, len(t))
+		for i, c := range t {
+			a[i] = cloneEditValue(c)
+		}
+		return a
+	case *Array:
+		if t == nil {
+			return t
+		}
+		a := cloneEditValue(*t).(Array)
+		return &a
+	}
+	return v
 }

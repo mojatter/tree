@@ -1804,12 +1804,12 @@ func TestEditSequence(t *testing.T) {
 			exprs:    []string{`..b = []`, `.a.b += 1`, `.c.b += 2`},
 			want:     Map{"a": Map{"b": Array{NumberValue(1)}}, "c": Map{"b": Array{NumberValue(2)}}},
 		}, {
-			caseName: "walk append after select set skips the value appended to the shared map",
+			caseName: "walk append after select set appends once to each element's copy",
 			n:        Map{"a": Array{Map{}, Map{}}},
 			exprs:    []string{`.a[].x = {"b": []}`, `..b += {"b": []}`},
 			want: Map{"a": Array{
-				Map{"x": Map{"b": Array{Map{"b": Array{}}, Map{"b": Array{}}}}},
-				Map{"x": Map{"b": Array{Map{"b": Array{}}, Map{"b": Array{}}}}},
+				Map{"x": Map{"b": Array{Map{"b": Array{}}}}},
+				Map{"x": Map{"b": Array{Map{"b": Array{}}}}},
 			}},
 		}, {
 			caseName: "walk set map then edit one match leaves the others",
@@ -1831,6 +1831,63 @@ func TestEditSequence(t *testing.T) {
 			n:        Array{Map{"b": NumberValue(0)}, Map{"b": NumberValue(0)}},
 			exprs:    []string{`.[].b = []`, `[0].b += 1`, `[1].b += 2`},
 			want:     Array{Map{"b": Array{NumberValue(1)}}, Map{"b": Array{NumberValue(2)}}},
+		}, {
+			caseName: "select set map then edit one element leaves the others",
+			n:        Map{"a": Array{Map{}, Map{}}},
+			exprs:    []string{`.a[].x = {"k": 1}`, `.a[0].x.k = 2`},
+			want:     Map{"a": Array{Map{"x": Map{"k": NumberValue(2)}}, Map{"x": Map{"k": NumberValue(1)}}}},
+		}, {
+			caseName: "select set map then delete in one element leaves the others",
+			n:        Map{"a": Array{Map{}, Map{}}},
+			exprs:    []string{`.a[].x = {"k": 1}`, `.a[0].x.k ^?`},
+			want:     Map{"a": Array{Map{"x": Map{}}, Map{"x": Map{"k": NumberValue(1)}}}},
+		}, {
+			caseName: "slice set array then edit one element leaves the others",
+			n:        Map{"a": Array{Map{}, Map{}}},
+			exprs:    []string{`.a[0:2].x = [1, 2]`, `.a[0].x[0] = 9`},
+			want: Map{"a": Array{
+				Map{"x": Array{NumberValue(9), NumberValue(2)}},
+				Map{"x": Array{NumberValue(1), NumberValue(2)}},
+			}},
+		}, {
+			caseName: "select with a condition set map then edit one match leaves the others",
+			n:        Map{"a": Array{Map{"t": NumberValue(1)}, Map{"t": NumberValue(1)}}},
+			exprs:    []string{`.a[.t == 1].x = {"k": 1}`, `.a[1].x.k = 2`},
+			want: Map{"a": Array{
+				Map{"t": NumberValue(1), "x": Map{"k": NumberValue(1)}},
+				Map{"t": NumberValue(1), "x": Map{"k": NumberValue(2)}},
+			}},
+		}, {
+			caseName: "select over a map set map then edit one value leaves the others",
+			n:        Map{"m": Map{"a": Map{}, "b": Map{}}},
+			exprs:    []string{`.m[].x = {"k": 1}`, `.m.a.x.k = 2`},
+			want:     Map{"m": Map{"a": Map{"x": Map{"k": NumberValue(2)}}, "b": Map{"x": Map{"k": NumberValue(1)}}}},
+		}, {
+			caseName: "trailing bare dot set map on null elements then edit one leaves the others",
+			n:        Map{"a": Array{Nil, Nil}},
+			exprs:    []string{`.a[]. = {"x": 0}`, `.a[0].x = 1`},
+			want:     Map{"a": Array{Map{"x": NumberValue(1)}, Map{"x": NumberValue(0)}}},
+		}, {
+			caseName: "select append map then edit one element's appended value leaves the others",
+			n:        Map{"a": Array{Map{}, Map{}}},
+			exprs:    []string{`.a[].x += {"k": 1}`, `.a[0].x[0].k = 2`},
+			want: Map{"a": Array{
+				Map{"x": Array{Map{"k": NumberValue(2)}}},
+				Map{"x": Array{Map{"k": NumberValue(1)}}},
+			}},
+		}, {
+			caseName: "select set map through a custom EditorNode then edit one element leaves the others",
+			n:        Map{"a": &pointerEditorNode{&Array{Map{}, Map{}}}},
+			exprs:    []string{`.a[].x = {"k": 1}`, `.a[0].x.k = 2`},
+			want: Map{"a": &pointerEditorNode{&Array{
+				Map{"x": Map{"k": NumberValue(2)}},
+				Map{"x": Map{"k": NumberValue(1)}},
+			}}},
+		}, {
+			caseName: "walk then select set map then edit one element leaves the others",
+			n:        Map{"b": Array{Map{}, Map{}}},
+			exprs:    []string{`..b[].x = {"k": 1}`, `.b[0].x.k = 2`},
+			want:     Map{"b": Array{Map{"x": Map{"k": NumberValue(2)}}, Map{"x": Map{"k": NumberValue(1)}}}},
 		}, {
 			caseName: "select set on holes left by array growth",
 			n:        Map{"a": Array{}},
