@@ -468,23 +468,14 @@ func (n Map) Find(expr string) ([]Node, error) {
 //   - Map(nil) equals Map{} (both empty Map); the same applies to
 //     Array(nil) and Array{}. Neither equals Nil because the type
 //     tags differ.
-//   - Any wrappers are unwrapped before comparison.
+//   - Any and *Any wrappers are unwrapped before comparison.
 //
 // For comparing []Node slices (e.g. results from Find), wrap each
 // side as Array before calling Equal.
 func Equal(n1, n2 Node) bool {
-	if a, ok := n1.(Any); ok {
-		n1 = a.Node
-	}
-	if a, ok := n2.(Any); ok {
-		n2 = a.Node
-	}
-
-	if isGoNil(n1) {
-		return isGoNil(n2) || n2 == Nil
-	}
-	if isGoNil(n2) {
-		return n1 == Nil
+	n1, n2 = unwrapAny(n1), unwrapAny(n2)
+	if isNull(n1) || isNull(n2) {
+		return isNull(n1) && isNull(n2)
 	}
 
 	if n1.Type() != n2.Type() {
@@ -529,4 +520,21 @@ func Equal(n1, n2 Node) bool {
 	}
 
 	return false
+}
+
+// unwrapAny returns the node that n wraps through any nesting of Any and non-nil *Any.
+func unwrapAny(n Node) Node {
+	for {
+		switch tn := n.(type) {
+		case Any:
+			n = tn.Node
+		case *Any:
+			if tn == nil {
+				return n
+			}
+			n = tn.Node
+		default:
+			return n
+		}
+	}
 }

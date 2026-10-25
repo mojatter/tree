@@ -83,7 +83,7 @@ func (q MapQuery) Exec(n Node) ([]Node, error) {
 		return nil, fmt.Errorf("cannot index array with %q", key)
 	}
 	if n.Has(key) {
-		return []Node{n.Get(key)}, nil
+		return []Node{orNil(n.Get(key))}, nil
 	}
 	return nil, nil
 }
@@ -416,7 +416,7 @@ func (q WalkQuery) Exec(root Node) ([]Node, error) {
 			return nil
 		}
 		if n.Has(key) {
-			r = append(r, n.Get(key))
+			r = append(r, orNil(n.Get(key)))
 		}
 		return nil
 	})

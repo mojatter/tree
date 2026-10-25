@@ -683,6 +683,12 @@ func TestEqual(t *testing.T) {
 		{"nil and nil pointer", nil, (*Array)(nil), true},
 		{"nil pointer and Map(nil)", (*Array)(nil), Map(nil), false},
 		{"pointer Any wrapping nil and Nil", &Any{}, Nil, true},
+		{"pointer Any wrapping Nil and Nil", &Any{Node: Nil}, Nil, true},
+		{"nil and pointer Any wrapping Nil", nil, &Any{Node: Nil}, true},
+		{"pointer Any wrapping Nil and nil pointer", &Any{Node: Nil}, (*Map)(nil), true},
+		{"pointer Any wrapping Nil and Map(nil)", &Any{Node: Nil}, Map(nil), false},
+		{"StringValue and pointer Any wrapping it", StringValue("x"), &Any{Node: StringValue("x")}, true},
+		{"nested Any and NumberValue", Any{Node: &Any{Node: NumberValue(1)}}, NumberValue(1), true},
 
 		// Scalars: same type, same value
 		{"StringValue same", StringValue("x"), StringValue("x"), true},

@@ -191,6 +191,21 @@ func TestQuery(t *testing.T) {
 			q:        &SelectQuery{Selector: Comparator{Left: MapQuery("a"), Op: NE, Right: MapQuery("b")}},
 			n:        Array{rawGetNode{Map{"a": (*Array)(nil), "b": (*Map)(nil)}}},
 			want:     nil,
+		}, {
+			caseName: "map: typed nil child from a custom Get reads as null",
+			q:        MapQuery("a"),
+			n:        rawGetNode{Map{"a": (*Array)(nil)}},
+			want:     []Node{Nil},
+		}, {
+			caseName: "map: nil child from a custom Get reads as null",
+			q:        MapQuery("a"),
+			n:        rawGetNode{Map{"a": nil}},
+			want:     []Node{Nil},
+		}, {
+			caseName: "walk: typed nil child from a custom Get reads as null",
+			q:        WalkQuery("a"),
+			n:        rawGetNode{Map{"a": (*Array)(nil)}},
+			want:     []Node{Nil},
 		},
 	}
 	for _, tc := range testCases {
