@@ -423,37 +423,6 @@ func (q WalkQuery) Exec(root Node) ([]Node, error) {
 	return r, nil
 }
 
-// cloneEditValue gives each walk match its own copy of a built-in container and leaves any other value as given.
-func cloneEditValue(v Node) Node {
-	switch t := v.(type) {
-	case Map:
-		if t == nil {
-			return t
-		}
-		m := make(Map, len(t))
-		for k, c := range t {
-			m[k] = cloneEditValue(c)
-		}
-		return m
-	case Array:
-		if t == nil {
-			return t
-		}
-		a := make(Array, len(t))
-		for i, c := range t {
-			a[i] = cloneEditValue(c)
-		}
-		return a
-	case *Array:
-		if t == nil {
-			return t
-		}
-		a := cloneEditValue(*t).(Array)
-		return &a
-	}
-	return v
-}
-
 // walkEdit calls fn on each editable node holding the key, descendants first, skipping values this edit has stored.
 func (q WalkQuery) walkEdit(n Node, as assigned, fn func(en EditorNode) error) error {
 	if n == nil || as.has(n) {

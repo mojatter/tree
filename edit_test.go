@@ -2,6 +2,7 @@ package tree
 
 import (
 	"errors"
+	"maps"
 	"reflect"
 	"testing"
 )
@@ -26,6 +27,18 @@ func (deleteFailingEditorNode) Delete(any) error { return errors.New("delete fai
 type mapHidingEditorNode struct{ EditorNode }
 
 func (mapHidingEditorNode) Map() Map { return nil }
+
+// mapCopyingEditorNode is an EditorNode whose Map returns a copy, so writes into it are lost.
+type mapCopyingEditorNode struct{ EditorNode }
+
+func (n mapCopyingEditorNode) Map() Map { return maps.Clone(n.EditorNode.Map()) }
+
+// leafEditorNode is a custom EditorNode holding a scalar or null, which rejects every edit.
+type leafEditorNode struct{ Node }
+
+func (leafEditorNode) Append(Node) error   { return errors.New("leaf append") }
+func (leafEditorNode) Set(any, Node) error { return errors.New("leaf set") }
+func (leafEditorNode) Delete(any) error    { return errors.New("leaf delete") }
 
 func TestEdit(t *testing.T) {
 	testCases := []struct {
@@ -1382,6 +1395,56 @@ func TestEdit(t *testing.T) {
 			expr:     `.x.y.c = 1`,
 			want:     Map{"x": mapHidingEditorNode{Map{"y": Map{"c": NumberValue(1)}}}},
 		}, {
+			caseName: "select step edits an editor node without map",
+			n:        Map{"x": mapHidingEditorNode{Map{"k": Map{}}}},
+			expr:     `.x[].y = 1`,
+			want:     Map{"x": mapHidingEditorNode{Map{"k": Map{"y": NumberValue(1)}}}},
+		}, {
+			caseName: "trailing bare dot after a select sets values of an editor node without map",
+			n:        Map{"x": mapHidingEditorNode{Map{"k": NumberValue(0)}}},
+			expr:     `.x[]. = 1`,
+			want:     Map{"x": mapHidingEditorNode{Map{"k": NumberValue(1)}}},
+		}, {
+			caseName: "select step writes back through an editor node whose map is a copy",
+			n:        Map{"x": mapCopyingEditorNode{Map{"k": Nil}}},
+			expr:     `.x[].y = 1`,
+			want:     Map{"x": mapCopyingEditorNode{Map{"k": Map{"y": NumberValue(1)}}}},
+		}, {
+			caseName: "trailing bare dot after a select sets values through an editor node whose map is a copy",
+			n:        Map{"x": mapCopyingEditorNode{Map{"k": NumberValue(0)}}},
+			expr:     `.x[]. = 1`,
+			want:     Map{"x": mapCopyingEditorNode{Map{"k": NumberValue(1)}}},
+		}, {
+			caseName: "select step writes through the map of a wrapper that is not an editor node",
+			n:        Map{"x": Any{Node: Map{"k": Map{}}}},
+			expr:     `.x[].y = 1`,
+			want:     Map{"x": Any{Node: Map{"k": Map{"y": NumberValue(1)}}}},
+		}, {
+			caseName: "select step on a scalar editor node is a no-op",
+			n:        Map{"x": leafEditorNode{StringValue("s")}},
+			expr:     `.x[].y = 1`,
+			want:     Map{"x": leafEditorNode{StringValue("s")}},
+		}, {
+			caseName: "trailing bare dot after a select on a scalar editor node is a no-op",
+			n:        Map{"x": leafEditorNode{StringValue("s")}},
+			expr:     `.x[]. = 1`,
+			want:     Map{"x": leafEditorNode{StringValue("s")}},
+		}, {
+			caseName: "select with a condition on a scalar editor node is a no-op",
+			n:        Map{"x": leafEditorNode{StringValue("s")}},
+			expr:     `.x[.y == 1].z = 1`,
+			want:     Map{"x": leafEditorNode{StringValue("s")}},
+		}, {
+			caseName: "select step on a null editor node is a no-op",
+			n:        Map{"x": leafEditorNode{Nil}},
+			expr:     `.x[].y = 1`,
+			want:     Map{"x": leafEditorNode{Nil}},
+		}, {
+			caseName: "select step reports the set error of an editor node",
+			n:        Map{"x": setFailingEditorNode{Map{"k": Map{}}}},
+			expr:     `.x[].y = 1`,
+			errstr:   `set failed`,
+		}, {
 			caseName: "first() on an editor node without map errors as on a map",
 			n:        Map{"x": mapHidingEditorNode{Map{"k": NumberValue(1)}}},
 			expr:     `.x.first() = 1`,
@@ -1804,12 +1867,12 @@ func TestEditSequence(t *testing.T) {
 			exprs:    []string{`..b = []`, `.a.b += 1`, `.c.b += 2`},
 			want:     Map{"a": Map{"b": Array{NumberValue(1)}}, "c": Map{"b": Array{NumberValue(2)}}},
 		}, {
-			caseName: "walk append after select set skips the value appended to the shared map",
+			caseName: "walk append after select set appends once to each element's copy",
 			n:        Map{"a": Array{Map{}, Map{}}},
 			exprs:    []string{`.a[].x = {"b": []}`, `..b += {"b": []}`},
 			want: Map{"a": Array{
-				Map{"x": Map{"b": Array{Map{"b": Array{}}, Map{"b": Array{}}}}},
-				Map{"x": Map{"b": Array{Map{"b": Array{}}, Map{"b": Array{}}}}},
+				Map{"x": Map{"b": Array{Map{"b": Array{}}}}},
+				Map{"x": Map{"b": Array{Map{"b": Array{}}}}},
 			}},
 		}, {
 			caseName: "walk set map then edit one match leaves the others",
@@ -1831,6 +1894,63 @@ func TestEditSequence(t *testing.T) {
 			n:        Array{Map{"b": NumberValue(0)}, Map{"b": NumberValue(0)}},
 			exprs:    []string{`.[].b = []`, `[0].b += 1`, `[1].b += 2`},
 			want:     Array{Map{"b": Array{NumberValue(1)}}, Map{"b": Array{NumberValue(2)}}},
+		}, {
+			caseName: "select set map then edit one element leaves the others",
+			n:        Map{"a": Array{Map{}, Map{}}},
+			exprs:    []string{`.a[].x = {"k": 1}`, `.a[0].x.k = 2`},
+			want:     Map{"a": Array{Map{"x": Map{"k": NumberValue(2)}}, Map{"x": Map{"k": NumberValue(1)}}}},
+		}, {
+			caseName: "select set map then delete in one element leaves the others",
+			n:        Map{"a": Array{Map{}, Map{}}},
+			exprs:    []string{`.a[].x = {"k": 1}`, `.a[0].x.k ^?`},
+			want:     Map{"a": Array{Map{"x": Map{}}, Map{"x": Map{"k": NumberValue(1)}}}},
+		}, {
+			caseName: "slice set array then edit one element leaves the others",
+			n:        Map{"a": Array{Map{}, Map{}}},
+			exprs:    []string{`.a[0:2].x = [1, 2]`, `.a[0].x[0] = 9`},
+			want: Map{"a": Array{
+				Map{"x": Array{NumberValue(9), NumberValue(2)}},
+				Map{"x": Array{NumberValue(1), NumberValue(2)}},
+			}},
+		}, {
+			caseName: "select with a condition set map then edit one match leaves the others",
+			n:        Map{"a": Array{Map{"t": NumberValue(1)}, Map{"t": NumberValue(1)}}},
+			exprs:    []string{`.a[.t == 1].x = {"k": 1}`, `.a[1].x.k = 2`},
+			want: Map{"a": Array{
+				Map{"t": NumberValue(1), "x": Map{"k": NumberValue(1)}},
+				Map{"t": NumberValue(1), "x": Map{"k": NumberValue(2)}},
+			}},
+		}, {
+			caseName: "select over a map set map then edit one value leaves the others",
+			n:        Map{"m": Map{"a": Map{}, "b": Map{}}},
+			exprs:    []string{`.m[].x = {"k": 1}`, `.m.a.x.k = 2`},
+			want:     Map{"m": Map{"a": Map{"x": Map{"k": NumberValue(2)}}, "b": Map{"x": Map{"k": NumberValue(1)}}}},
+		}, {
+			caseName: "trailing bare dot set map on null elements then edit one leaves the others",
+			n:        Map{"a": Array{Nil, Nil}},
+			exprs:    []string{`.a[]. = {"x": 0}`, `.a[0].x = 1`},
+			want:     Map{"a": Array{Map{"x": NumberValue(1)}, Map{"x": NumberValue(0)}}},
+		}, {
+			caseName: "select append map then edit one element's appended value leaves the others",
+			n:        Map{"a": Array{Map{}, Map{}}},
+			exprs:    []string{`.a[].x += {"k": 1}`, `.a[0].x[0].k = 2`},
+			want: Map{"a": Array{
+				Map{"x": Array{Map{"k": NumberValue(2)}}},
+				Map{"x": Array{Map{"k": NumberValue(1)}}},
+			}},
+		}, {
+			caseName: "select set map through a custom EditorNode then edit one element leaves the others",
+			n:        Map{"a": &pointerEditorNode{&Array{Map{}, Map{}}}},
+			exprs:    []string{`.a[].x = {"k": 1}`, `.a[0].x.k = 2`},
+			want: Map{"a": &pointerEditorNode{&Array{
+				Map{"x": Map{"k": NumberValue(2)}},
+				Map{"x": Map{"k": NumberValue(1)}},
+			}}},
+		}, {
+			caseName: "walk then select set map then edit one element leaves the others",
+			n:        Map{"b": Array{Map{}, Map{}}},
+			exprs:    []string{`..b[].x = {"k": 1}`, `.b[0].x.k = 2`},
+			want:     Map{"b": Array{Map{"x": Map{"k": NumberValue(2)}}, Map{"x": Map{"k": NumberValue(1)}}}},
 		}, {
 			caseName: "select set on holes left by array growth",
 			n:        Map{"a": Array{}},
