@@ -669,6 +669,7 @@ func TestEditorNodeDelete(t *testing.T) {
 
 func TestEqual(t *testing.T) {
 	nan := NumberValue(math.NaN())
+	str, num, tru := StringValue("a"), NumberValue(1), BoolValue(true)
 
 	testCases := []struct {
 		caseName string
@@ -793,6 +794,36 @@ func TestEqual(t *testing.T) {
 		{"Map nil value and Nil value", Map{"a": nil}, Map{"a": Nil}, true},
 		{"Array with nil element", Array{nil}, Array{nil}, true},
 		{"Array nil element and Nil element", Array{nil}, Array{Nil}, true},
+
+		// Non-nil pointer containers compare by the container they point to
+		{"pointer Array and pointer Array", &Array{NumberValue(1)}, &Array{NumberValue(1)}, true},
+		{"pointer Array and Array", &Array{NumberValue(1)}, Array{NumberValue(1)}, true},
+		{"Array and pointer Array", Array{NumberValue(1)}, &Array{NumberValue(1)}, true},
+		{"pointer Array different", &Array{NumberValue(1)}, &Array{NumberValue(2)}, false},
+		{"pointer Map and Map", &Map{"a": NumberValue(1)}, Map{"a": NumberValue(1)}, true},
+		{"Map and pointer Map", Map{"a": NumberValue(1)}, &Map{"a": NumberValue(1)}, true},
+		{"empty Array and empty pointer Array", Array{}, &Array{}, true},
+		{"empty Map and empty pointer Map", Map{}, &Map{}, true},
+		{"pointer to nil Map and Map", new(Map), Map{}, true},
+		{"pointer to nil Array and Nil", new(Array), Nil, false},
+		{"pointer Map and pointer Array", &Map{}, &Array{}, false},
+		{"Array and pointer Any wrapping pointer Array", Array{}, &Any{Node: &Array{}}, true},
+		{"pointer String and String", &str, StringValue("a"), true},
+		{"String and pointer String", StringValue("a"), &str, true},
+		{"pointer Number and Number", &num, NumberValue(1), true},
+		{"Number and pointer Number", NumberValue(1), &num, true},
+		{"pointer Bool and Bool", &tru, BoolValue(true), true},
+		{"pointer Bool different", &tru, BoolValue(false), false},
+		{"pointer NilValue and Nil", &NilValue{}, Nil, true},
+		{"Map with pointer String element", Map{"a": &str}, Map{"a": StringValue("a")}, true},
+		{"custom node and its Map", rawGetNode{Map{"a": NumberValue(1)}}, Map{"a": NumberValue(1)}, true},
+		{"Map and pointer custom node", Map{"a": NumberValue(1)}, &rawGetNode{Map{"a": NumberValue(1)}}, true},
+		{
+			"nested pointer containers",
+			Map{"x": &Array{&Map{"a": NumberValue(1)}}},
+			Map{"x": Array{Map{"a": NumberValue(1)}}},
+			true,
+		},
 
 		// Any wrapper unwrapping
 		{
