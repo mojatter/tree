@@ -823,6 +823,41 @@ func TestEdit(t *testing.T) {
 			expr:     `.[0:1]. = 9`,
 			want:     Array{NumberValue(9), NumberValue(2)},
 		}, {
+			caseName: "trailing bare dot after a slice sets a null element",
+			n:        Array{Nil, NumberValue(1)},
+			expr:     `.[0:2]. = 9`,
+			want:     Array{NumberValue(9), NumberValue(9)},
+		}, {
+			caseName: "trailing bare dot after a slice leaves null elements out of range",
+			n:        Map{"a": Array{Nil, Nil}},
+			expr:     `.a[0:1]. = 9`,
+			want:     Map{"a": Array{NumberValue(9), Nil}},
+		}, {
+			caseName: "trailing bare dot after [] sets a null element",
+			n:        Map{"a": Array{Nil, NumberValue(1)}},
+			expr:     `.a[]. = 9`,
+			want:     Map{"a": Array{NumberValue(9), NumberValue(9)}},
+		}, {
+			caseName: "trailing bare dot after [] on a map sets a null value",
+			n:        Map{"m": Map{"k": Nil}},
+			expr:     `.m[]. = 9`,
+			want:     Map{"m": Map{"k": NumberValue(9)}},
+		}, {
+			caseName: "trailing bare dot after [] leaves a null element on append",
+			n:        Array{Nil},
+			expr:     `.[]. += 1`,
+			want:     Array{Nil},
+		}, {
+			caseName: "trailing bare dot after [] appends to arrays and leaves null elements",
+			n:        Map{"a": Array{Array{NumberValue(1)}, Nil}},
+			expr:     `.a[]. += 1`,
+			want:     Map{"a": Array{Array{NumberValue(1), NumberValue(1)}, Nil}},
+		}, {
+			caseName: "trailing bare dot after [] leaves a null element on delete",
+			n:        Array{Nil},
+			expr:     `.[]. ^?`,
+			want:     Array{Nil},
+		}, {
 			caseName: "bare dot between [] and an index is dropped",
 			n:        Array{Array{NumberValue(1)}, Array{NumberValue(2)}},
 			expr:     `.[].[0] = 9`,

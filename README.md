@@ -355,7 +355,7 @@ An edit goes through keys, indexes, `[]`, selects, slices (each element in range
 
 A null reached by a step, including a Go `nil` value such as a hole left by growing an array and a nil `Map` or `Array`, is treated as missing: `=` and `+=` create what the rest of the query needs when every later step is a key, a non-negative index or `first()`, and otherwise, like `^?`, leave it as it is (`.a.b[].c = 1` and `.a.last() = 1` on `{"a": null}` change nothing). `.a[0].x = 1` on `{"a": [null]}` gives `{"a": [{"x": 1}]}`, and `.a += 1` on `{"a": null}` gives `{"a": [1]}`. A null root is replaced the same way (`.a.b = 1` on `null` gives `{"a": {"b": 1}}`, and `.[-1] = 1` on `null` changes nothing). Get, Find and the other queries read a Go `nil` value as null.
 
-Bare `.` and `..` steps are ignored in an edit path, so `.[0]` edits like `[0]`, `.a.` like `.a` and `..b. ^?` deletes like `..b ^?`; after `[]`, a select or a slice, a trailing `.` names the matched elements themselves (`.a[]. = 1` sets every element of `a`).
+Bare `.` and `..` steps are ignored in an edit path, so `.[0]` edits like `[0]`, `.a.` like `.a` and `..b. ^?` deletes like `..b ^?`; after `[]`, a select or a slice, a trailing `.` names the matched elements themselves (`.a[]. = 1` sets every element of `a`, null elements included; `+=` and `^?` leave a null element as it is).
 
 ```go
 func ExampleEdit() {
