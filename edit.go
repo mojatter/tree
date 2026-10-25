@@ -509,34 +509,48 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 		return editElements(pn, n, a, 0, len(a), match, fq, step, op, v, as)
 	}
 
-	if m := n.Map(); m != nil {
-		for _, k := range m.Keys() {
-			elem := orNil(m[k])
-			if sq.Selector != nil {
-				ok, err := sq.Matches(elem)
-				if err != nil {
-					return err
-				}
-				if !ok {
-					continue
-				}
-			}
-			child := elem
-			if isNullLike(child) && (op != "=" || !isNopQuery(fq[step+1])) { // a trailing . sets a null element; += and ^? leave it as it is
-				if child = emptyIntermediate(op, fq[step+1:]); child == nil {
-					continue // a null element stays as it is
-				}
-			}
-
-			if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
-				return err
-			}
-
-			m[k] = child
+	en, ok := n.(EditorNode)
+	if !ok {
+		m := n.Map()
+		if m == nil {
+			return nil
+		}
+		en = m // a wrapper such as Any shares its Map, so writes reach it
+	}
+	var keys []any
+	if err := en.Each(func(k any, _ Node) error {
+		if k != nil { // a node that is not a container calls back once with a nil key
+			keys = append(keys, k)
 		}
 		return nil
+	}); err != nil {
+		return err
 	}
+	for _, k := range keys {
+		child := orNil(en.Get(k))
+		if sq.Selector != nil {
+			ok, err := sq.Matches(child)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				continue
+			}
+		}
+		if isNullLike(child) && (op != "=" || !isNopQuery(fq[step+1])) { // a trailing . sets a null element; += and ^? leave it as it is
+			if child = emptyIntermediate(op, fq[step+1:]); child == nil {
+				continue // a null element stays as it is
+			}
+		}
 
+		if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
+			return err
+		}
+
+		if err := en.Set(k, child); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

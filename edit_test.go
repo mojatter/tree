@@ -2,6 +2,7 @@ package tree
 
 import (
 	"errors"
+	"maps"
 	"reflect"
 	"testing"
 )
@@ -26,6 +27,18 @@ func (deleteFailingEditorNode) Delete(any) error { return errors.New("delete fai
 type mapHidingEditorNode struct{ EditorNode }
 
 func (mapHidingEditorNode) Map() Map { return nil }
+
+// mapCopyingEditorNode is an EditorNode whose Map returns a copy, so writes into it are lost.
+type mapCopyingEditorNode struct{ EditorNode }
+
+func (n mapCopyingEditorNode) Map() Map { return maps.Clone(n.EditorNode.Map()) }
+
+// leafEditorNode is a custom EditorNode holding a scalar or null, which rejects every edit.
+type leafEditorNode struct{ Node }
+
+func (leafEditorNode) Append(Node) error   { return errors.New("leaf append") }
+func (leafEditorNode) Set(any, Node) error { return errors.New("leaf set") }
+func (leafEditorNode) Delete(any) error    { return errors.New("leaf delete") }
 
 func TestEdit(t *testing.T) {
 	testCases := []struct {
@@ -1381,6 +1394,56 @@ func TestEdit(t *testing.T) {
 			n:        Map{"x": mapHidingEditorNode{Map{"y": nil}}},
 			expr:     `.x.y.c = 1`,
 			want:     Map{"x": mapHidingEditorNode{Map{"y": Map{"c": NumberValue(1)}}}},
+		}, {
+			caseName: "select step edits an editor node without map",
+			n:        Map{"x": mapHidingEditorNode{Map{"k": Map{}}}},
+			expr:     `.x[].y = 1`,
+			want:     Map{"x": mapHidingEditorNode{Map{"k": Map{"y": NumberValue(1)}}}},
+		}, {
+			caseName: "trailing bare dot after a select sets values of an editor node without map",
+			n:        Map{"x": mapHidingEditorNode{Map{"k": NumberValue(0)}}},
+			expr:     `.x[]. = 1`,
+			want:     Map{"x": mapHidingEditorNode{Map{"k": NumberValue(1)}}},
+		}, {
+			caseName: "select step writes back through an editor node whose map is a copy",
+			n:        Map{"x": mapCopyingEditorNode{Map{"k": Nil}}},
+			expr:     `.x[].y = 1`,
+			want:     Map{"x": mapCopyingEditorNode{Map{"k": Map{"y": NumberValue(1)}}}},
+		}, {
+			caseName: "trailing bare dot after a select sets values through an editor node whose map is a copy",
+			n:        Map{"x": mapCopyingEditorNode{Map{"k": NumberValue(0)}}},
+			expr:     `.x[]. = 1`,
+			want:     Map{"x": mapCopyingEditorNode{Map{"k": NumberValue(1)}}},
+		}, {
+			caseName: "select step writes through the map of a wrapper that is not an editor node",
+			n:        Map{"x": Any{Node: Map{"k": Map{}}}},
+			expr:     `.x[].y = 1`,
+			want:     Map{"x": Any{Node: Map{"k": Map{"y": NumberValue(1)}}}},
+		}, {
+			caseName: "select step on a scalar editor node is a no-op",
+			n:        Map{"x": leafEditorNode{StringValue("s")}},
+			expr:     `.x[].y = 1`,
+			want:     Map{"x": leafEditorNode{StringValue("s")}},
+		}, {
+			caseName: "trailing bare dot after a select on a scalar editor node is a no-op",
+			n:        Map{"x": leafEditorNode{StringValue("s")}},
+			expr:     `.x[]. = 1`,
+			want:     Map{"x": leafEditorNode{StringValue("s")}},
+		}, {
+			caseName: "select with a condition on a scalar editor node is a no-op",
+			n:        Map{"x": leafEditorNode{StringValue("s")}},
+			expr:     `.x[.y == 1].z = 1`,
+			want:     Map{"x": leafEditorNode{StringValue("s")}},
+		}, {
+			caseName: "select step on a null editor node is a no-op",
+			n:        Map{"x": leafEditorNode{Nil}},
+			expr:     `.x[].y = 1`,
+			want:     Map{"x": leafEditorNode{Nil}},
+		}, {
+			caseName: "select step reports the set error of an editor node",
+			n:        Map{"x": setFailingEditorNode{Map{"k": Map{}}}},
+			expr:     `.x[].y = 1`,
+			errstr:   `set failed`,
 		}, {
 			caseName: "first() on an editor node without map errors as on a map",
 			n:        Map{"x": mapHidingEditorNode{Map{"k": NumberValue(1)}}},
