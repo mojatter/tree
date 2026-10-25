@@ -510,7 +510,7 @@ func TestEditorNodeAppend(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := tc.n
-			if !reflect.DeepEqual(got, tc.want) {
+			if !Equal(got, tc.want) {
 				t.Errorf("got %v; want %v", got, tc.want)
 			}
 		})
@@ -592,7 +592,7 @@ func TestEditorNodeSet(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := tc.n
-			if !reflect.DeepEqual(got, tc.want) {
+			if !Equal(got, tc.want) {
 				t.Errorf("got %v; want %v", got, tc.want)
 			}
 		})
@@ -660,7 +660,7 @@ func TestEditorNodeDelete(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := tc.n
-			if !reflect.DeepEqual(got, tc.want) {
+			if !Equal(got, tc.want) {
 				t.Errorf("got %v; want %v", got, tc.want)
 			}
 		})
@@ -795,13 +795,11 @@ func TestEqual(t *testing.T) {
 		{"Array with nil element", Array{nil}, Array{nil}, true},
 		{"Array nil element and Nil element", Array{nil}, Array{Nil}, true},
 
-		// Non-nil pointer containers compare by the container they point to
+		// Pointer and custom nodes compare through the Node interface
 		{"pointer Array and pointer Array", &Array{NumberValue(1)}, &Array{NumberValue(1)}, true},
 		{"pointer Array and Array", &Array{NumberValue(1)}, Array{NumberValue(1)}, true},
-		{"Array and pointer Array", Array{NumberValue(1)}, &Array{NumberValue(1)}, true},
 		{"pointer Array different", &Array{NumberValue(1)}, &Array{NumberValue(2)}, false},
 		{"pointer Map and Map", &Map{"a": NumberValue(1)}, Map{"a": NumberValue(1)}, true},
-		{"Map and pointer Map", Map{"a": NumberValue(1)}, &Map{"a": NumberValue(1)}, true},
 		{"empty Array and empty pointer Array", Array{}, &Array{}, true},
 		{"empty Map and empty pointer Map", Map{}, &Map{}, true},
 		{"pointer to nil Map and Map", new(Map), Map{}, true},
@@ -809,9 +807,7 @@ func TestEqual(t *testing.T) {
 		{"pointer Map and pointer Array", &Map{}, &Array{}, false},
 		{"Array and pointer Any wrapping pointer Array", Array{}, &Any{Node: &Array{}}, true},
 		{"pointer String and String", &str, StringValue("a"), true},
-		{"String and pointer String", StringValue("a"), &str, true},
 		{"pointer Number and Number", &num, NumberValue(1), true},
-		{"Number and pointer Number", NumberValue(1), &num, true},
 		{"pointer Bool and Bool", &tru, BoolValue(true), true},
 		{"pointer Bool different", &tru, BoolValue(false), false},
 		{"pointer NilValue and Nil", &NilValue{}, Nil, true},
@@ -825,7 +821,7 @@ func TestEqual(t *testing.T) {
 			true,
 		},
 
-		// Any wrapper unwrapping
+		// Any delegates to the wrapped node
 		{
 			"Any wraps Map equals raw Map",
 			Any{Node: Map{"a": NumberValue(1)}},

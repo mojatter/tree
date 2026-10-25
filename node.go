@@ -470,6 +470,8 @@ func (n Map) Find(expr string) ([]Node, error) {
 //     tags differ.
 //   - Nodes are compared through the Node interface, so Any, pointer
 //     nodes such as *Map and custom Node types compare by Type and content.
+//   - Trees must be acyclic; a cycle such as a Map holding a pointer to
+//     itself recurses without bound.
 //
 // For comparing []Node slices (e.g. results from Find), wrap each
 // side as Array before calling Equal.
@@ -484,8 +486,6 @@ func Equal(n1, n2 Node) bool {
 	}
 
 	switch t {
-	case TypeNilValue:
-		return true
 	case TypeStringValue:
 		return n1.Value().String() == n2.Value().String()
 	case TypeNumberValue:
