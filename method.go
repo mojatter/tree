@@ -309,6 +309,11 @@ func (q *FirstQuery) String() string {
 	return "first()"
 }
 
+// editIndex returns the index an edit writes through for first().
+func (q *FirstQuery) editIndex() ArrayQuery {
+	return 0
+}
+
 // LastQuery returns the last element of an array.
 // Returns null for empty arrays or non-array types.
 type LastQuery struct{}
@@ -332,6 +337,11 @@ func (q *LastQuery) Exec(n Node) ([]Node, error) {
 
 func (q *LastQuery) String() string {
 	return "last()"
+}
+
+// editIndex returns the index an edit writes through for last().
+func (q *LastQuery) editIndex() ArrayQuery {
+	return -1
 }
 
 // Sort ranks: null < false < true < numbers < strings < arrays < objects.

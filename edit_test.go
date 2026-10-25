@@ -818,10 +818,45 @@ func TestEdit(t *testing.T) {
 			expr:     `.[.b == 1]. = 9`,
 			want:     Array{NumberValue(9), Map{"b": NumberValue(2)}},
 		}, {
-			caseName: "trailing bare dot after a slice is a no-op",
+			caseName: "trailing bare dot after a slice edits the elements in range",
 			n:        Array{NumberValue(1), NumberValue(2)},
 			expr:     `.[0:1]. = 9`,
-			want:     Array{NumberValue(1), NumberValue(2)},
+			want:     Array{NumberValue(9), NumberValue(2)},
+		}, {
+			caseName: "trailing bare dot after a slice sets a null element",
+			n:        Array{Nil, NumberValue(1)},
+			expr:     `.[0:2]. = 9`,
+			want:     Array{NumberValue(9), NumberValue(9)},
+		}, {
+			caseName: "trailing bare dot after a slice leaves null elements out of range",
+			n:        Map{"a": Array{Nil, Nil}},
+			expr:     `.a[0:1]. = 9`,
+			want:     Map{"a": Array{NumberValue(9), Nil}},
+		}, {
+			caseName: "trailing bare dot after [] sets a null element",
+			n:        Map{"a": Array{Nil, NumberValue(1)}},
+			expr:     `.a[]. = 9`,
+			want:     Map{"a": Array{NumberValue(9), NumberValue(9)}},
+		}, {
+			caseName: "trailing bare dot after [] on a map sets a null value",
+			n:        Map{"m": Map{"k": Nil}},
+			expr:     `.m[]. = 9`,
+			want:     Map{"m": Map{"k": NumberValue(9)}},
+		}, {
+			caseName: "trailing bare dot after [] leaves a null element on append",
+			n:        Array{Nil},
+			expr:     `.[]. += 1`,
+			want:     Array{Nil},
+		}, {
+			caseName: "trailing bare dot after [] appends to arrays and leaves null elements",
+			n:        Map{"a": Array{Array{NumberValue(1)}, Nil}},
+			expr:     `.a[]. += 1`,
+			want:     Map{"a": Array{Array{NumberValue(1), NumberValue(1)}, Nil}},
+		}, {
+			caseName: "trailing bare dot after [] leaves a null element on delete",
+			n:        Array{Nil},
+			expr:     `.[]. ^?`,
+			want:     Array{Nil},
 		}, {
 			caseName: "bare dot between [] and an index is dropped",
 			n:        Array{Array{NumberValue(1)}, Array{NumberValue(2)}},
@@ -908,20 +943,20 @@ func TestEdit(t *testing.T) {
 			expr:     `.a[].x = 1`,
 			want:     Map{"a": Array{Map{"x": NumberValue(1)}}},
 		}, {
-			caseName: "null reached through select is kept when a later step creates nothing",
+			caseName: "unsupported last step errors before reaching a null through select",
 			n:        Map{"a": Array{Nil}},
 			expr:     `.a[].b[] = 1`,
-			want:     Map{"a": Array{Nil}},
+			errstr:   `syntax error: unsupported edit query: []`,
 		}, {
-			caseName: "null reached by key is kept when a later step creates nothing",
+			caseName: "unsupported last step errors before reaching a null by key",
 			n:        Map{"a": Nil},
 			expr:     `.a.b[] = 1`,
-			want:     Map{"a": Nil},
+			errstr:   `syntax error: unsupported edit query: []`,
 		}, {
-			caseName: "nil element reached by index is kept when a later step creates nothing",
+			caseName: "first() as the last step creates what it needs like [0]",
 			n:        Map{"a": Array{nil}},
 			expr:     `.a[0].b.first() = 1`,
-			want:     Map{"a": Array{nil}},
+			want:     Map{"a": Array{Map{"b": Array{NumberValue(1)}}}},
 		}, {
 			caseName: "nil map value reached through select is replaced",
 			n:        Map{"a": Map{"k": nil}},
@@ -958,25 +993,25 @@ func TestEdit(t *testing.T) {
 			expr:     `.a += 1`,
 			want:     Map{"a": Array{NumberValue(1)}},
 		}, {
-			caseName: "set through nil element in a slice behaves as null",
+			caseName: "set through nil element in a slice creates it",
 			n:        Map{"a": Array{nil, nil, NumberValue(1)}},
 			expr:     `.a[1:2][0].x = 1`,
-			want:     Map{"a": Array{nil, nil, NumberValue(1)}},
+			want:     Map{"a": Array{nil, Array{Map{"x": NumberValue(1)}}, NumberValue(1)}},
 		}, {
-			caseName: "nil element reached through a method step is not created",
+			caseName: "nil element reached through first() is created",
 			n:        Map{"a": Array{nil}},
 			expr:     `.a.first().x = 1`,
-			errstr:   `cannot index array with "x"`,
+			want:     Map{"a": Array{Map{"x": NumberValue(1)}}},
 		}, {
 			caseName: "delete past null reached through walk is a no-op",
 			n:        Map{"b": Nil},
 			expr:     `..b.c ^?`,
 			want:     Map{"b": Nil},
 		}, {
-			caseName: "set on nil element in a slice errors as on null",
+			caseName: "set on nil element in a slice creates the array",
 			n:        Map{"a": Array{nil, NumberValue(1)}},
 			expr:     `.a[0:1][0] = 1`,
-			errstr:   `cannot index array with 0`,
+			want:     Map{"a": Array{Array{NumberValue(1)}, NumberValue(1)}},
 		}, {
 			caseName: "ArrayQuery intermediate on Map uses EditorNode branch",
 			n:        Map{"m": Map{"0": Map{"x": StringValue("old")}}},
@@ -1066,7 +1101,7 @@ func TestEdit(t *testing.T) {
 			expr:     `.arr[0].x = 1`,
 			errstr:   `cannot index array with "x"`,
 		}, {
-			caseName: "default-branch intermediate Exec error propagates up",
+			caseName: "slice step on a map errors",
 			n:        Map{"items": Map{"x": StringValue("v")}},
 			expr:     `.items[1:2].x = 1`,
 			errstr:   `cannot index array with range [1:2]`,
@@ -1347,6 +1382,16 @@ func TestEdit(t *testing.T) {
 			expr:     `.x.y.c = 1`,
 			want:     Map{"x": mapHidingEditorNode{Map{"y": Map{"c": NumberValue(1)}}}},
 		}, {
+			caseName: "first() on an editor node without map errors as on a map",
+			n:        Map{"x": mapHidingEditorNode{Map{"k": NumberValue(1)}}},
+			expr:     `.x.first() = 1`,
+			errstr:   `cannot edit first() of a map`,
+		}, {
+			caseName: "last() step on an editor node without map errors as on a map",
+			n:        Map{"x": mapHidingEditorNode{Map{"k": NumberValue(1)}}},
+			expr:     `.x.last().y = 1`,
+			errstr:   `cannot edit last() of a map`,
+		}, {
 			caseName: "intermediate map step leaves editor node wrapping nil map",
 			n:        Map{"x": valueEditorNode{Map(nil)}},
 			expr:     `.x.y.c = 1`,
@@ -1514,15 +1559,212 @@ func TestEdit(t *testing.T) {
 			expr:     `..b += 1`,
 			want:     Map{"x": Map{"b": Array{NumberValue(1)}}},
 		}, {
-			caseName: "nil map reached through a method step is skipped by an index step",
+			caseName: "nil map reached through first() is replaced for an index step",
 			n:        Map{"a": Array{Map(nil)}},
 			expr:     `.a.first()[0].x = 1`,
-			want:     Map{"a": Array{Map(nil)}},
+			want:     Map{"a": Array{Array{Map{"x": NumberValue(1)}}}},
 		}, {
-			caseName: "set on nil map reached through a method step errors",
+			caseName: "nil map reached through first() is replaced",
 			n:        Map{"a": Array{Map(nil)}},
 			expr:     `.a.first().k = 1`,
-			errstr:   `cannot set k in a nil map`,
+			want:     Map{"a": Array{Map{"k": NumberValue(1)}}},
+		},
+		// --- Edit paths: groups, slices and methods ---
+		{
+			caseName: "group without a pipe is flattened",
+			n:        Map{"a": Array{}},
+			expr:     `(.a[0]).b = 1`,
+			want:     Map{"a": Array{Map{"b": NumberValue(1)}}},
+		}, {
+			caseName: "group without a pipe is flattened on a null root",
+			n:        Nil,
+			expr:     `(.a[0]).b = 1`,
+			want:     Map{"a": Array{Map{"b": NumberValue(1)}}},
+		}, {
+			caseName: "group with a pipe is an unsupported edit query",
+			n:        Map{"a": Array{Map{"b": NumberValue(0)}}},
+			expr:     `(.a | .[0]).b = 1`,
+			errstr:   `syntax error: unsupported edit query: (.a | .[0])`,
+		}, {
+			caseName: "group around the whole query edits like a top-level pipe",
+			n:        Map{"a": Array{Map{"x": NumberValue(1)}}},
+			expr:     `(.a | .[0]) = 9`,
+			want:     Map{"a": Array{Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "slice step edits each element in range",
+			n:        Map{"a": Array{Map{"b": NumberValue(0)}, Map{"b": NumberValue(5)}}},
+			expr:     `.a[1:].b = 1`,
+			want:     Map{"a": Array{Map{"b": NumberValue(0)}, Map{"b": NumberValue(1)}}},
+		}, {
+			caseName: "slice step writes back a grown element",
+			n:        Map{"a": Array{Array{}, Array{}}},
+			expr:     `.a[0:1][0] = 1`,
+			want:     Map{"a": Array{Array{NumberValue(1)}, Array{}}},
+		}, {
+			caseName: "delete through a slice step",
+			n:        Map{"a": Array{Map{"b": NumberValue(0), "c": NumberValue(1)}, Map{"b": NumberValue(5)}}},
+			expr:     `.a[:1].b ^?`,
+			want:     Map{"a": Array{Map{"c": NumberValue(1)}, Map{"b": NumberValue(5)}}},
+		}, {
+			caseName: "empty slice step is a no-op",
+			n:        Map{"a": Array{NumberValue(1), NumberValue(2)}},
+			expr:     `.a[2:1][0] = 9`,
+			want:     Map{"a": Array{NumberValue(1), NumberValue(2)}},
+		}, {
+			caseName: "slice step on a string errors",
+			n:        Map{"s": StringValue("hi")},
+			expr:     `.s[0:1].x = 1`,
+			errstr:   `cannot index array with range [0:1]`,
+		}, {
+			caseName: "last() step edits the last element",
+			n:        Map{"a": Array{Map{"b": NumberValue(0)}, Map{"b": NumberValue(5)}}},
+			expr:     `.a.last().b = 1`,
+			want:     Map{"a": Array{Map{"b": NumberValue(0)}, Map{"b": NumberValue(1)}}},
+		}, {
+			caseName: "first() as the last step sets the first element",
+			n:        Map{"a": Array{NumberValue(1), NumberValue(2)}},
+			expr:     `.a.first() = 9`,
+			want:     Map{"a": Array{NumberValue(9), NumberValue(2)}},
+		}, {
+			caseName: "last() as the last step deletes the last element",
+			n:        Map{"a": Array{NumberValue(1), NumberValue(2)}},
+			expr:     `.a.last() ^?`,
+			want:     Map{"a": Array{NumberValue(1)}},
+		}, {
+			caseName: "first() step on null creates the array",
+			n:        Map{"a": Nil},
+			expr:     `.a.first().x = 1`,
+			want:     Map{"a": Array{Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "last() on null creates nothing",
+			n:        Map{"a": Nil},
+			expr:     `.a.last() = 1`,
+			want:     Map{"a": Nil},
+		}, {
+			caseName: "last() step on null creates nothing",
+			n:        Map{"a": Nil},
+			expr:     `.a.last().c = 1`,
+			want:     Map{"a": Nil},
+		}, {
+			caseName: "negative index on null creates nothing",
+			n:        Map{"a": Nil},
+			expr:     `.a[-1] = 1`,
+			want:     Map{"a": Nil},
+		}, {
+			caseName: "negative index after a created map creates nothing",
+			n:        Map{"a": Nil},
+			expr:     `.a.b[-1].c = 1`,
+			want:     Map{"a": Nil},
+		}, {
+			caseName: "last() on a null root leaves it null",
+			n:        Nil,
+			expr:     `.last() = 1`,
+			want:     Nil,
+		}, {
+			caseName: "negative index on a null root leaves it null",
+			n:        Nil,
+			expr:     `.[-1] = 1`,
+			want:     Nil,
+		}, {
+			caseName: "append at a negative index on a null root leaves it null",
+			n:        Nil,
+			expr:     `.[-1] += 1`,
+			want:     Nil,
+		}, {
+			caseName: "delete at a negative index on a null root is a no-op",
+			n:        Nil,
+			expr:     `.[-1] ^?`,
+			want:     Nil,
+		}, {
+			caseName: "delete last() on a null root is a no-op",
+			n:        Nil,
+			expr:     `.last() ^?`,
+			want:     Nil,
+		}, {
+			caseName: "last() step on a null root leaves it null",
+			n:        Nil,
+			expr:     `.last().a = 1`,
+			want:     Nil,
+		}, {
+			caseName: "first() step on a map errors",
+			n:        Map{"m": Map{"k": NumberValue(1)}},
+			expr:     `.m.first().x = 1`,
+			errstr:   `cannot edit first() of a map`,
+		}, {
+			caseName: "last() as the last step on a map errors",
+			n:        Map{"m": Map{"k": NumberValue(1)}},
+			expr:     `.m.last() = 1`,
+			errstr:   `cannot edit last() of a map`,
+		}, {
+			caseName: "other method step is an unsupported edit query",
+			n:        Map{"a": Array{Map{"b": NumberValue(0)}}},
+			expr:     `.a.sort()[0] = 9`,
+			errstr:   `syntax error: unsupported edit query: sort()`,
+		}, {
+			caseName: "other method as the last step is an unsupported edit query",
+			n:        Map{"a": Map{"b": NumberValue(0)}},
+			expr:     `.a.keys() = 1`,
+			errstr:   `syntax error: unsupported edit query: keys()`,
+		}, {
+			caseName: "value step is an unsupported edit query",
+			n:        Map{},
+			expr:     `"x".b = 1`,
+			errstr:   `syntax error: unsupported edit query: "x"`,
+		}, {
+			caseName: "empty group step is an unsupported edit query",
+			n:        Map{"a": Array{NumberValue(1)}},
+			expr:     `.a.first ().b = 1`,
+			errstr:   `syntax error: unsupported edit query: ()`,
+		}, {
+			caseName: "empty group as the last step is an unsupported edit query",
+			n:        Map{},
+			expr:     `.a.() = 1`,
+			errstr:   `syntax error: unsupported edit query: ()`,
+		}, {
+			caseName: "unsupported last step errors before reaching missing data",
+			n:        Map{},
+			expr:     `.a[] = 1`,
+			errstr:   `syntax error: unsupported edit query: []`,
+		}, {
+			caseName: "unsupported step errors before reaching missing data",
+			n:        Map{},
+			expr:     `.a.sort().b = 1`,
+			errstr:   `syntax error: unsupported edit query: sort()`,
+		}, {
+			caseName: "trailing pipe is an unsupported edit query on missing data",
+			n:        Map{},
+			expr:     `.a |= 1`,
+			errstr:   `syntax error: unsupported edit query: |`,
+		}, {
+			caseName: "trailing pipe is an unsupported edit query on present data",
+			n:        Map{"a": Map{"b": NumberValue(1)}},
+			expr:     `.a.b |= 2`,
+			errstr:   `syntax error: unsupported edit query: |`,
+		}, {
+			caseName: "trailing pipe after a select is an unsupported edit query",
+			n:        Map{},
+			expr:     `.a[] |= 1`,
+			errstr:   `syntax error: unsupported edit query: |`,
+		}, {
+			caseName: "slice step keeps a *Array",
+			n:        Map{"a": &Array{Map{"x": NumberValue(1)}}},
+			expr:     `.a[0:1].x = 9`,
+			want:     Map{"a": &Array{Map{"x": NumberValue(9)}}},
+		}, {
+			caseName: "slice step creates a nil element in a *Array",
+			n:        Map{"a": &Array{nil}},
+			expr:     `.a[0:1].x = 1`,
+			want:     Map{"a": &Array{Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "select step creates a nil element in a *Array",
+			n:        Map{"a": &Array{nil}},
+			expr:     `.a[].x = 1`,
+			want:     Map{"a": &Array{Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "slice step keeps a custom EditorNode",
+			n:        Map{"a": &pointerEditorNode{&Array{nil}}},
+			expr:     `.a[0:1].x = 1`,
+			want:     Map{"a": &pointerEditorNode{&Array{Map{"x": NumberValue(1)}}}},
 		},
 	}
 	for _, tc := range testCases {

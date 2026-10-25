@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -16,6 +17,7 @@ var editOps = []string{"+=", "^?", "="}
 
 // Edit parses the edit expression and applies it to the node tree.
 // The RHS after "=" or "+=" is parsed as YAML; on error, matches edited before the failing one stay edited.
+// A step the edit cannot write through, such as a method other than first() and last(), is a syntax error.
 func Edit(pn *Node, expr string) error {
 	left, op, right, ok := splitEdit(expr)
 	if !ok {
@@ -34,12 +36,12 @@ func Edit(pn *Node, expr string) error {
 	if err != nil {
 		return err
 	}
+	fq, err := editPath(q)
+	if err != nil {
+		return err
+	}
 	if isNullLike(*pn) { // a null root is replaced like a null reached by key
-		fq, ok := q.(FilterQuery)
-		if !ok {
-			fq = FilterQuery{q}
-		}
-		// Probe with "=" so that ^? stops only a query = would create containers for; others fail as on any root.
+		// Probe with "=" so that ^? stops only a query = would create containers for; others leave the root as under a key.
 		if c := emptyIntermediate("=", dropNopSteps(fq)); c != nil {
 			if op == "^?" {
 				return nil // deleting from a null root leaves it as it is
@@ -48,7 +50,88 @@ func Edit(pn *Node, expr string) error {
 		}
 	}
 
-	return editQuery(pn, q, op, v)
+	return execForEdit(pn, fq, op, v)
+}
+
+// indexQuery is a method query that an edit writes through as the array index it returns.
+type indexQuery interface {
+	Query
+	editIndex() ArrayQuery
+}
+
+// editStep returns the step an edit applies for q on n: the index of an indexQuery, rejecting a map, which [0] would edit by key "0", and q itself otherwise.
+func editStep(n Node, q Query) (Query, error) {
+	iq, ok := q.(indexQuery)
+	if !ok {
+		return q, nil
+	}
+	if !isNullLike(n) && n.Type().IsMap() {
+		return nil, fmt.Errorf("cannot edit %s of a map", q)
+	}
+	return iq.editIndex(), nil
+}
+
+// editPath flattens groups without a pipe and rejects a step the edit cannot write through, before any data is read.
+// Steps before the last pipe are only read, so only the steps after it are checked; a trailing pipe, as in |=, is a step.
+func editPath(q Query) (FilterQuery, error) {
+	fq := flattenGroups(q)
+	seg := dropNopSteps(fq[lastPipe(fq[:max(len(fq)-1, 0)])+1:])
+	for i, s := range seg {
+		if !canEditStep(s, i == len(seg)-1) {
+			return nil, errUnsupportedEditQuery(s)
+		}
+	}
+	return fq, nil
+}
+
+// flattenGroups returns q as a FilterQuery with its parenthesised groups without a pipe spliced in.
+func flattenGroups(q Query) FilterQuery {
+	fq, ok := q.(FilterQuery)
+	if !ok {
+		return FilterQuery{q}
+	}
+	flat := make(FilterQuery, 0, len(fq))
+	for _, s := range fq {
+		if g, ok := s.(FilterQuery); ok && lastPipe(g) < 0 {
+			flat = append(flat, flattenGroups(g)...)
+			continue
+		}
+		flat = append(flat, s)
+	}
+	return flat
+}
+
+// lastPipe returns the index of the last pipe in fq, or -1.
+func lastPipe(fq FilterQuery) int {
+	for i, q := range slices.Backward(fq) {
+		if _, ok := q.(SlurpQuery); ok {
+			return i
+		}
+	}
+	return -1
+}
+
+// canEditStep reports whether an edit can write through q, as the last step when last is true.
+func canEditStep(q Query, last bool) bool {
+	switch q.(type) {
+	case MapQuery, ArrayQuery, WalkQuery, indexQuery:
+		return true
+	case SelectQuery, ArrayRangeQuery:
+		return !last
+	}
+	_, ok := q.(EditorQuery)
+	return last && ok
+}
+
+// errUnsupportedEditQuery reports a step an edit cannot write through, with a group in parentheses.
+func errUnsupportedEditQuery(q Query) error {
+	if vq, ok := q.(ValueQuery); ok && isNull(vq.Node) {
+		return errors.New("syntax error: unsupported edit query: ()") // an empty group parses as a null literal
+	}
+	if _, ok := q.(FilterQuery); ok {
+		return fmt.Errorf("syntax error: unsupported edit query: (%s)", q)
+	}
+	return fmt.Errorf("syntax error: unsupported edit query: %s", strings.TrimSpace(q.String()))
 }
 
 // parseEditValue parses right as one YAML document and rejects anything after it.
@@ -150,15 +233,22 @@ func skipWord(expr string, p int) int {
 }
 
 // editQuery applies an edit operation to a node using the specified query.
-// Supports FilterQuery and EditorQuery types.
+// Supports FilterQuery, EditorQuery and indexQuery types.
 func editQuery(pn *Node, q Query, op string, v Node) error {
+	q, err := editStep(orNil(*pn), q)
+	if err != nil {
+		return err
+	}
+	if aq, ok := q.(ArrayQuery); ok && aq < 0 && isNullLike(*pn) {
+		return nil // a null root has no element to count from the end and stays as it is, as under a key
+	}
 	switch tq := q.(type) {
 	case FilterQuery:
 		return execForEdit(pn, tq, op, v)
 	case EditorQuery:
 		return execEdit(pn, tq, op, v)
 	}
-	return fmt.Errorf("syntax error: unsupported edit query: %s", q)
+	return errUnsupportedEditQuery(q)
 }
 
 // execForEdit executes a FilterQuery for edit operations.
@@ -211,7 +301,7 @@ func dropNopSteps(fq FilterQuery) FilterQuery {
 			continue
 		}
 		if i == len(fq)-1 && len(kept) > 0 {
-			if _, ok := kept[len(kept)-1].(EditorQuery); !ok {
+			if !canEditStep(kept[len(kept)-1], true) {
 				kept = append(kept, q) // a trailing . after a step without write-back, such as [] or a slice, is the editable last step
 			}
 		}
@@ -241,8 +331,11 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 		return editLast(pn, fq[len(fq)-1], op, v, as)
 	}
 
-	q := fq[step]
 	n := orNil(*pn)
+	q, err := editStep(n, fq[step])
+	if err != nil {
+		return err
+	}
 
 	switch tq := q.(type) {
 	case MapQuery:
@@ -277,21 +370,10 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 	case SelectQuery:
 		return resolveSelectStep(pn, n, tq, fq, step, op, v, as)
 
-	default:
-		// Fallback: use Exec (no write-back, works for reference types).
-		results, err := q.Exec(n)
-		if err != nil {
-			return err
-		}
-		for _, r := range results {
-			child := r
-
-			if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
-				return err
-			}
-		}
-		return nil
+	case ArrayRangeQuery:
+		return resolveRangeStep(pn, n, tq, fq, step, op, v, as)
 	}
+	return errUnsupportedEditQuery(q)
 }
 
 // resolveMapStep handles a MapQuery intermediate step with write-back.
@@ -361,7 +443,7 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 	}
 
 	if n.IsNil() {
-		return nil // a null reached through a step without write-back, such as a slice, is skipped
+		return nil // a null root the edit creates nothing for stays as it is
 	}
 	return fmt.Errorf("cannot index array with %q", key)
 }
@@ -412,7 +494,7 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 	}
 
 	if n.IsNil() {
-		return nil // a null reached through a step without write-back, such as a slice, is skipped
+		return nil // a null root the edit creates nothing for stays as it is
 	}
 	return fmt.Errorf("cannot index array with %d", index)
 }
@@ -420,32 +502,11 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 // resolveSelectStep handles a SelectQuery intermediate step with write-back.
 func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step int, op string, v Node, as assigned) error {
 	if a := n.Array(); a != nil {
-		for i, elem := range a {
-			elem = orNil(elem)
-			if sq.Selector != nil {
-				ok, err := sq.Matches(elem)
-				if err != nil {
-					return err
-				}
-				if !ok {
-					continue
-				}
-			}
-			child := elem
-			if isNullLike(child) {
-				if child = emptyIntermediate(op, fq[step+1:]); child == nil {
-					continue // a null element stays as it is
-				}
-			}
-
-			if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
-				return err
-			}
-
-			a[i] = child
+		var match func(Node) (bool, error)
+		if sq.Selector != nil {
+			match = sq.Matches
 		}
-		*pn = a
-		return nil
+		return editElements(pn, n, a, 0, len(a), match, fq, step, op, v, as)
 	}
 
 	if m := n.Map(); m != nil {
@@ -461,7 +522,7 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 				}
 			}
 			child := elem
-			if isNullLike(child) {
+			if isNullLike(child) && (op != "=" || !isNopQuery(fq[step+1])) { // a trailing . sets a null element; += and ^? leave it as it is
 				if child = emptyIntermediate(op, fq[step+1:]); child == nil {
 					continue // a null element stays as it is
 				}
@@ -476,6 +537,58 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 		return nil
 	}
 
+	return nil
+}
+
+// resolveRangeStep handles an ArrayRangeQuery intermediate step with write-back, like [i] for each index in range.
+func resolveRangeStep(pn *Node, n Node, rq ArrayRangeQuery, fq FilterQuery, step int, op string, v Node, as assigned) error {
+	a := n.Array()
+	if a == nil {
+		if isNullLike(n) {
+			return nil // a null root the edit creates nothing for stays as it is
+		}
+		return fmt.Errorf("cannot index array with range %s", rq)
+	}
+	from := resolveRangeBound(rq.From, len(a), 0)
+	to := resolveRangeBound(rq.To, len(a), len(a))
+	return editElements(pn, n, a, from, to, nil, fq, step, op, v, as)
+}
+
+// editElements edits a[from:to], skipping elements match rejects, and writes them back through n when it is an EditorNode.
+func editElements(pn *Node, n Node, a Array, from, to int, match func(Node) (bool, error), fq FilterQuery, step int, op string, v Node, as assigned) error {
+	en, isEditor := n.(EditorNode)
+	for i := from; i < to; i++ {
+		child := orNil(a[i])
+		if match != nil {
+			ok, err := match(child)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				continue
+			}
+		}
+		if isNullLike(child) && (op != "=" || !isNopQuery(fq[step+1])) { // a trailing . sets a null element; += and ^? leave it as it is
+			if child = emptyIntermediate(op, fq[step+1:]); child == nil {
+				continue // a null element stays as it is
+			}
+		}
+
+		if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
+			return err
+		}
+
+		if isEditor {
+			if err := en.Set(i, child); err != nil {
+				return err
+			}
+			continue
+		}
+		a[i] = child
+	}
+	if !isEditor {
+		*pn = a
+	}
 	return nil
 }
 
@@ -496,8 +609,16 @@ func emptyIntermediate(op string, rest FilterQuery) Node {
 		return nil
 	}
 	for _, q := range rest {
-		switch q.(type) {
-		case MapQuery, ArrayQuery:
+		switch tq := q.(type) {
+		case MapQuery:
+		case ArrayQuery:
+			if tq < 0 {
+				return nil // an empty array has no element to count from the end
+			}
+		case indexQuery:
+			if tq.editIndex() < 0 {
+				return nil
+			}
 		default:
 			return nil
 		}
@@ -505,7 +626,7 @@ func emptyIntermediate(op string, rest FilterQuery) Node {
 	switch rest[0].(type) {
 	case MapQuery:
 		return Map{}
-	case ArrayQuery:
+	case ArrayQuery, indexQuery:
 		return Array{}
 	}
 	return nil
