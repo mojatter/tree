@@ -3,6 +3,7 @@ package tree
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"slices"
 	"sync"
@@ -89,16 +90,36 @@ func ToNodeValues(vs ...any) []Node {
 
 // orNil returns n, or Nil when n is a Go nil node, which consumers treat as null.
 func orNil(n Node) Node {
-	if n == nil {
+	if isGoNil(n) {
 		return Nil
 	}
 	return n
 }
 
+// isGoNil reports whether n is a nil interface, a nil pointer node such as (*Array)(nil), or an Any or *Any wrapping one.
+func isGoNil(n Node) bool {
+	switch tn := n.(type) {
+	case nil:
+		return true
+	case Map, Array, StringValue, NumberValue, BoolValue, NilValue:
+		return false
+	case Any:
+		return isGoNil(tn.Node)
+	case *Any:
+		return tn == nil || isGoNil(tn.Node)
+	case *Array:
+		return tn == nil
+	case *Map:
+		return tn == nil
+	}
+	v := reflect.ValueOf(n)
+	return v.Kind() == reflect.Pointer && v.IsNil()
+}
+
 // orNilAll returns ns, or a copy of it with Nil for each Go nil node when it has one.
 func orNilAll(ns []Node) []Node {
 	for i, n := range ns {
-		if n == nil {
+		if isGoNil(n) {
 			c := slices.Clone(ns)
 			for j := i; j < len(c); j++ {
 				c[j] = orNil(c[j])
@@ -111,7 +132,7 @@ func orNilAll(ns []Node) []Node {
 
 // isNull reports whether n is Nil or a Go nil node.
 func isNull(n Node) bool {
-	return n == nil || n.Type().IsNilValue()
+	return isGoNil(n) || n.Type().IsNilValue()
 }
 
 // ToNode converts the specified v to an Node.
@@ -147,7 +168,7 @@ func ToNode(v any) Node {
 // ToAny converts a Node back to a native Go any value.
 // This is the reverse operation of ToNode.
 func ToAny(n Node) any {
-	if n == nil {
+	if isGoNil(n) {
 		return nil
 	}
 	t := n.Type()
@@ -202,7 +223,7 @@ func Walk(n Node, fn WalkFunc) error {
 // walk is a recursive helper function that traverses the node tree.
 // It maintains the path of keys from root to current node.
 func walk(n Node, lastKeys []any, fn WalkFunc) error {
-	if n == nil {
+	if isGoNil(n) {
 		return nil
 	}
 	if err := fn(n, lastKeys); err != nil {
@@ -258,12 +279,12 @@ func regexpMatchString(expr, value string) (bool, error) {
 	return re.MatchString(value), nil
 }
 
-// Clone clones the node shallowly; an untyped nil is returned as Nil.
+// Clone clones the node shallowly; a Go nil node is returned as Nil.
 func Clone(n Node) Node {
 	return clone(n, false)
 }
 
-// CloneDeep recursively clones the node and all descendants; an untyped nil is returned as Nil.
+// CloneDeep recursively clones the node and all descendants; a Go nil node is returned as Nil.
 func CloneDeep(n Node) Node {
 	return clone(n, true)
 }
@@ -271,7 +292,7 @@ func CloneDeep(n Node) Node {
 // clone creates a copy of the node with optional deep cloning.
 // If deep is true, recursively clones all child nodes.
 func clone(n Node, deep bool) Node {
-	if n == nil {
+	if isGoNil(n) {
 		return Nil
 	}
 	switch n.Type() {

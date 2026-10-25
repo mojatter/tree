@@ -181,6 +181,31 @@ func TestQuery(t *testing.T) {
 			q:        FilterQuery{ArrayQuery(0), &CountQuery{}},
 			n:        Array{nil},
 			want:     []Node{ToValue(0)},
+		}, {
+			caseName: "select: typed nil child from a custom Get compares as null",
+			q:        &SelectQuery{Selector: Comparator{Left: MapQuery("a"), Op: EQ, Right: ValueQuery{ToValue(1)}}},
+			n:        Array{rawGetNode{Map{"a": (*Array)(nil)}}, Map{"a": NumberValue(1)}},
+			want:     []Node{Map{"a": NumberValue(1)}},
+		}, {
+			caseName: "select: typed nil children from a custom Get are not unequal",
+			q:        &SelectQuery{Selector: Comparator{Left: MapQuery("a"), Op: NE, Right: MapQuery("b")}},
+			n:        Array{rawGetNode{Map{"a": (*Array)(nil), "b": (*Map)(nil)}}},
+			want:     nil,
+		}, {
+			caseName: "map: typed nil child from a custom Get reads as null",
+			q:        MapQuery("a"),
+			n:        rawGetNode{Map{"a": (*Array)(nil)}},
+			want:     []Node{Nil},
+		}, {
+			caseName: "map: nil child from a custom Get reads as null",
+			q:        MapQuery("a"),
+			n:        rawGetNode{Map{"a": nil}},
+			want:     []Node{Nil},
+		}, {
+			caseName: "walk: typed nil child from a custom Get reads as null",
+			q:        WalkQuery("a"),
+			n:        rawGetNode{Map{"a": (*Array)(nil)}},
+			want:     []Node{Nil},
 		},
 	}
 	for _, tc := range testCases {
@@ -530,4 +555,11 @@ func (d *testSelectorDelegator) Matches(n Node) (bool, error) {
 
 func (d *testSelectorDelegator) String() string {
 	return "testSelectorDelegator"
+}
+
+// rawGetNode wraps a Map whose Get returns a child as stored, without turning a Go nil node into Nil.
+type rawGetNode struct{ Node }
+
+func (n rawGetNode) Get(keys ...any) Node {
+	return n.Node.(Map)[keys[0].(string)]
 }

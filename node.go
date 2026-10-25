@@ -457,8 +457,8 @@ func (n Map) Find(expr string) ([]Node, error) {
 //
 //   - Type tags must match. NumberValue(1) and StringValue("1") are
 //     not equal even though they format to the same string.
-//   - Untyped nil and the Nil sentinel (NilValue{}) compare equal to
-//     each other.
+//   - Untyped nil, a nil pointer node such as (*Array)(nil) and the
+//     Nil sentinel (NilValue{}) compare equal to each other.
 //   - Map equality is order-independent. Map{"a":1, "b":2} equals
 //     Map{"b":2, "a":1}.
 //   - Array equality is order-dependent. Array{1, 2} does not equal
@@ -468,23 +468,14 @@ func (n Map) Find(expr string) ([]Node, error) {
 //   - Map(nil) equals Map{} (both empty Map); the same applies to
 //     Array(nil) and Array{}. Neither equals Nil because the type
 //     tags differ.
-//   - Any wrappers are unwrapped before comparison.
+//   - Any and *Any wrappers are unwrapped before comparison.
 //
 // For comparing []Node slices (e.g. results from Find), wrap each
 // side as Array before calling Equal.
 func Equal(n1, n2 Node) bool {
-	if a, ok := n1.(Any); ok {
-		n1 = a.Node
-	}
-	if a, ok := n2.(Any); ok {
-		n2 = a.Node
-	}
-
-	if n1 == nil {
-		return n2 == nil || n2 == Nil
-	}
-	if n2 == nil {
-		return n1 == Nil
+	n1, n2 = unwrapAny(n1), unwrapAny(n2)
+	if isNull(n1) || isNull(n2) {
+		return isNull(n1) && isNull(n2)
 	}
 
 	if n1.Type() != n2.Type() {
@@ -529,4 +520,21 @@ func Equal(n1, n2 Node) bool {
 	}
 
 	return false
+}
+
+// unwrapAny returns the node that n wraps through any nesting of Any and non-nil *Any.
+func unwrapAny(n Node) Node {
+	for {
+		switch tn := n.(type) {
+		case Any:
+			n = tn.Node
+		case *Any:
+			if tn == nil {
+				return n
+			}
+			n = tn.Node
+		default:
+			return n
+		}
+	}
 }

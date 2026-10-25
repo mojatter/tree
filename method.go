@@ -356,7 +356,7 @@ const (
 )
 
 func sortRank(n Node) int {
-	if n == nil {
+	if isGoNil(n) {
 		return sortRankNull
 	}
 	switch n.Type() {

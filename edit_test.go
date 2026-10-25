@@ -1829,6 +1829,59 @@ func TestEdit(t *testing.T) {
 			expr:     `.a[0:1].x = 1`,
 			want:     Map{"a": &pointerEditorNode{&Array{Map{"x": NumberValue(1)}}}},
 		},
+
+		// --- Nil pointer nodes ---
+		{
+			caseName: "nil *Array treated as null on set through it",
+			n:        Map{"a": (*Array)(nil)},
+			expr:     `.a.x = 1`,
+			want:     Map{"a": Map{"x": NumberValue(1)}},
+		}, {
+			caseName: "nil *Map treated as null on set through an index",
+			n:        Map{"a": (*Map)(nil)},
+			expr:     `.a[0].x = 1`,
+			want:     Map{"a": Array{Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "nil *Any left as it is by an iterate",
+			n:        Map{"a": (*Any)(nil)},
+			expr:     `.a[].x = 1`,
+			want:     Map{"a": (*Any)(nil)},
+		}, {
+			caseName: "nil *StringValue treated as null on append",
+			n:        Map{"a": (*StringValue)(nil)},
+			expr:     `.a += 1`,
+			want:     Map{"a": Array{NumberValue(1)}},
+		}, {
+			caseName: "nil custom pointer node treated as null",
+			n:        Map{"a": (*leafEditorNode)(nil)},
+			expr:     `.a.x = 1`,
+			want:     Map{"a": Map{"x": NumberValue(1)}},
+		}, {
+			caseName: "nil pointer node skipped by a walk",
+			n:        Map{"a": (*Map)(nil), "x": NumberValue(0)},
+			expr:     `..x = 1`,
+			want:     Map{"a": (*Map)(nil), "x": NumberValue(1)},
+		}, {
+			caseName: "nil pointer root replaced like a null root",
+			n:        (*Map)(nil),
+			expr:     `.x = 1`,
+			want:     Map{"x": NumberValue(1)},
+		}, {
+			caseName: "pointer Any wrapping nil treated as null on set through it",
+			n:        Map{"a": &Any{}},
+			expr:     `.a.x = 1`,
+			want:     Map{"a": Map{"x": NumberValue(1)}},
+		}, {
+			caseName: "append to a nil pointer root",
+			n:        (*Array)(nil),
+			expr:     `. += 1`,
+			errstr:   "cannot append to .",
+		}, {
+			caseName: "append to a nil root",
+			n:        nil,
+			expr:     `. += 1`,
+			errstr:   "cannot append to .",
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {

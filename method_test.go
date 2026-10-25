@@ -367,6 +367,11 @@ func TestMethodQuery(t *testing.T) {
 			q:        &SortQuery{Expr: ".a", Query: MapQuery("a")},
 			n:        Array{Map{"a": Map{}}, Map{"a": Nil}, Map{"a": Map(nil)}},
 			want:     []Node{Array{Map{"a": Nil}, Map{"a": Map{}}, Map{"a": Map(nil)}}},
+		}, {
+			caseName: "sort nil pointer element as null",
+			q:        &SortQuery{},
+			n:        Array{ToValue(1), (*Map)(nil)},
+			want:     []Node{Array{(*Map)(nil), ToValue(1)}},
 		},
 	}
 	for _, tc := range testCases {

@@ -40,7 +40,7 @@ func (q NopQuery) Set(pn *Node, v Node) error {
 }
 
 func (q NopQuery) Append(pn *Node, v Node) error {
-	if a := (*pn).Array(); a != nil {
+	if a := orNil(*pn).Array(); a != nil {
 		*pn = append(a, v)
 		return nil
 	}
@@ -83,7 +83,7 @@ func (q MapQuery) Exec(n Node) ([]Node, error) {
 		return nil, fmt.Errorf("cannot index array with %q", key)
 	}
 	if n.Has(key) {
-		return []Node{n.Get(key)}, nil
+		return []Node{orNil(n.Get(key))}, nil
 	}
 	return nil, nil
 }
@@ -416,7 +416,7 @@ func (q WalkQuery) Exec(root Node) ([]Node, error) {
 			return nil
 		}
 		if n.Has(key) {
-			r = append(r, n.Get(key))
+			r = append(r, orNil(n.Get(key)))
 		}
 		return nil
 	})
@@ -425,7 +425,7 @@ func (q WalkQuery) Exec(root Node) ([]Node, error) {
 
 // walkEdit calls fn on each editable node holding the key, descendants first, skipping values this edit has stored.
 func (q WalkQuery) walkEdit(n Node, as assigned, fn func(en EditorNode) error) error {
-	if n == nil || as.has(n) {
+	if isGoNil(n) || as.has(n) {
 		return nil
 	}
 	if err := n.Each(func(key any, c Node) error {
@@ -610,7 +610,7 @@ func (c Comparator) Matches(n Node) (bool, error) {
 	case 0:
 		l0 = nil
 	case 1:
-		l0 = l[0]
+		l0 = orNil(l[0])
 	default:
 		return false, fmt.Errorf("%s returns no single value %+v", c.Left, l)
 	}
@@ -618,7 +618,7 @@ func (c Comparator) Matches(n Node) (bool, error) {
 	case 0:
 		r0 = nil
 	case 1:
-		r0 = r[0]
+		r0 = orNil(r[0])
 	default:
 		return false, fmt.Errorf("%s returns no single value %+v", c.Right, r)
 	}
@@ -690,7 +690,7 @@ var (
 
 // Find finds a node from n using the Query.
 func Find(n Node, expr string) ([]Node, error) {
-	if n == nil || n.IsNil() {
+	if isGoNil(n) || n.IsNil() {
 		return nil, nil
 	}
 	q, err := ParseQuery(expr)
