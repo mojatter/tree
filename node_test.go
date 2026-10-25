@@ -337,6 +337,18 @@ func TestNodeGet(t *testing.T) {
 			n:        Map{"k": nil},
 			keys:     []any{"k", "x"},
 			want:     Nil,
+		}, {
+			caseName: "Map nil pointer child",
+			n:        Map{"a": (*Map)(nil)},
+			keys:     []any{"a", "x"},
+			has:      false,
+			want:     Nil,
+		}, {
+			caseName: "Array nil pointer child",
+			n:        Array{(*Array)(nil)},
+			keys:     []any{0, 0},
+			has:      false,
+			want:     Nil,
 		},
 	}
 	for _, tc := range testCases {
@@ -425,6 +437,17 @@ func TestNodeFind(t *testing.T) {
 			n:        Map{"1": NumberValue(10), "2": NumberValue(20)},
 			expr:     ".1",
 			want:     []Node{NumberValue(10)},
+		},
+		{
+			caseName: "nil pointer child walked",
+			n:        Map{"a": (*Map)(nil)},
+			expr:     "..x",
+			want:     nil,
+		}, {
+			caseName: "nil pointer child in a select",
+			n:        Array{Map{"a": (*Array)(nil)}, Map{"a": NumberValue(1)}},
+			expr:     ".[.a == 1]",
+			want:     []Node{Map{"a": NumberValue(1)}},
 		},
 	}
 	for _, tc := range testCases {
@@ -651,6 +674,9 @@ func TestEqual(t *testing.T) {
 		{"nil and nil", nil, nil, true},
 		{"nil and Nil", nil, Nil, true},
 		{"Nil and Nil", Nil, Nil, true},
+		{"nil pointer and Nil", (*Map)(nil), Nil, true},
+		{"nil and nil pointer", nil, (*Array)(nil), true},
+		{"nil pointer and Map(nil)", (*Array)(nil), Map(nil), false},
 
 		// Scalars: same type, same value
 		{"StringValue same", StringValue("x"), StringValue("x"), true},

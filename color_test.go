@@ -58,6 +58,17 @@ func TestEncodeJSON(t *testing.T) {
 			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
 			n:        ToValue("\"\n\r\t"),
 			want:     "\"\\\"\\n\\r\\t\"\n",
+		}, {
+			caseName: "nil pointer nodes as null",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": (*Map)(nil), "b": Array{(*Array)(nil)}},
+			want: `{
+  "a": null,
+  "b": [
+    null
+  ]
+}
+`,
 		},
 	}
 	for _, tc := range testCases {
@@ -157,6 +168,14 @@ d: null
   b: true
 -
   - c
+  - null
+`,
+		}, {
+			caseName: "nil pointer nodes as null",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": (*Map)(nil), "b": Array{(*Array)(nil)}},
+			want: `a: null
+b:
   - null
 `,
 		},

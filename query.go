@@ -425,7 +425,7 @@ func (q WalkQuery) Exec(root Node) ([]Node, error) {
 
 // walkEdit calls fn on each editable node holding the key, descendants first, skipping values this edit has stored.
 func (q WalkQuery) walkEdit(n Node, as assigned, fn func(en EditorNode) error) error {
-	if n == nil || as.has(n) {
+	if isGoNil(n) || as.has(n) {
 		return nil
 	}
 	if err := n.Each(func(key any, c Node) error {
@@ -690,7 +690,7 @@ var (
 
 // Find finds a node from n using the Query.
 func Find(n Node, expr string) ([]Node, error) {
-	if n == nil || n.IsNil() {
+	if isGoNil(n) || n.IsNil() {
 		return nil, nil
 	}
 	q, err := ParseQuery(expr)

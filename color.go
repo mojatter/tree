@@ -203,7 +203,7 @@ func (e *ColorEncoder) EncodeJSON(n Node) error {
 }
 
 func (e *ColorEncoder) encodeJSON(n Node, indent bool) {
-	if n == nil {
+	if isGoNil(n) {
 		e.writeIndent(indent)
 		e.writeNull()
 		return
@@ -265,7 +265,7 @@ func (e *ColorEncoder) EncodeYAML(n Node) error {
 }
 
 func (e *ColorEncoder) encodeYAML(n Node, noIndentFirstKey bool) {
-	if n == nil {
+	if isGoNil(n) {
 		e.writeNull()
 		e.writeln()
 		return
@@ -275,7 +275,7 @@ func (e *ColorEncoder) encodeYAML(n Node, noIndentFirstKey bool) {
 	case TypeArray:
 		for _, v := range n.Array() {
 			e.writeIndent(true)
-			if v == nil || v.Type().IsValue() {
+			if isGoNil(v) || v.Type().IsValue() {
 				e.write('-', ' ')
 				e.encodeYAML(v, false)
 			} else if v.Type().IsMap() {
@@ -299,7 +299,7 @@ func (e *ColorEncoder) encodeYAML(n Node, noIndentFirstKey bool) {
 			e.startColor(colorKey)
 			e.writeQuotedYAMLIfNeed(k, false)
 			e.endColor()
-			if v == nil || v.Type().IsValue() {
+			if isGoNil(v) || v.Type().IsValue() {
 				e.write(':', ' ')
 				e.encodeYAML(v, false)
 			} else {

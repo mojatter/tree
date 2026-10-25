@@ -298,6 +298,11 @@ func TestCloneDeep(t *testing.T) {
 			update: func(n Node) {
 				(*n.Map()["a"].Map()["b"].(*Array))[0] = ToValue(9)
 			},
+		}, {
+			caseName: "nil pointer child normalised to Nil",
+			n:        Map{"a": (*Array)(nil)},
+			want:     Map{"a": Nil},
+			update:   func(n Node) {},
 		},
 	}
 	for _, tc := range testCases {
@@ -309,6 +314,30 @@ func TestCloneDeep(t *testing.T) {
 			tc.update(tc.n)
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("after update unexpected %v; want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsGoNil(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		n        Node
+		want     bool
+	}{
+		{caseName: "untyped nil", n: nil, want: true},
+		{caseName: "nil *Array", n: (*Array)(nil), want: true},
+		{caseName: "nil *Map", n: (*Map)(nil), want: true},
+		{caseName: "nil custom pointer", n: (*leafEditorNode)(nil), want: true},
+		{caseName: "non-nil *Array", n: &Array{}, want: false},
+		{caseName: "Map(nil)", n: Map(nil), want: false},
+		{caseName: "Nil", n: Nil, want: false},
+		{caseName: "Any wrapping nil", n: Any{}, want: false},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			if got := isGoNil(tc.n); got != tc.want {
+				t.Errorf("got %v; want %v", got, tc.want)
 			}
 		})
 	}

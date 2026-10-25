@@ -480,10 +480,10 @@ func Equal(n1, n2 Node) bool {
 		n2 = a.Node
 	}
 
-	if n1 == nil {
-		return n2 == nil || n2 == Nil
+	if isGoNil(n1) {
+		return isGoNil(n2) || n2 == Nil
 	}
-	if n2 == nil {
+	if isGoNil(n2) {
 		return n1 == Nil
 	}
 
