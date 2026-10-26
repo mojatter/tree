@@ -354,6 +354,7 @@ func TestMerge(t *testing.T) {
 	}
 }
 
+// TestMergeNullOperand skips CloneDeep, which would turn Go nil inputs into Nil and hide the #183 panic.
 func TestMergeNullOperand(t *testing.T) {
 	testCases := []struct {
 		caseName string
