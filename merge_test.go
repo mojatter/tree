@@ -400,7 +400,7 @@ func TestMergeNullOperand(t *testing.T) {
 			want:     Map{"a": Map{"x": ToValue(1)}},
 		},
 		{
-			caseName: "Default keeps nested Nil a",
+			caseName: "Default keeps nested Nil a (#189)",
 			a:        Map{"a": Nil},
 			b:        Map{"a": ToValue(1)},
 			want:     Map{"a": Nil},
