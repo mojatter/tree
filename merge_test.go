@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -348,6 +349,78 @@ func TestMerge(t *testing.T) {
 			}
 			if !Equal(b, tc.b) {
 				t.Errorf("b was mutated: %v; want %v", b, tc.b)
+			}
+		})
+	}
+}
+
+func TestMergeNullOperand(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		a        Node
+		b        Node
+		opts     MergeOption
+		want     Node
+	}{
+		{caseName: "nil a returns b", a: nil, b: Map{"x": ToValue(1)}, want: Map{"x": ToValue(1)}},
+		{caseName: "Nil a returns b", a: Nil, b: ToValue(1), want: ToValue(1)},
+		{caseName: "nil pointer a returns b", a: (*Map)(nil), b: ToArrayValues(1), want: ToArrayValues(1)},
+		{caseName: "Any wrapping nil a returns b", a: Any{}, b: ToValue("s"), want: ToValue("s")},
+		{caseName: "Slurp with null a returns b", a: Nil, b: ToValue(1), opts: MergeOptionSlurp, want: ToValue(1)},
+		{caseName: "both nil returns Nil", a: nil, b: nil, want: Nil},
+		{caseName: "nil pointers return Nil", a: (*Array)(nil), b: (*Map)(nil), opts: MergeOptionOverride, want: Nil},
+		{caseName: "Default keeps a over nil b", a: ToValue(1), b: nil, want: ToValue(1)},
+		{caseName: "Override sets nil b as Nil", a: ToValue(1), b: (*Map)(nil), opts: MergeOptionOverride, want: Nil},
+		{caseName: "Replace sets null b", a: Map{"x": ToValue(1)}, b: Nil, opts: MergeOptionReplace, want: Nil},
+		{caseName: "Slurp keeps null b", a: ToValue(1), b: nil, opts: MergeOptionSlurp, want: Array{ToValue(1), Nil}},
+		{
+			caseName: "nested nil pointer a takes b",
+			a:        Map{"a": (*Map)(nil)},
+			b:        Map{"a": Map{"x": ToValue(1)}},
+			opts:     MergeOptionOverrideMap,
+			want:     Map{"a": Map{"x": ToValue(1)}},
+		},
+		{
+			caseName: "nested nil array element takes b",
+			a:        Array{nil, ToValue(2)},
+			b:        ToArrayValues(1),
+			opts:     MergeOptionOverrideArray,
+			want:     ToArrayValues(1, 2),
+		},
+		{caseName: "nil Map a Default", a: Map(nil), b: Map{"x": ToValue(1)}, want: Map{"x": ToValue(1)}},
+		{caseName: "nil Map a OverrideMap", a: Map(nil), b: Map{"x": ToValue(1)}, opts: MergeOptionOverrideMap, want: Map{"x": ToValue(1)}},
+		{caseName: "nil Map a Slurp", a: Map(nil), b: Map{"x": ToValue(1)}, opts: MergeOptionSlurp, want: Map{"x": ToValue(1)}},
+		{caseName: "pointer to nil Map a", a: new(Map), b: Map{"x": ToValue(1)}, want: Map{"x": ToValue(1)}},
+		{caseName: "nil Map a Default scalar b keeps a", a: Map(nil), b: ToValue(1), want: Map(nil)},
+		{
+			caseName: "nested nil Map a",
+			a:        Map{"a": Map(nil)},
+			b:        Map{"a": Map{"x": ToValue(1)}},
+			opts:     MergeOptionOverrideMap,
+			want:     Map{"a": Map{"x": ToValue(1)}},
+		},
+		{
+			caseName: "Default keeps nested Nil a",
+			a:        Map{"a": Nil},
+			b:        Map{"a": ToValue(1)},
+			want:     Map{"a": Nil},
+		},
+		{
+			caseName: "nested Override sets null b",
+			a:        Map{"a": ToValue(1)},
+			b:        Map{"a": Nil},
+			opts:     MergeOptionOverrideMap,
+			want:     Map{"a": Nil},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got := Merge(tc.a, tc.b, tc.opts)
+			if isGoNil(got) {
+				t.Fatalf("got Go nil node %#v; want %v", got, tc.want)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("unexpected %#v; want %#v", got, tc.want)
 			}
 		})
 	}
