@@ -468,31 +468,32 @@ func (n Map) Find(expr string) ([]Node, error) {
 //   - Map(nil) equals Map{} (both empty Map); the same applies to
 //     Array(nil) and Array{}. Neither equals Nil because the type
 //     tags differ.
-//   - Any and *Any wrappers are unwrapped before comparison.
+//   - Nodes are compared through the Node interface, so Any, pointer
+//     nodes such as *Map and custom Node types compare by Type and content.
+//   - Trees must be acyclic; a cycle such as a Map holding a pointer to
+//     itself recurses without bound.
 //
 // For comparing []Node slices (e.g. results from Find), wrap each
 // side as Array before calling Equal.
 func Equal(n1, n2 Node) bool {
-	n1, n2 = unwrapAny(n1), unwrapAny(n2)
 	if isNull(n1) || isNull(n2) {
 		return isNull(n1) && isNull(n2)
 	}
 
-	if n1.Type() != n2.Type() {
+	t := n1.Type()
+	if t != n2.Type() {
 		return false
 	}
 
-	switch v1 := n1.(type) {
-	case NilValue:
-		return true
-	case StringValue:
-		return v1 == n2.(StringValue)
-	case NumberValue:
-		return v1 == n2.(NumberValue)
-	case BoolValue:
-		return v1 == n2.(BoolValue)
-	case Map:
-		v2 := n2.(Map)
+	switch t {
+	case TypeStringValue:
+		return n1.Value().String() == n2.Value().String()
+	case TypeNumberValue:
+		return n1.Value().Float64() == n2.Value().Float64()
+	case TypeBoolValue:
+		return n1.Value().Bool() == n2.Value().Bool()
+	case TypeMap:
+		v1, v2 := n1.Map(), n2.Map()
 		if len(v1) != len(v2) {
 			return false
 		}
@@ -506,8 +507,8 @@ func Equal(n1, n2 Node) bool {
 			}
 		}
 		return true
-	case Array:
-		v2 := n2.(Array)
+	case TypeArray:
+		v1, v2 := n1.Array(), n2.Array()
 		if len(v1) != len(v2) {
 			return false
 		}
@@ -520,21 +521,4 @@ func Equal(n1, n2 Node) bool {
 	}
 
 	return false
-}
-
-// unwrapAny returns the node that n wraps through any nesting of Any and non-nil *Any.
-func unwrapAny(n Node) Node {
-	for {
-		switch tn := n.(type) {
-		case Any:
-			n = tn.Node
-		case *Any:
-			if tn == nil {
-				return n
-			}
-			n = tn.Node
-		default:
-			return n
-		}
-	}
 }
