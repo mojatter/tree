@@ -336,26 +336,6 @@ func TestMerge(t *testing.T) {
 				"array": ToArrayValues(7, 8),
 			},
 		},
-	}
-	for _, tc := range testCases {
-		t.Run(tc.caseName, func(t *testing.T) {
-			got := Merge(tc.a, tc.b, tc.opts)
-			if !Equal(got, tc.want) {
-				t.Errorf("unexpected %v; want %v", got, tc.want)
-			}
-		})
-	}
-}
-
-// TestMergeNullOperand skips CloneDeep, which would turn Go nil inputs into Nil and hide the #183 panic.
-func TestMergeNullOperand(t *testing.T) {
-	testCases := []struct {
-		caseName string
-		a        Node
-		b        Node
-		opts     MergeOption
-		want     Node
-	}{
 		{caseName: "nil a returns b", a: nil, b: Map{"x": ToValue(1)}, want: Map{"x": ToValue(1)}},
 		{caseName: "Nil a returns b", a: Nil, b: ToValue(1), want: ToValue(1)},
 		{caseName: "nil pointer a returns b", a: (*Map)(nil), b: ToArrayValues(1), want: ToArrayValues(1)},
