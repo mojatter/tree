@@ -510,7 +510,7 @@ func TestEditorNodeAppend(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := tc.n
-			if !Equal(got, tc.want) {
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("got %v; want %v", got, tc.want)
 			}
 		})
@@ -592,7 +592,7 @@ func TestEditorNodeSet(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := tc.n
-			if !Equal(got, tc.want) {
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("got %v; want %v", got, tc.want)
 			}
 		})
@@ -660,7 +660,7 @@ func TestEditorNodeDelete(t *testing.T) {
 				t.Fatal(err)
 			}
 			got := tc.n
-			if !Equal(got, tc.want) {
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("got %v; want %v", got, tc.want)
 			}
 		})
