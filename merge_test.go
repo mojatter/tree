@@ -339,16 +339,9 @@ func TestMerge(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
-			a, b := CloneDeep(tc.a), CloneDeep(tc.b)
-			got := Merge(CloneDeep(tc.a), CloneDeep(tc.b), tc.opts)
+			got := Merge(tc.a, tc.b, tc.opts)
 			if !Equal(got, tc.want) {
 				t.Errorf("unexpected %v; want %v", got, tc.want)
-			}
-			if !Equal(a, tc.a) {
-				t.Errorf("a was mutated: %v; want %v", a, tc.a)
-			}
-			if !Equal(b, tc.b) {
-				t.Errorf("b was mutated: %v; want %v", b, tc.b)
 			}
 		})
 	}
