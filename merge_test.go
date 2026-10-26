@@ -189,6 +189,12 @@ func TestMerge(t *testing.T) {
 			opts:     MergeOptionOverrideArray,
 			want:     ToValue("b"),
 		}, {
+			caseName: "OverrideArray Map vs Value chooses b",
+			a:        Map{"a": ToValue(1)},
+			b:        ToValue("c"),
+			opts:     MergeOptionOverrideArray,
+			want:     ToValue("c"),
+		}, {
 			caseName: "Override Map",
 			a:        Map{"a": ToValue(1), "b": ToValue(2)},
 			b:        Map{"a": ToValue(3)},
@@ -213,17 +219,17 @@ func TestMerge(t *testing.T) {
 			opts:     MergeOptionReplaceMap,
 			want:     Map{"a": ToValue(3)},
 		}, {
-			caseName: "ReplaceMap Value first",
+			caseName: "ReplaceMap Value",
 			a:        ToValue("a"),
 			b:        ToValue("b"),
 			opts:     MergeOptionReplaceMap,
 			want:     ToValue("b"),
 		}, {
-			caseName: "ReplaceMap Value second",
-			a:        ToValue("a"),
-			b:        ToValue("b"),
+			caseName: "ReplaceMap Map vs Value replaces",
+			a:        Map{"a": ToValue(1), "b": ToValue(2)},
+			b:        ToValue("c"),
 			opts:     MergeOptionReplaceMap,
-			want:     ToValue("b"),
+			want:     ToValue("c"),
 		}, {
 			caseName: "ReplaceArray Array",
 			a:        ToArrayValues(1, 2, 3),
@@ -248,12 +254,6 @@ func TestMerge(t *testing.T) {
 			b:        ToArrayValues(4, 5),
 			opts:     MergeOptionReplace,
 			want:     ToArrayValues(4, 5),
-		}, {
-			caseName: "Replace Value second",
-			a:        ToValue("a"),
-			b:        ToValue("b"),
-			opts:     MergeOptionReplace,
-			want:     ToValue("b"),
 		}, {
 			caseName: "Append Array",
 			a:        ToArrayValues(1, 2, 3),
@@ -335,78 +335,117 @@ func TestMerge(t *testing.T) {
 				"map":   Map{"a": ToValue(6)},
 				"array": ToArrayValues(7, 8),
 			},
-		},
-	}
-	for _, tc := range testCases {
-		t.Run(tc.caseName, func(t *testing.T) {
-			a, b := CloneDeep(tc.a), CloneDeep(tc.b)
-			got := Merge(CloneDeep(tc.a), CloneDeep(tc.b), tc.opts)
-			if !Equal(got, tc.want) {
-				t.Errorf("unexpected %v; want %v", got, tc.want)
-			}
-			if !Equal(a, tc.a) {
-				t.Errorf("a was mutated: %v; want %v", a, tc.a)
-			}
-			if !Equal(b, tc.b) {
-				t.Errorf("b was mutated: %v; want %v", b, tc.b)
-			}
-		})
-	}
-}
-
-// TestMergeNullOperand skips CloneDeep, which would turn Go nil inputs into Nil and hide the #183 panic.
-func TestMergeNullOperand(t *testing.T) {
-	testCases := []struct {
-		caseName string
-		a        Node
-		b        Node
-		opts     MergeOption
-		want     Node
-	}{
-		{caseName: "nil a returns b", a: nil, b: Map{"x": ToValue(1)}, want: Map{"x": ToValue(1)}},
-		{caseName: "Nil a returns b", a: Nil, b: ToValue(1), want: ToValue(1)},
-		{caseName: "nil pointer a returns b", a: (*Map)(nil), b: ToArrayValues(1), want: ToArrayValues(1)},
-		{caseName: "Any wrapping nil a returns b", a: Any{}, b: ToValue("s"), want: ToValue("s")},
-		{caseName: "Slurp with null a returns b", a: Nil, b: ToValue(1), opts: MergeOptionSlurp, want: ToValue(1)},
-		{caseName: "both nil returns Nil", a: nil, b: nil, want: Nil},
-		{caseName: "nil pointers return Nil", a: (*Array)(nil), b: (*Map)(nil), opts: MergeOptionOverride, want: Nil},
-		{caseName: "Default keeps a over nil b", a: ToValue(1), b: nil, want: ToValue(1)},
-		{caseName: "Override sets nil b as Nil", a: ToValue(1), b: (*Map)(nil), opts: MergeOptionOverride, want: Nil},
-		{caseName: "Replace sets null b", a: Map{"x": ToValue(1)}, b: Nil, opts: MergeOptionReplace, want: Nil},
-		{caseName: "Slurp keeps null b", a: ToValue(1), b: nil, opts: MergeOptionSlurp, want: Array{ToValue(1), Nil}},
-		{
+		}, {
+			caseName: "nil a returns b",
+			a:        nil,
+			b:        Map{"x": ToValue(1)},
+			want:     Map{"x": ToValue(1)},
+		}, {
+			caseName: "Nil a returns b",
+			a:        Nil,
+			b:        ToValue(1),
+			want:     ToValue(1),
+		}, {
+			caseName: "nil pointer a returns b",
+			a:        (*Map)(nil),
+			b:        ToArrayValues(1),
+			want:     ToArrayValues(1),
+		}, {
+			caseName: "Any wrapping nil a returns b",
+			a:        Any{},
+			b:        ToValue("s"),
+			want:     ToValue("s"),
+		}, {
+			caseName: "Slurp with null a returns b",
+			a:        Nil,
+			b:        ToValue(1),
+			opts:     MergeOptionSlurp,
+			want:     ToValue(1),
+		}, {
+			caseName: "both nil returns Nil",
+			a:        nil,
+			b:        nil,
+			want:     Nil,
+		}, {
+			caseName: "nil pointers return Nil",
+			a:        (*Array)(nil),
+			b:        (*Map)(nil),
+			opts:     MergeOptionOverride,
+			want:     Nil,
+		}, {
+			caseName: "Default keeps a over nil b",
+			a:        ToValue(1),
+			b:        nil,
+			want:     ToValue(1),
+		}, {
+			caseName: "Override sets nil b as Nil",
+			a:        ToValue(1),
+			b:        (*Map)(nil),
+			opts:     MergeOptionOverride,
+			want:     Nil,
+		}, {
+			caseName: "Replace sets null b",
+			a:        Map{"x": ToValue(1)},
+			b:        Nil,
+			opts:     MergeOptionReplace,
+			want:     Nil,
+		}, {
+			caseName: "Slurp keeps null b",
+			a:        ToValue(1),
+			b:        nil,
+			opts:     MergeOptionSlurp,
+			want:     Array{ToValue(1), Nil},
+		}, {
 			caseName: "nested nil pointer a takes b",
 			a:        Map{"a": (*Map)(nil)},
 			b:        Map{"a": Map{"x": ToValue(1)}},
 			opts:     MergeOptionOverrideMap,
 			want:     Map{"a": Map{"x": ToValue(1)}},
-		},
-		{
+		}, {
 			caseName: "nested nil array element takes b",
 			a:        Array{nil, ToValue(2)},
 			b:        ToArrayValues(1),
 			opts:     MergeOptionOverrideArray,
 			want:     ToArrayValues(1, 2),
-		},
-		{caseName: "nil Map a Default", a: Map(nil), b: Map{"x": ToValue(1)}, want: Map{"x": ToValue(1)}},
-		{caseName: "nil Map a OverrideMap", a: Map(nil), b: Map{"x": ToValue(1)}, opts: MergeOptionOverrideMap, want: Map{"x": ToValue(1)}},
-		{caseName: "nil Map a Slurp", a: Map(nil), b: Map{"x": ToValue(1)}, opts: MergeOptionSlurp, want: Map{"x": ToValue(1)}},
-		{caseName: "pointer to nil Map a", a: new(Map), b: Map{"x": ToValue(1)}, want: Map{"x": ToValue(1)}},
-		{caseName: "nil Map a Default scalar b keeps a", a: Map(nil), b: ToValue(1), want: Map(nil)},
-		{
+		}, {
+			caseName: "nil Map a Default",
+			a:        Map(nil),
+			b:        Map{"x": ToValue(1)},
+			want:     Map{"x": ToValue(1)},
+		}, {
+			caseName: "nil Map a OverrideMap",
+			a:        Map(nil),
+			b:        Map{"x": ToValue(1)},
+			opts:     MergeOptionOverrideMap,
+			want:     Map{"x": ToValue(1)},
+		}, {
+			caseName: "nil Map a Slurp",
+			a:        Map(nil),
+			b:        Map{"x": ToValue(1)},
+			opts:     MergeOptionSlurp,
+			want:     Map{"x": ToValue(1)},
+		}, {
+			caseName: "pointer to nil Map a",
+			a:        new(Map),
+			b:        Map{"x": ToValue(1)},
+			want:     Map{"x": ToValue(1)},
+		}, {
+			caseName: "nil Map a Default scalar b keeps a",
+			a:        Map(nil),
+			b:        ToValue(1),
+			want:     Map(nil),
+		}, {
 			caseName: "nested nil Map a",
 			a:        Map{"a": Map(nil)},
 			b:        Map{"a": Map{"x": ToValue(1)}},
 			opts:     MergeOptionOverrideMap,
 			want:     Map{"a": Map{"x": ToValue(1)}},
-		},
-		{
+		}, {
 			caseName: "Default keeps nested Nil a (#189)",
 			a:        Map{"a": Nil},
 			b:        Map{"a": ToValue(1)},
 			want:     Map{"a": Nil},
-		},
-		{
+		}, {
 			caseName: "nested Override sets null b",
 			a:        Map{"a": ToValue(1)},
 			b:        Map{"a": Nil},
@@ -416,6 +455,8 @@ func TestMergeNullOperand(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
+			// No CloneDeep: it would turn Go nil operands into Nil and Map(nil) into Map{},
+			// hiding the #183 panic and breaking the nil Map rows.
 			got := Merge(tc.a, tc.b, tc.opts)
 			if isGoNil(got) {
 				t.Fatalf("got Go nil node %#v; want %v", got, tc.want)
