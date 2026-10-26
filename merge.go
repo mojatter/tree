@@ -111,7 +111,20 @@ func (o MergeOption) isSlurp() bool {
 // the rules. If you need to preserve the inputs, clone before calling:
 //
 //	merged := tree.Merge(tree.CloneDeep(a), tree.CloneDeep(b), opts)
+//
+// When both operands are maps and a's map is nil (Map(nil) or new(Map)),
+// the result is a fresh map that is neither a nor b, so use the return value.
+//
+// A null a, including a Go nil or nil pointer node, is treated as missing
+// and Merge returns b (Nil if b is null too). A null b is merged as a value.
 func Merge(a, b Node, opts MergeOption) Node {
+	a, b = orNil(a), orNil(b)
+	if isNull(a) {
+		if isNull(b) {
+			return Nil
+		}
+		return b
+	}
 	if a.Type().IsMap() {
 		if b.Type().IsMap() {
 			return mergeMap(a.Map(), b.Map(), opts)
@@ -180,6 +193,9 @@ func mergeArray(a, b Array, opts MergeOption) Array {
 // mergeMap merges two maps according to the specified merge options.
 // Supports override, replace, and recursive merging of nested structures.
 func mergeMap(a, b Map, opts MergeOption) Map {
+	if a == nil {
+		a = Map{}
+	}
 	if opts.isSlurp() || opts.isOverrideMap() {
 		for k, v := range b {
 			if vv, exists := a[k]; exists {
