@@ -2712,3 +2712,102 @@ func TestEditSetParity(t *testing.T) {
 		}
 	}
 }
+
+// TestEditDocExamples runs the edit examples in docs/query.md; add a row for each example added there.
+func TestEditDocExamples(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		input    string
+		expr     string
+		want     string
+		errstr   string
+	}{
+		// Edits
+		{caseName: "value is YAML", input: `{}`, expr: `.url = "http://x?a=1"`, want: `{"url": "http://x?a=1"}`},
+		{caseName: "array value", input: `{}`, expr: `.a = [1, 2]`, want: `{"a": [1, 2]}`},
+		{caseName: "comparison is not an assignment", input: `{"a": [{"b": 1}, {"b": 2}]}`, expr: `.a[.b == 1].c = 2`, want: `{"a": [{"b": 1, "c": 2}, {"b": 2}]}`},
+		{caseName: "== alone", input: `{}`, expr: `.a ==1`, errstr: `syntax error: invalid edit expression ".a ==1"`},
+		{caseName: "quoted =", input: `{}`, expr: `.a = "=1"`, want: `{"a": "=1"}`},
+		// Go equivalents
+		{caseName: "negative index on an object", input: `{"m": {}}`, expr: `.m[-1] = 1`, want: `{"m": {"-1": 1}}`},
+		{caseName: "numeric key on an array", input: `{"a": []}`, expr: `.a.1 = 1`, want: `{"a": [null, 1]}`},
+		{caseName: "grow an array", input: `{"a": [0]}`, expr: `.a[3] = 1`, want: `{"a": [0, null, null, 1]}`},
+		{caseName: "delete a missing key", input: `{"a": {}}`, expr: `.a.zz ^?`, want: `{"a": {}}`},
+		{caseName: "delete past the end", input: `{"a": [1]}`, expr: `.a[5] ^?`, want: `{"a": [1]}`},
+		{caseName: "set null keeps the key", input: `{"a": 1}`, expr: `.a = null`, want: `{"a": null}`},
+		{caseName: "delete removes the key", input: `{"a": 1}`, expr: `.a ^?`, want: `{}`},
+		{caseName: "first() on a scalar", input: `{"a": 1}`, expr: `.a.first() = 1`, errstr: `cannot index array with 0`},
+		// Paths
+		{caseName: "unsupported method", input: `{"a": []}`, expr: `.a.sort()[0] = 1`, errstr: `syntax error: unsupported edit query: sort()`},
+		{caseName: "[] as the last step", input: `{"a": []}`, expr: `.a[] = 1`, errstr: `syntax error: unsupported edit query: []`},
+		{caseName: "trailing pipe", input: `{"a": 1}`, expr: `.a |= 1`, errstr: `syntax error: unsupported edit query: |`},
+		{caseName: "group without a pipe", input: `{"a": [{}]}`, expr: `(.a[0]).b = 1`, want: `{"a": [{"b": 1}]}`},
+		{caseName: "group with a pipe", input: `{"a": [1]}`, expr: `(.a | .[0]) = 9`, want: `{"a": [1]}`},
+		{caseName: "pipe edits the collected array", input: `{"a": [1]}`, expr: `.a | .[0] = 9`, want: `{"a": [1]}`},
+		{caseName: "bare dot before an index", input: `[1]`, expr: `.[0] = 9`, want: `[9]`},
+		{caseName: "trailing bare dot after a key", input: `{"a": 1}`, expr: `.a. = 9`, want: `{"a": 9}`},
+		{caseName: "trailing bare dot after a walk", input: `{"b": 1, "c": {"b": 2}}`, expr: `..b. ^?`, want: `{"c": {}}`},
+		{caseName: "trailing bare dot sets null elements", input: `{"a": [null, 2]}`, expr: `.a[]. = 1`, want: `{"a": [1, 1]}`},
+		{caseName: "trailing bare dot appends to null elements", input: `{"a": [null, [2]]}`, expr: `.a[]. += 1`, want: `{"a": [[1], [2, 1]]}`},
+		{caseName: "trailing bare dot keeps null elements on delete", input: `{"a": [null]}`, expr: `.a[]. ^?`, want: `{"a": [null]}`},
+		{caseName: "[] on null", input: `{"a": null}`, expr: `.a[]. = 1`, want: `{"a": null}`},
+		{caseName: "slice on null", input: `{"a": null}`, expr: `.a[1:]. = 1`, want: `{"a": null}`},
+		{caseName: "slice", input: `{"a": [0, 0, 0]}`, expr: `.a[1:]. = 1`, want: `{"a": [0, 1, 1]}`},
+		// Multiple matches
+		{caseName: "walk never edits the RHS", input: `{"b": {"b": 2}}`, expr: `..b = {"b": 1}`, want: `{"b": {"b": 1}}`},
+		{caseName: "walk stops at a mismatch", input: `{"b": {"c": {"b": []}}}`, expr: `..b.c = 1`, errstr: `cannot index array with c`},
+		{caseName: "walk append stops at a scalar", input: `{"a": 1, "b": {"a": []}}`, expr: `..a += 1`, want: `{"a": 1, "b": {"a": [1]}}`, errstr: `cannot append to "a"`},
+		{caseName: "walk by index edits arrays", input: `{"a": [[1], [2]]}`, expr: `..0 = 9`, want: `{"a": [9, [9]]}`},
+		// Null intermediates
+		{caseName: "null element", input: `{"a": [null]}`, expr: `.a[0].x = 1`, want: `{"a": [{"x": 1}]}`},
+		{caseName: "append to null", input: `{"a": null}`, expr: `.a += 1`, want: `{"a": [1]}`},
+		{caseName: "null before []", input: `{"a": null}`, expr: `.a.b[].c = 1`, want: `{"a": null}`},
+		{caseName: "null before last()", input: `{"a": null}`, expr: `.a.last() = 1`, want: `{"a": null}`},
+		{caseName: "null root", input: `null`, expr: `.a.b = 1`, want: `{"a": {"b": 1}}`},
+		{caseName: "append to a null root", input: `null`, expr: `. += 1`, want: `[1]`},
+		{caseName: "negative index on a null root", input: `null`, expr: `.[-1] = 1`, want: `null`},
+		// Edit errors
+		{caseName: "key on a scalar", input: `{"a": 1}`, expr: `.a.b = 1`, errstr: `cannot index array with "b"`},
+		{caseName: "append before the start", input: `{"a": []}`, expr: `.a[-5] += 1`, errstr: `cannot append to array with -5`},
+		{caseName: "delete before the start", input: `{"a": [1]}`, expr: `.a[-5] ^?`, errstr: `cannot delete array with -5`},
+		{caseName: "append is one element", input: `{"a": [0]}`, expr: `.a += [1]`, want: `{"a": [0, [1]]}`},
+		{caseName: "key on an array", input: `{"a": []}`, expr: `.a.b = 1`, errstr: `cannot index array with b`},
+		{caseName: "negative index before the start", input: `{"a": []}`, expr: `.a[-5] = 1`, errstr: `cannot index array with -5`},
+		{caseName: "append to a scalar", input: `{"a": 1}`, expr: `.a += 1`, errstr: `cannot append to "a"`},
+		{caseName: "delete on a scalar", input: `{"a": 1}`, expr: `.a.b ^?`, errstr: `cannot delete "b"`},
+		{caseName: "first() on an object", input: `{"a": {}}`, expr: `.a.first() = 1`, errstr: `cannot edit first() of a map`},
+		{caseName: "[] on a scalar", input: `{"a": 1}`, expr: `.a[]. = 1`, errstr: `cannot index array with []`},
+		{caseName: "slice on a scalar", input: `{"a": 1}`, expr: `.a[1:]. = 1`, errstr: `cannot index array with range [1:]`},
+		{caseName: "index too large", input: `{}`, expr: `.a[16777216] = 1`, want: `{}`, errstr: `array index 16777216 exceeds maximum 16777215`},
+		{caseName: "index too large on a null root", input: `null`, expr: `.a[16777216] = 1`, want: `null`, errstr: `array index 16777216 exceeds maximum 16777215`},
+		{caseName: "append to a scalar root", input: `1`, expr: `. += 1`, errstr: `cannot append to .`},
+		{caseName: "delete the root", input: `{}`, expr: `. ^?`, errstr: `cannot delete .`},
+		{caseName: "several YAML documents", input: `{}`, expr: ".a = 1\n---\n2", errstr: `syntax error: multiple YAML documents in edit value "1\n---\n2"`},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			n, err := UnmarshalJSON([]byte(tc.input))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = Edit(&n, tc.expr)
+			if tc.errstr != "" {
+				if err == nil || err.Error() != tc.errstr {
+					t.Fatalf("got error %v; want %s", err, tc.errstr)
+				}
+				if tc.want == "" {
+					return
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			want, err := UnmarshalJSON([]byte(tc.want))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !Equal(n, want) {
+				t.Errorf("got %v; want %s", n, tc.want)
+			}
+		})
+	}
+}

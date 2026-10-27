@@ -820,3 +820,118 @@ func TestFindGetParity(t *testing.T) {
 		}
 	}
 }
+
+// TestQueryDocExamples runs the query examples in docs/query.md; add a row for each example added there.
+func TestQueryDocExamples(t *testing.T) {
+	store := `{"store": {"book": [{"t": "a", "isbn": "x", "tags": [{"x": 1}]}, {"t": "b", "tags": []}, {"t": "c", "isbn": null}]}}`
+	books := `[{"t": "a", "isbn": "x"}, {"t": "b"}, {"t": "c", "isbn": null}]`
+	testCases := []struct {
+		caseName string
+		input    string
+		expr     string
+		want     string
+		errstr   string
+	}{
+		// Syntax
+		{caseName: "steps", input: `{"store": {"book": [{"title": "t"}]}}`, expr: `.store.book[0].title`, want: `["t"]`},
+		{caseName: "negative number alone", input: `{}`, expr: `-1`, errstr: `syntax error: invalid token -: "-1"`},
+		{caseName: "non-canonical index", input: `{"a": [5, 6]}`, expr: `.a."01"`, want: `[6]`},
+		{caseName: "negative number", input: `[{"a": -1}, {"a": 1}]`, expr: `[.a == -1]`, want: `[{"a": -1}]`},
+		{caseName: "fraction", input: `[{"a": 1.5}, {"a": 1}]`, expr: `[.a == 1.5]`, want: `[{"a": 1.5}]`},
+		{caseName: "exponent", input: `[{"a": 1000}, {"a": 1}]`, expr: `[.a == 1e3]`, want: `[{"a": 1000}]`},
+		{caseName: "escaped quote", input: `[{"a": "a\"b"}, {"a": "ab"}]`, expr: `[.a == "a\"b"]`, want: `[{"a": "a\"b"}]`},
+		{caseName: "single quotes", input: `[{"a": "x"}]`, expr: `[.a == 'x']`, want: `[{"a": "x"}]`},
+		{caseName: "sort by an expression", input: `{"b": [{"a": 2}, {"a": 1}]}`, expr: `.b.sort(".a")`, want: `[[{"a": 1}, {"a": 2}]]`},
+		{caseName: "quoted key", input: `{"a b": 1}`, expr: `."a b"`, want: `[1]`},
+		{caseName: "numeric key on an array", input: `{"a": [5, 6]}`, expr: `.a.0`, want: `[5]`},
+		{caseName: "negative index", input: `{"a": [5, 6]}`, expr: `.a[-1]`, want: `[6]`},
+		{caseName: "negative slice bound", input: `{"a": [5, 6]}`, expr: `.a[-1:]`, want: `[6]`},
+		{caseName: "literal alone", input: `null`, expr: `"x"`, want: `["x"]`},
+		{caseName: "bare word is a string", input: `[{"a": "x"}, {"a": "y"}]`, expr: `[.a == x]`, want: `[{"a": "x"}]`},
+		{caseName: "quoted null is a string", input: `[{"a": null}, {"a": "null"}]`, expr: `[.a == "null"]`, want: `[{"a": "null"}]`},
+		{caseName: "CSV quote in an argument", input: `{"a": {"a\"b": 1}}`, expr: `.a.has("a""b")`, want: `[true]`},
+		{caseName: "backslash in an argument", input: `{}`, expr: `.a.has("a\"b")`, errstr: `failed to parse args: parse error on line 1, column 4: extraneous or missing " in quoted-field`},
+		{caseName: "empty expression", input: `{}`, expr: ``, errstr: `syntax error: empty expression: ""`},
+		{caseName: "empty group", input: `{}`, expr: `()`, errstr: `syntax error: empty expression: "()"`},
+		{caseName: "empty comparison side", input: `[]`, expr: `[.a == ]`, errstr: `syntax error: empty expression: "[.a == ]"`},
+		{caseName: "empty sort expression", input: `{"a": []}`, expr: `.a.sort("")`, errstr: `syntax error: empty expression: ""`},
+		// Results
+		{caseName: "missing key", input: store, expr: `.store.zz`, want: `[null]`},
+		{caseName: "key after []", input: store, expr: `.store.book[].isbn`, want: `["x", null, null]`},
+		{caseName: "[] on missing", input: store, expr: `.store.zz[]`, want: `[]`},
+		// Steps
+		{caseName: "index on an object", input: `{"m": {"0": "z"}}`, expr: `.m[0]`, want: `["z"]`},
+		{caseName: "negative index on an object", input: `{"m": {"-1": "m"}}`, expr: `.m[-1]`, want: `["m"]`},
+		{caseName: "first() on an object", input: `{"m": {"0": "z"}}`, expr: `.m.first()`, want: `[null]`},
+		{caseName: "numeric key reads an index", input: `{"a": [5, 6]}`, expr: `.a.1`, want: `[6]`},
+		{caseName: "key on an array", input: `{"a": [5, 6]}`, expr: `.a["x"]`, want: `[null]`},
+		{caseName: "walk matches array indexes", input: `{"a": [[1, 2], [3]]}`, expr: `..0`, want: `[[1, 2], 1, 3]`},
+		// Methods
+		{caseName: "keys() yields one array", input: `{"a": [5, 6]}`, expr: `.a.keys()`, want: `[[0, 1]]`},
+		{caseName: "each key", input: `{"a": [5, 6]}`, expr: `.a.keys()[]`, want: `[0, 1]`},
+		{caseName: "array keys are numbers", input: `{"a": [5, 6]}`, expr: `.a.keys()[. == 0]`, want: `[0]`},
+		{caseName: "array keys are not strings", input: `{"a": [5, 6]}`, expr: `.a.keys()[. == "0"]`, want: `[]`},
+		{caseName: "values() of an array", input: `{"a": [5, 6]}`, expr: `.a.values()`, want: `[[5, 6]]`},
+		{caseName: "values() of an object", input: `{"m": {"y": 2, "x": 1}}`, expr: `.m.values()`, want: `[[1, 2]]`},
+		{caseName: "contains() skips containers and null", input: `{"a": [null, [], {}]}`, expr: `.a.contains("")`, want: `[false]`},
+		{caseName: "contains() matches an empty string", input: `{"a": [""]}`, expr: `.a.contains("")`, want: `[true]`},
+		{caseName: "contains() on a string", input: `{"s": "hello", "a": ["hello"]}`, expr: `.s.contains("ell")`, want: `[true]`},
+		{caseName: "contains() on elements", input: `{"s": "hello", "a": ["hello"]}`, expr: `.a.contains("ell")`, want: `[false]`},
+		{caseName: "count() on a string", input: `{"a": "abc"}`, expr: `.a.count()`, want: `[0]`},
+		{caseName: "sort() order", input: `{"a": [{"o": 1}, [1], "s", 2, true, false, null]}`, expr: `.a.sort()`, want: `[[null, false, true, 2, "s", [1], {"o": 1}]]`},
+		{caseName: "rsort() is stable", input: `{"a": [{"k": 1, "i": "a"}, {"k": 1, "i": "b"}]}`, expr: `.a.rsort(".k")`, want: `[[{"k": 1, "i": "a"}, {"k": 1, "i": "b"}]]`},
+		{caseName: "sort() ignores further arguments", input: `{"a": [{"k": 2, "x": 1}, {"k": 1, "x": 2}]}`, expr: `.a.sort(".k",".x")`, want: `[[{"k": 1, "x": 2}, {"k": 2, "x": 1}]]`},
+		{caseName: "count() ignores its argument", input: `{"a": [1, 2]}`, expr: `.a.count("x")`, want: `[2]`},
+		// Selects and comparisons
+		{caseName: "several values", input: `[{"tags": [{"x": 1}, {"x": 2}]}]`, expr: `[.tags[].x == 1]`, errstr: `.tags[].x returns more than one value [1 2]`},
+		{caseName: "nested select", input: `[{"tags": [{"x": 1}, {"x": 2}]}, {"tags": [{"x": 2}]}]`, expr: `[.tags[.x == 1]]`, want: `[{"tags": [{"x": 1}, {"x": 2}]}]`},
+		{caseName: "empty side with ==", input: `[{"tags": []}]`, expr: `[.tags[] == 1]`, want: `[]`},
+		{caseName: "empty side with !=", input: `[{"tags": []}]`, expr: `[.tags[] != 1]`, want: `[]`},
+		{caseName: "different types", input: `[{"a": "1"}, {"a": 1.0}]`, expr: `[.a == 1]`, want: `[{"a": 1}]`},
+		{caseName: "strings compare bytewise", input: `[{"a": "B"}, {"a": "b"}]`, expr: `[.a < "a"]`, want: `[{"a": "B"}]`},
+		{caseName: "ordered booleans", input: `[{"a": true}]`, expr: `[.a > false]`, want: `[]`},
+		{caseName: "ordered null", input: `[{"a": 1}]`, expr: `[.a < null]`, want: `[]`},
+		{caseName: "regexp", input: `[{"a": "xy"}, {"a": 1}]`, expr: `[.a ~= "^x"]`, want: `[{"a": "xy"}]`},
+		{caseName: "invalid regexp", input: `[{"a": "("}]`, expr: `[.a ~= "("]`, want: `[]`},
+		{caseName: "containers by value", input: `[{"a": [1], "b": [1]}, {"a": {}, "b": []}]`, expr: `[.a == .b]`, want: `[{"a": [1], "b": [1]}]`},
+		{caseName: "ordered containers", input: `[{"a": [1], "b": [2]}]`, expr: `[.a < .b]`, want: `[]`},
+		{caseName: "null literal", input: books, expr: `[.isbn == null]`, want: `[{"t": "b"}, {"t": "c", "isbn": null}]`},
+		{caseName: "missing is not x", input: books, expr: `[.isbn != "x"]`, want: `[{"t": "b"}, {"t": "c", "isbn": null}]`},
+		{caseName: "truthy", input: `{"n": [0, 1, "", null, -1, [], {}]}`, expr: `.n[.]`, want: `[1]`},
+		{caseName: "empty() is not falsy", input: `{"n": [0, 1, "", null]}`, expr: `.n[.empty() == false]`, want: `[0, 1]`},
+		// Pipes
+		{caseName: "first match", input: store, expr: `..t | [0]`, want: `["a"]`},
+		{caseName: "count matches", input: store, expr: `.store.book[] | count()`, want: `[3]`},
+		{caseName: "pipe collects null", input: `{}`, expr: `.zz | count()`, want: `[1]`},
+		{caseName: "pipe collects nothing", input: `{}`, expr: `.zz[] | count()`, want: `[0]`},
+		{caseName: "pipe slurps", input: `{"a": [1, 2]}`, expr: `.a[] | .`, want: `[[1, 2]]`},
+		// Errors
+		{caseName: "unknown method", input: `{}`, expr: `.a.foo()`, errstr: `unknown method: foo`},
+		{caseName: "wrong number of arguments", input: `{}`, expr: `.a.has()`, errstr: `has() requires exactly 1 argument, got 0`},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			n, err := UnmarshalJSON([]byte(tc.input))
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := Find(n, tc.expr)
+			if tc.errstr != "" {
+				if err == nil || err.Error() != tc.errstr {
+					t.Fatalf("got error %v; want %s", err, tc.errstr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			want, err := UnmarshalJSON([]byte(tc.want))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !Equal(Array(got), want) {
+				t.Errorf("got %v; want %s", got, tc.want)
+			}
+		})
+	}
+}
