@@ -543,6 +543,11 @@ func TestEdit(t *testing.T) {
 			expr:     `.a[.x == null].y = 1`,
 			want:     Map{"a": Array{Map{"x": Nil, "y": NumberValue(1)}, Map{"x": NumberValue(1)}, Map{"y": NumberValue(1)}}},
 		}, {
+			caseName: "set through a null literal select leaves a container",
+			n:        Map{"a": Array{Map{"x": Map{"y": NumberValue(1)}}, Map{}}},
+			expr:     `.a[.x == null].x = 0`,
+			want:     Map{"a": Array{Map{"x": Map{"y": NumberValue(1)}}, Map{"x": NumberValue(0)}}},
+		}, {
 			caseName: "set plain value containing equals sign",
 			n:        Map{},
 			expr:     `.s = a=b`,

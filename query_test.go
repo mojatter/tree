@@ -235,6 +235,23 @@ func TestQuery(t *testing.T) {
 			q:        SelectQuery{Comparator{Left: MapQuery("x"), Op: NE, Right: MapQuery("y")}},
 			n:        Array{Map{}},
 		}, {
+			caseName: "select: empty sides never match",
+			q:        SelectQuery{Comparator{Left: FilterQuery{MapQuery("x"), SelectQuery{}}, Op: GT, Right: FilterQuery{MapQuery("y"), SelectQuery{}}}},
+			n:        Array{Map{"x": Array{}, "y": Array{}}},
+		}, {
+			caseName: "select: empty sides are not equal",
+			q:        SelectQuery{Comparator{Left: FilterQuery{MapQuery("x"), SelectQuery{}}, Op: EQ, Right: FilterQuery{MapQuery("y"), SelectQuery{}}}},
+			n:        Array{Map{"x": Array{}, "y": Array{}}},
+		}, {
+			caseName: "select: empty side does not equal null",
+			q:        SelectQuery{Comparator{Left: FilterQuery{MapQuery("x"), SelectQuery{}}, Op: EQ, Right: ValueQuery{Nil}}},
+			n:        Array{Map{"x": Array{}}},
+		}, {
+			caseName: "select: a side with a null among several values errors",
+			q:        SelectQuery{Comparator{Left: FilterQuery{MapQuery("tags"), SelectQuery{}, MapQuery("x")}, Op: EQ, Right: ValueQuery{ToValue(1)}}},
+			n:        Array{Map{"tags": Array{Map{"x": ToValue(1)}, Map{"y": ToValue(2)}}}},
+			errstr:   `.tags[].x returns no single value [1 null]`,
+		}, {
 			caseName: "select: null is not ordered",
 			q:        SelectQuery{Comparator{Left: MapQuery("a"), Op: LT, Right: ValueQuery{ToValue(1)}}},
 			n:        Array{Map{}},
@@ -447,6 +464,65 @@ func TestFindNull(t *testing.T) {
 		{caseName: "key on an empty Map root", n: Map{}, expr: ".a", want: []Node{Nil}},
 		{caseName: "index on an empty Array root", n: Array{}, expr: "[0]", want: []Node{Nil}},
 		{caseName: "key on an Any root", n: Any{Map{"a": NumberValue(1)}}, expr: ".a", want: []Node{NumberValue(1)}},
+		{
+			caseName: "null literal does not match a container",
+			n:        Array{Map{"x": Map{"y": NumberValue(1)}}, Map{"x": Array{NumberValue(1)}}, Map{"x": Nil}, Map{}},
+			expr:     `[.x == null]`,
+			want:     []Node{Map{"x": Nil}, Map{}},
+		}, {
+			caseName: "not null keeps a container",
+			n:        Array{Map{"x": Map{"y": NumberValue(1)}}, Map{"x": Array{NumberValue(1)}}, Map{"x": Nil}, Map{}},
+			expr:     `[.x != null]`,
+			want:     []Node{Map{"x": Map{"y": NumberValue(1)}}, Map{"x": Array{NumberValue(1)}}},
+		}, {
+			caseName: "map element is not null",
+			n:        Array{Map{}, Nil},
+			expr:     `[. == null]`,
+			want:     []Node{Nil},
+		}, {
+			caseName: "containers compare by value",
+			n: Array{
+				Map{"x": Map{"a": NumberValue(1)}, "y": Map{"a": NumberValue(1)}},
+				Map{"x": Map{"a": NumberValue(1)}, "y": Map{"a": NumberValue(2)}},
+				Map{"x": Array{}, "y": Map{}},
+				Map{"x": Array{}, "y": StringValue("")},
+			},
+			expr: `[.x == .y]`,
+			want: []Node{Map{"x": Map{"a": NumberValue(1)}, "y": Map{"a": NumberValue(1)}}},
+		}, {
+			caseName: "containers differ by value",
+			n: Array{
+				Map{"x": Map{"a": NumberValue(1)}, "y": Map{"a": NumberValue(1)}},
+				Map{"x": Array{}, "y": StringValue("")},
+			},
+			expr: `[.x != .y]`,
+			want: []Node{Map{"x": Array{}, "y": StringValue("")}},
+		}, {
+			caseName: "nested select matches when any element matches",
+			n:        Array{Map{"tags": Array{Map{"x": NumberValue(1)}, Map{"y": NumberValue(2)}}}, Map{"tags": Array{Map{"y": NumberValue(1)}}}},
+			expr:     `[.tags[.x == 1]]`,
+			want:     []Node{Map{"tags": Array{Map{"x": NumberValue(1)}, Map{"y": NumberValue(2)}}}},
+		}, {
+			caseName: "several null values are not truthy",
+			n:        Array{Map{"tags": Array{Map{"y": NumberValue(1)}, Map{"y": NumberValue(2)}}}},
+			expr:     `[.tags[].x]`,
+			want:     nil,
+		}, {
+			caseName: "several values are truthy when any is",
+			n:        Array{Map{"tags": Array{Map{"y": NumberValue(1)}, Map{"x": NumberValue(2)}}}},
+			expr:     `[.tags[].x]`,
+			want:     []Node{Map{"tags": Array{Map{"y": NumberValue(1)}, Map{"x": NumberValue(2)}}}},
+		}, {
+			caseName: "several falsy values are not truthy",
+			n:        Array{Map{"tags": Array{NumberValue(0), NumberValue(0)}}, Map{"tags": Array{NumberValue(0), NumberValue(1)}}},
+			expr:     `[.tags[]]`,
+			want:     []Node{Map{"tags": Array{NumberValue(0), NumberValue(1)}}},
+		}, {
+			caseName: "ordered operator never matches a container",
+			n:        Array{Map{"x": Array{NumberValue(1)}, "y": Array{NumberValue(2)}}, Map{"x": Map{}, "y": NumberValue(1)}},
+			expr:     `[.x < .y or .x >= .y]`,
+			want:     nil,
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {

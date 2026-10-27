@@ -2,6 +2,7 @@ package tree
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -554,26 +555,25 @@ func (e Evaluator) Matches(n Node) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	switch len(rs) {
-	case 0:
-		return false, nil
-	case 1:
-		r := orNil(rs[0])
-		switch r.Type() {
-		case TypeBoolValue:
-			return r.Value().Bool(), nil
-		case TypeNumberValue:
-			return r.Value().Float64() > 0, nil
-		case TypeStringValue:
-			return r.Value().String() != "", nil
-		case TypeArray:
-			return len(r.Array()) > 0, nil
-		case TypeMap:
-			return len(r.Map()) > 0, nil
-		}
-		return false, nil
+	return slices.ContainsFunc(rs, truthy), nil
+}
+
+// truthy reports whether n counts as true in a selector.
+func truthy(n Node) bool {
+	r := orNil(n)
+	switch r.Type() {
+	case TypeBoolValue:
+		return r.Value().Bool()
+	case TypeNumberValue:
+		return r.Value().Float64() > 0
+	case TypeStringValue:
+		return r.Value().String() != ""
+	case TypeArray:
+		return len(r.Array()) > 0
+	case TypeMap:
+		return len(r.Map()) > 0
 	}
-	return true, nil
+	return false
 }
 
 func (e Evaluator) String() string {
@@ -590,6 +590,8 @@ type Comparator struct {
 var _ Selector = (*Comparator)(nil)
 
 // Matches evaluates left and right using the operator. (eg. .id == 0)
+// A side that yields nothing matches nothing, as in jq; a null side compares as null.
+// A container side compares by Equal for == and != and never matches an ordered operator.
 func (c Comparator) Matches(n Node) (bool, error) {
 	l, err := c.Left.Exec(n)
 	if err != nil {
@@ -599,27 +601,39 @@ func (c Comparator) Matches(n Node) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	var l0, r0 Node
-	switch len(l) {
-	case 0:
-		l0 = nil
-	case 1:
-		l0 = orNil(l[0])
-	default:
-		return false, fmt.Errorf("%s returns no single value %+v", c.Left, l)
+	if len(l) > 1 {
+		return false, fmt.Errorf("%s returns no single value %s", c.Left, formatResults(l))
 	}
-	switch len(r) {
-	case 0:
-		r0 = nil
-	case 1:
-		r0 = orNil(r[0])
-	default:
-		return false, fmt.Errorf("%s returns no single value %+v", c.Right, r)
+	if len(r) > 1 {
+		return false, fmt.Errorf("%s returns no single value %s", c.Right, formatResults(r))
 	}
-	if l0 == nil || r0 == nil {
-		return (l0 == nil && r0 == nil), nil
+	if len(l) == 0 || len(r) == 0 {
+		return false, nil
 	}
-	return l0.Value().Compare(c.Op, r0.Value()), nil
+	ln, rn := orNil(l[0]), orNil(r[0])
+	if ln.Type().IsValue() && rn.Type().IsValue() {
+		return ln.Value().Compare(c.Op, rn.Value()), nil
+	}
+	switch c.Op {
+	case EQ:
+		return Equal(ln, rn), nil
+	case NE:
+		return !Equal(ln, rn), nil
+	}
+	return false, nil
+}
+
+// formatResults formats query results for an error message, with null as null.
+func formatResults(ns []Node) string {
+	s := make([]string, len(ns))
+	for i, n := range ns {
+		if isNull(n) {
+			s[i] = "null"
+		} else {
+			s[i] = fmt.Sprintf("%+v", n)
+		}
+	}
+	return "[" + strings.Join(s, " ") + "]"
 }
 
 func (c Comparator) String() string {
