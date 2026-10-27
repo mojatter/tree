@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -779,4 +780,43 @@ type rawGetNode struct{ Node }
 
 func (n rawGetNode) Get(keys ...any) Node {
 	return n.Node.(Map)[keys[0].(string)]
+}
+
+// TestFindGetParity pins .[k] to n.Get(k); see docs/query.md.
+func TestFindGetParity(t *testing.T) {
+	keys := []any{"a", "", "0", "1", "-1", 0, 1, 5, -1, -5}
+	testCases := []struct {
+		caseName string
+		n        Node
+	}{
+		{caseName: "map", n: Map{"a": V(1), "": V("empty"), "0": V("zero"), "1": Nil, "-1": V("minus")}},
+		{caseName: "array", n: Array{V("x"), Nil, V("z")}},
+		{caseName: "empty map", n: Map{}},
+		{caseName: "empty array", n: Array{}},
+		{caseName: "null", n: Nil},
+		{caseName: "number", n: V(1)},
+		{caseName: "string", n: V("s")},
+		{caseName: "bool", n: V(true)},
+	}
+	for _, tc := range testCases {
+		for _, k := range keys {
+			expr := fmt.Sprintf(".[%q]", k)
+			want := tc.n.Get(k)
+			if i, ok := k.(int); ok {
+				expr = fmt.Sprintf(".[%d]", i)
+				if a := tc.n.Array(); a != nil && i < 0 {
+					want = a.Get(len(a) + i) // deviation: a negative index counts from the end
+				}
+			}
+			t.Run(tc.caseName+"/"+expr, func(t *testing.T) {
+				got, err := Find(tc.n, expr)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !Equal(Array(got), Array{want}) {
+					t.Errorf("got %v; want [%v]", got, want)
+				}
+			})
+		}
+	}
 }

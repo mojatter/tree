@@ -2,6 +2,7 @@ package tree
 
 import (
 	"errors"
+	"fmt"
 	"maps"
 	"reflect"
 	"testing"
@@ -2433,5 +2434,76 @@ func TestEditNopQuerySteps(t *testing.T) {
 				t.Errorf("got %#v; want %#v", n, want)
 			}
 		})
+	}
+}
+
+// TestEditSetParity pins .[k] = v, += v and ^? to Set and Delete; see docs/query.md.
+func TestEditSetParity(t *testing.T) {
+	keys := []any{"a", "", "0", "1", "-1", 0, 1, 5, -1, -5}
+	v := V(9)
+	// goEdit applies op to a clone of n through the Go API.
+	goEdit := func(n Node, op string, k any) (Node, error) {
+		c := CloneDeep(n)
+		var en EditorNode
+		var a Array
+		if m := c.Map(); m != nil {
+			en = m
+		} else {
+			a = c.Array()
+			en = &a
+		}
+		if i, ok := k.(int); ok && i < 0 && c.Type().IsArray() {
+			k = len(a) + i // deviation: a negative index counts from the end
+		}
+		var err error
+		switch op {
+		case "=":
+			err = en.Set(k, v)
+		case "+=":
+			child := en.Get(k)
+			if !isNull(child) && child.Array() == nil {
+				return nil, errors.New("not an array")
+			}
+			err = en.Set(k, append(child.Array(), v))
+		case "^?":
+			err = en.Delete(k)
+		}
+		if a != nil {
+			return a, err
+		}
+		return c, err
+	}
+	testCases := []struct {
+		caseName string
+		n        Node
+	}{
+		{caseName: "map", n: Map{"a": V(1), "": A(1), "0": V("zero"), "1": Nil, "-1": V("minus")}},
+		{caseName: "array", n: Array{V("x"), Nil, A(1)}},
+		{caseName: "empty map", n: Map{}},
+		{caseName: "empty array", n: Array{}},
+	}
+	for _, tc := range testCases {
+		for _, op := range []string{"=", "+=", "^?"} {
+			for _, k := range keys {
+				expr := fmt.Sprintf(".[%q] %s", k, op)
+				if i, ok := k.(int); ok {
+					expr = fmt.Sprintf(".[%d] %s", i, op)
+				}
+				if op != "^?" {
+					expr += " 9"
+				}
+				t.Run(tc.caseName+"/"+expr, func(t *testing.T) {
+					want, wantErr := goEdit(tc.n, op, k)
+					got := CloneDeep(tc.n)
+					err := Edit(&got, expr)
+					if (err != nil) != (wantErr != nil) {
+						t.Fatalf("got error %v; want error %v", err, wantErr)
+					}
+					if err == nil && !Equal(got, want) {
+						t.Errorf("got %v; want %v", got, want)
+					}
+				})
+			}
+		}
 	}
 }
