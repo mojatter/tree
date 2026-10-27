@@ -126,6 +126,7 @@ func (n *Array) UnmarshalJSON(data []byte) error {
 
 // MarshalJSON implements json.Marshaler by encoding the wrapped node, or null when it is a Go nil node.
 // It does not escape HTML itself, so the caller's encoder decides.
+// Trees must be acyclic; a cycle through an Any overflows the stack.
 func (n Any) MarshalJSON() ([]byte, error) {
 	if isGoNil(n.Node) {
 		return []byte("null"), nil
