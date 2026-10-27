@@ -54,6 +54,10 @@ make bench BENCHTIME=10s BENCHCOUNT=3
 - **Table-driven tests** are preferred. The slice variable should be
   `testCases`, the loop variable `tc`, and the per-case name field
   `caseName`, matching the existing tests.
+- **Query semantics.** [docs/query.md](docs/query.md) is the spec for
+  queries and edits. Update it with any change in behaviour, and add a
+  row to `TestQueryDocExamples` or `TestEditDocExamples` for each
+  example you add there.
 - **Lint suppressions.** Prefer narrow `//nolint:<linter> // reason`
   comments at the call site. Use `.golangci.yml` exclusions only for
   patterns that repeat across many files.

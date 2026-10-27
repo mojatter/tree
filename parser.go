@@ -10,7 +10,7 @@ import (
 )
 
 // ParseQuery parses the provided expr to a Query.
-// See https://github.com/mojatter/tree#Query
+// See https://github.com/mojatter/tree/blob/main/docs/query.md for the semantics.
 func ParseQuery(expr string) (Query, error) {
 	l := &lexer{expr: expr}
 	p := &parser{expr: expr, tokens: l.lex()}
