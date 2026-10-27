@@ -179,6 +179,67 @@ func TestRun(t *testing.T) {
 			stdin:    "testdata/null",
 			args:     []string{"..walk"},
 		}, {
+			caseName: "null document prints null",
+			stdin:    "testdata/null",
+			args:     []string{"."},
+			golden:   "testdata/null",
+		}, {
+			caseName: "missing key prints null",
+			args:     []string{".store.zz", "testdata/store.json"},
+			golden:   "testdata/null",
+		}, {
+			caseName: "raw missing key prints null",
+			args:     []string{"-r", ".store.zz", "testdata/store.json"},
+			golden:   "testdata/null",
+		}, {
+			caseName: "raw null elements print null",
+			stdin:    "testdata/null-element.json",
+			args:     []string{"-r", ".a[]"},
+			want:     "1\nnull\n",
+		}, {
+			caseName: "expand an array grown by an edit",
+			stdin:    "testdata/empty-object.json",
+			args:     []string{"-e", ".a[2] = 1", "-x", ".a"},
+			want:     "null\nnull\n1\n",
+		}, {
+			caseName: "raw expand an array grown by an edit",
+			stdin:    "testdata/empty-object.json",
+			args:     []string{"-r", "-e", ".a[2] = 1", "-x", ".a"},
+			want:     "null\nnull\n1\n",
+		}, {
+			caseName: "raw null in yaml prints null without separators",
+			stdin:    "testdata/null-name.yaml",
+			args:     []string{"-r", ".items[].name"},
+			want:     "a\nnull\nb\nnull\n",
+		}, {
+			caseName: "raw null with yaml output prints null",
+			stdin:    "testdata/null-element.json",
+			args:     []string{"-r", "-Y", ".a[]"},
+			want:     "1\nnull\n",
+		}, {
+			caseName: "template on a missing key renders no value",
+			stdin:    "testdata/empty-object.json",
+			args:     []string{"-x", "-t", "{{.id}}: {{.name}}", ".users"},
+			want:     "<no value>: <no value>\n",
+		}, {
+			caseName: "template on null elements renders no value",
+			stdin:    "testdata/null-object-element.json",
+			args:     []string{"-t", "{{.id}}", ".a[]"},
+			want:     "<no value>\n1\n",
+		}, {
+			caseName: "template with skips null",
+			stdin:    "testdata/null-element.json",
+			args:     []string{"-t", "{{with .}}{{.}}{{else}}-{{end}}", ".a[]"},
+			want:     "1\n-\n",
+		}, {
+			caseName: "null literal selects missing keys",
+			args:     []string{".store.book[.isbn == null].title", "testdata/store.json"},
+			want:     "\"Sayings of the Century\"\n\"Sword of Honour\"\n",
+		}, {
+			caseName: "not equal keeps elements without the key",
+			args:     []string{".store.book[.isbn != \"0-553-21311-3\"].title", "testdata/store.json"},
+			want:     "\"Sayings of the Century\"\n\"Sword of Honour\"\n\"The Lord of the Rings\"\n",
+		}, {
 			caseName: "invalid json",
 			args:     []string{"-i", "json", ".", "testdata/invalid-json"},
 			errstr:   `failed to evaluate testdata/invalid-json: invalid character 'i' looking for beginning of value`,
@@ -598,6 +659,11 @@ func TestRunInplace(t *testing.T) {
 			src:      "testdata/store.json",
 			args:     []string{"-U", "-Y", ".store.book[0]"},
 			golden:   "testdata/book-0.yaml",
+		}, {
+			caseName: "missing key in place writes null",
+			src:      "testdata/store.json",
+			args:     []string{"-U", ".zz"},
+			golden:   "testdata/null",
 		}, {
 			caseName: "yaml with numeric keys in place is not duplicated",
 			src:      "testdata/numeric-keys.yaml",

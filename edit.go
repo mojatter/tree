@@ -125,9 +125,6 @@ func canEditStep(q Query, last bool) bool {
 
 // errUnsupportedEditQuery reports a step an edit cannot write through, with a group in parentheses.
 func errUnsupportedEditQuery(q Query) error {
-	if vq, ok := q.(ValueQuery); ok && isNull(vq.Node) {
-		return errors.New("syntax error: unsupported edit query: ()") // an empty group parses as a null literal
-	}
 	if _, ok := q.(FilterQuery); ok {
 		return fmt.Errorf("syntax error: unsupported edit query: (%s)", q)
 	}

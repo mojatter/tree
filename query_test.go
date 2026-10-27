@@ -21,34 +21,70 @@ func TestQuery(t *testing.T) {
 			n:        Array{},
 			want:     []Node{Array{}},
 		}, {
+			caseName: "value: null literal",
+			q:        ValueQuery{Nil},
+			n:        Map{},
+			want:     []Node{Nil},
+		}, {
+			caseName: "value: Go nil literal reads as null",
+			q:        ValueQuery{},
+			n:        Map{},
+			want:     []Node{Nil},
+		}, {
 			caseName: "map: hit",
 			q:        MapQuery("key"),
 			n:        Map{"key": ToValue("value")},
 			want:     []Node{ToValue("value")},
 		}, {
-			caseName: "map: not map",
+			caseName: "map: scalar reads as null",
 			q:        MapQuery("key"),
 			n:        ToValue("not map"),
-			errstr:   `cannot index array with "key"`,
+			want:     []Node{Nil},
+		}, {
+			caseName: "map: null reads as null",
+			q:        MapQuery("key"),
+			n:        Nil,
+			want:     []Node{Nil},
+		}, {
+			caseName: "map: missing key reads as null",
+			q:        MapQuery("key"),
+			n:        Map{},
+			want:     []Node{Nil},
 		}, {
 			caseName: "array: hit",
 			q:        ArrayQuery(0),
 			n:        Array{ToValue(1)},
 			want:     []Node{ToValue(1)},
 		}, {
-			caseName: "array: not array",
+			caseName: "array: scalar reads as null",
 			q:        ArrayQuery(0),
 			n:        ToValue("not array"),
-			errstr:   `cannot index array with 0`,
+			want:     []Node{Nil},
+		}, {
+			caseName: "array: null reads as null",
+			q:        ArrayQuery(0),
+			n:        Nil,
+			want:     []Node{Nil},
+		}, {
+			caseName: "array: index on a map reads the key",
+			q:        ArrayQuery(0),
+			n:        Map{"0": ToValue(1)},
+			want:     []Node{ToValue(1)},
+		}, {
+			caseName: "array: index out of range reads as null",
+			q:        ArrayQuery(3),
+			n:        Array{ToValue(0)},
+			want:     []Node{Nil},
 		}, {
 			caseName: "array: negative index hit",
 			q:        ArrayQuery(-1),
 			n:        Array{ToValue(0), ToValue(1), ToValue(2)},
 			want:     []Node{ToValue(2)},
 		}, {
-			caseName: "array: negative index out of range",
+			caseName: "array: negative index out of range reads as null",
 			q:        ArrayQuery(-4),
 			n:        Array{ToValue(0), ToValue(1), ToValue(2)},
+			want:     []Node{Nil},
 		}, {
 			caseName: "range: 0:2",
 			q:        ArrayRangeQuery{From: IntPtr(0), To: IntPtr(2)},
@@ -60,10 +96,13 @@ func TestQuery(t *testing.T) {
 			n:        Array{ToValue(0), ToValue(1), ToValue(2)},
 			want:     []Node{ToValue(1), ToValue(2)},
 		}, {
-			caseName: "range: not array",
+			caseName: "range: not array yields nothing",
 			q:        ArrayRangeQuery{From: IntPtr(0), To: IntPtr(1)},
 			n:        Map{},
-			errstr:   `cannot index array with range [0:1]`,
+		}, {
+			caseName: "range: null yields nothing",
+			q:        ArrayRangeQuery{From: IntPtr(0), To: IntPtr(1)},
+			n:        Nil,
 		}, {
 			caseName: "range: negative from to end",
 			q:        ArrayRangeQuery{From: IntPtr(-3), To: nil},
@@ -94,10 +133,10 @@ func TestQuery(t *testing.T) {
 			n:        Map{"key": Array{ToValue(1)}},
 			want:     []Node{ToValue(1)},
 		}, {
-			caseName: "filter: error",
+			caseName: "filter: index on a scalar reads as null",
 			q:        FilterQuery{MapQuery("key"), ArrayQuery(0)},
 			n:        Map{"key": ToValue(1)},
-			errstr:   `cannot index array with 0`,
+			want:     []Node{Nil},
 		}, {
 			caseName: "select: match",
 			q: SelectQuery{And{
@@ -172,10 +211,50 @@ func TestQuery(t *testing.T) {
 			n:        Map{"k": nil},
 			want:     []Node{Nil},
 		}, {
-			caseName: "select: selector on nil element errors as on null",
-			q:        SelectQuery{Comparator{Left: MapQuery("x"), Op: EQ, Right: ValueQuery{ToValue(1)}}},
+			caseName: "select: key on a nil element compares as null",
+			q:        SelectQuery{Comparator{Left: MapQuery("x"), Op: EQ, Right: ValueQuery{Nil}}},
 			n:        Array{nil},
-			errstr:   `cannot index array with "x"`,
+			want:     []Node{Nil},
+		}, {
+			caseName: "select: null literal matches null and a missing key",
+			q:        SelectQuery{Comparator{Left: MapQuery("a"), Op: EQ, Right: ValueQuery{Nil}}},
+			n:        Array{Map{}, Map{"a": ToValue(1)}, Map{"a": Nil}},
+			want:     []Node{Map{}, Map{"a": Nil}},
+		}, {
+			caseName: "select: not equal matches a missing key",
+			q:        SelectQuery{Comparator{Left: MapQuery("a"), Op: NE, Right: ValueQuery{ToValue(1)}}},
+			n:        Array{Map{"a": ToValue(1)}, Map{"a": ToValue(2)}, Map{}},
+			want:     []Node{Map{"a": ToValue(2)}, Map{}},
+		}, {
+			caseName: "select: two missing keys are equal",
+			q:        SelectQuery{Comparator{Left: MapQuery("x"), Op: EQ, Right: MapQuery("y")}},
+			n:        Array{Map{}},
+			want:     []Node{Map{}},
+		}, {
+			caseName: "select: two missing keys are not unequal",
+			q:        SelectQuery{Comparator{Left: MapQuery("x"), Op: NE, Right: MapQuery("y")}},
+			n:        Array{Map{}},
+		}, {
+			caseName: "select: empty sides never match",
+			q:        SelectQuery{Comparator{Left: FilterQuery{MapQuery("x"), SelectQuery{}}, Op: GT, Right: FilterQuery{MapQuery("y"), SelectQuery{}}}},
+			n:        Array{Map{"x": Array{}, "y": Array{}}},
+		}, {
+			caseName: "select: empty sides are not equal",
+			q:        SelectQuery{Comparator{Left: FilterQuery{MapQuery("x"), SelectQuery{}}, Op: EQ, Right: FilterQuery{MapQuery("y"), SelectQuery{}}}},
+			n:        Array{Map{"x": Array{}, "y": Array{}}},
+		}, {
+			caseName: "select: empty side does not equal null",
+			q:        SelectQuery{Comparator{Left: FilterQuery{MapQuery("x"), SelectQuery{}}, Op: EQ, Right: ValueQuery{Nil}}},
+			n:        Array{Map{"x": Array{}}},
+		}, {
+			caseName: "select: a side with a null among several values errors",
+			q:        SelectQuery{Comparator{Left: FilterQuery{MapQuery("tags"), SelectQuery{}, MapQuery("x")}, Op: EQ, Right: ValueQuery{ToValue(1)}}},
+			n:        Array{Map{"tags": Array{Map{"x": ToValue(1)}, Map{"y": ToValue(2)}}}},
+			errstr:   `.tags[].x returns no single value [1 null]`,
+		}, {
+			caseName: "select: null is not ordered",
+			q:        SelectQuery{Comparator{Left: MapQuery("a"), Op: LT, Right: ValueQuery{ToValue(1)}}},
+			n:        Array{Map{}},
 		}, {
 			caseName: "filter: nil result continues as null",
 			q:        FilterQuery{ArrayQuery(0), &CountQuery{}},
@@ -340,6 +419,10 @@ func TestQueryString(t *testing.T) {
 			caseName: "value number",
 			q:        ValueQuery{NumberValue(1.5)},
 			want:     `1.5`,
+		}, {
+			caseName: "value null",
+			q:        ValueQuery{Nil},
+			want:     `null`,
 		},
 	}
 	for _, tc := range testCases {
@@ -347,6 +430,118 @@ func TestQueryString(t *testing.T) {
 			got := tc.q.String()
 			if got != tc.want {
 				t.Errorf("got %v; want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFindNull(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		n        Node
+		expr     string
+		want     []Node
+	}{
+		{caseName: "Nil root", n: Nil, expr: ".", want: []Node{Nil}},
+		{caseName: "Go nil root", n: nil, expr: ".", want: []Node{Nil}},
+		{caseName: "nil pointer root", n: (*Array)(nil), expr: ".", want: []Node{Nil}},
+		{caseName: "zero Any root", n: Any{}, expr: ".", want: []Node{Nil}},
+		{caseName: "key on a Nil root", n: Nil, expr: ".a", want: []Node{Nil}},
+		{caseName: "keys() on a Nil root", n: Nil, expr: ".keys()", want: nil},
+		{caseName: "count() on a Nil root", n: Nil, expr: ".count()", want: []Node{NumberValue(0)}},
+		{caseName: "[] on a Nil root", n: Nil, expr: "[]", want: nil},
+		{caseName: "has() on a Nil root", n: Nil, expr: `.has("a")`, want: []Node{BoolValue(false)}},
+		{caseName: "nil Map root", n: Map(nil), expr: ".", want: []Node{Map(nil)}},
+		{caseName: "key on a nil Map root", n: Map(nil), expr: ".a", want: []Node{Nil}},
+		{caseName: "keys() on a nil Map root", n: Map(nil), expr: ".keys()", want: []Node{Array{}}},
+		{caseName: "key on a nil Array root", n: Array(nil), expr: ".a", want: []Node{Nil}},
+		{caseName: "[] on a nil Array root", n: Array(nil), expr: "[]", want: nil},
+		{caseName: "key on a zero Any root", n: Any{}, expr: ".a", want: []Node{Nil}},
+		{caseName: "key on an Any wrapping a nil Map root", n: Any{Map(nil)}, expr: ".a", want: []Node{Nil}},
+		{caseName: "key on a string root", n: StringValue("x"), expr: ".a", want: []Node{Nil}},
+		{caseName: "key on a bool root", n: BoolValue(true), expr: ".a", want: []Node{Nil}},
+		{caseName: "key on a number root", n: NumberValue(1), expr: ".a", want: []Node{Nil}},
+		{caseName: "key on an empty Map root", n: Map{}, expr: ".a", want: []Node{Nil}},
+		{caseName: "index on an empty Array root", n: Array{}, expr: "[0]", want: []Node{Nil}},
+		{caseName: "key on an Any root", n: Any{Map{"a": NumberValue(1)}}, expr: ".a", want: []Node{NumberValue(1)}},
+		{
+			caseName: "null literal does not match a container",
+			n:        Array{Map{"x": Map{"y": NumberValue(1)}}, Map{"x": Array{NumberValue(1)}}, Map{"x": Nil}, Map{}},
+			expr:     `[.x == null]`,
+			want:     []Node{Map{"x": Nil}, Map{}},
+		}, {
+			caseName: "not null keeps a container",
+			n:        Array{Map{"x": Map{"y": NumberValue(1)}}, Map{"x": Array{NumberValue(1)}}, Map{"x": Nil}, Map{}},
+			expr:     `[.x != null]`,
+			want:     []Node{Map{"x": Map{"y": NumberValue(1)}}, Map{"x": Array{NumberValue(1)}}},
+		}, {
+			caseName: "map element is not null",
+			n:        Array{Map{}, Nil},
+			expr:     `[. == null]`,
+			want:     []Node{Nil},
+		}, {
+			caseName: "containers compare by value",
+			n: Array{
+				Map{"x": Map{"a": NumberValue(1)}, "y": Map{"a": NumberValue(1)}},
+				Map{"x": Map{"a": NumberValue(1)}, "y": Map{"a": NumberValue(2)}},
+				Map{"x": Array{}, "y": Map{}},
+				Map{"x": Array{}, "y": StringValue("")},
+			},
+			expr: `[.x == .y]`,
+			want: []Node{Map{"x": Map{"a": NumberValue(1)}, "y": Map{"a": NumberValue(1)}}},
+		}, {
+			caseName: "containers differ by value",
+			n: Array{
+				Map{"x": Map{"a": NumberValue(1)}, "y": Map{"a": NumberValue(1)}},
+				Map{"x": Array{}, "y": StringValue("")},
+			},
+			expr: `[.x != .y]`,
+			want: []Node{Map{"x": Array{}, "y": StringValue("")}},
+		}, {
+			caseName: "nested select matches when any element matches",
+			n:        Array{Map{"tags": Array{Map{"x": NumberValue(1)}, Map{"y": NumberValue(2)}}}, Map{"tags": Array{Map{"y": NumberValue(1)}}}},
+			expr:     `[.tags[.x == 1]]`,
+			want:     []Node{Map{"tags": Array{Map{"x": NumberValue(1)}, Map{"y": NumberValue(2)}}}},
+		}, {
+			caseName: "several null values are not truthy",
+			n:        Array{Map{"tags": Array{Map{"y": NumberValue(1)}, Map{"y": NumberValue(2)}}}},
+			expr:     `[.tags[].x]`,
+			want:     nil,
+		}, {
+			caseName: "several values are truthy when any is",
+			n:        Array{Map{"tags": Array{Map{"y": NumberValue(1)}, Map{"x": NumberValue(2)}}}},
+			expr:     `[.tags[].x]`,
+			want:     []Node{Map{"tags": Array{Map{"y": NumberValue(1)}, Map{"x": NumberValue(2)}}}},
+		}, {
+			caseName: "several falsy values are not truthy",
+			n:        Array{Map{"tags": Array{NumberValue(0), NumberValue(0)}}, Map{"tags": Array{NumberValue(0), NumberValue(1)}}},
+			expr:     `[.tags[]]`,
+			want:     []Node{Map{"tags": Array{NumberValue(0), NumberValue(1)}}},
+		}, {
+			caseName: "ordered operator never matches a container",
+			n:        Array{Map{"x": Array{NumberValue(1)}, "y": Array{NumberValue(2)}}, Map{"x": Map{}, "y": NumberValue(1)}},
+			expr:     `[.x < .y or .x >= .y]`,
+			want:     nil,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := Find(tc.n, tc.expr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %#v; want %#v", got, tc.want)
+			}
+			if v := reflect.ValueOf(tc.n); !v.IsValid() || v.Kind() == reflect.Pointer && v.IsNil() {
+				return // no method to call on a nil interface or pointer
+			}
+			got, err = tc.n.Find(tc.expr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("method: got %#v; want %#v", got, tc.want)
 			}
 		})
 	}
@@ -489,6 +684,28 @@ func TestFind(t *testing.T) {
 					"Sayings of the Century",
 				),
 			},
+		},
+		{
+			expr: `.store.book[.isbn == null].title`,
+			want: []Node{StringValue("Sayings of the Century"), StringValue("Sword of Honour")},
+		}, {
+			expr: `.store.book[.isbn != null].title`,
+			want: []Node{StringValue("Moby Dick"), StringValue("The Lord of the Rings")},
+		}, {
+			expr: `.store.book[].isbn`,
+			want: []Node{Nil, Nil, StringValue("0-553-21311-3"), StringValue("0-395-19395-8")},
+		}, {
+			expr: `.store.zz`,
+			want: []Node{Nil},
+		}, {
+			expr: `.store.zz.count()`,
+			want: []Node{NumberValue(0)},
+		}, {
+			expr: `.store.book[0].author[0]`,
+			want: []Node{Nil},
+		}, {
+			expr: `.store.bicycle[1:]`,
+			want: nil,
 		},
 	}
 	for _, tc := range testCases {

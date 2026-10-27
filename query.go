@@ -2,6 +2,7 @@ package tree
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -56,12 +57,9 @@ type ValueQuery struct {
 	Node
 }
 
-// Exec returns the constant value.
+// Exec returns the constant value, with a Go nil as null.
 func (q ValueQuery) Exec(n Node) ([]Node, error) {
-	if q.IsNil() {
-		return nil, nil
-	}
-	return []Node{q.Node}, nil
+	return []Node{orNil(q.Node)}, nil
 }
 
 func (q ValueQuery) String() string {
@@ -77,15 +75,10 @@ type MapQuery string
 
 var _ EditorQuery = (MapQuery)("")
 
+// Exec returns the value at the key, or null when n is null, a scalar or lacks the key.
+// An array reads a numeric key as an index, as Array.Get does.
 func (q MapQuery) Exec(n Node) ([]Node, error) {
-	key := string(q)
-	if n.Type().IsValue() {
-		return nil, fmt.Errorf("cannot index array with %q", key)
-	}
-	if n.Has(key) {
-		return []Node{orNil(n.Get(key))}, nil
-	}
-	return nil, nil
+	return []Node{orNil(n.Get(string(q)))}, nil
 }
 
 func (q MapQuery) Set(pn *Node, v Node) error {
@@ -186,25 +179,25 @@ func (q ArrayQuery) resolveIndex(n int) int {
 	return i
 }
 
+// Exec returns the element at the index, or null when it is out of range or n is not an array (a map reads the key "0").
 func (q ArrayQuery) Exec(n Node) ([]Node, error) {
 	if a := n.Array(); a != nil {
 		index := q.resolveIndex(len(a))
 		if index >= 0 && index < len(a) {
 			return []Node{orNil(a[index])}, nil
 		}
-		return nil, nil
+		return []Node{Nil}, nil
 	}
-	return nil, fmt.Errorf("cannot index array with %d", int(q))
+	return []Node{orNil(n.Get(int(q)))}, nil
 }
 
 func (q ArrayQuery) Set(pn *Node, v Node) error {
 	n := orNil(*pn)
 	index := int(q)
 	if a := n.Array(); a != nil {
-		index = q.resolveIndex(len(a))
-	}
-	if index < 0 {
-		return fmt.Errorf("cannot index array with %d", int(q))
+		if index = q.resolveIndex(len(a)); index < 0 {
+			return fmt.Errorf("cannot index array with %d", int(q))
+		}
 	}
 	if en, ok := n.(EditorNode); ok {
 		return en.Set(index, v)
@@ -224,18 +217,15 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 	n := orNil(*pn)
 	index := int(q)
 	if a := n.Array(); a != nil {
-		index = q.resolveIndex(len(a))
-	} else if index < 0 {
-		return fmt.Errorf("cannot append to array with %d", index)
+		if index = q.resolveIndex(len(a)); index < 0 {
+			return fmt.Errorf("cannot append to array with %d", int(q))
+		}
 	}
 	if en, ok := n.(EditorNode); ok {
 		if n.Has(index) && !isNullLike(n.Get(index)) {
 			if ca := n.Get(index).Array(); ca != nil {
 				return en.Set(index, append(ca, v))
 			}
-			return fmt.Errorf("cannot append to array with %d", int(q))
-		}
-		if index < 0 {
 			return fmt.Errorf("cannot append to array with %d", int(q))
 		}
 		return en.Set(index, Array{v})
@@ -247,9 +237,6 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 				*pn = a
 				return nil
 			}
-			return fmt.Errorf("cannot append to array with %d", int(q))
-		}
-		if index < 0 {
 			return fmt.Errorf("cannot append to array with %d", int(q))
 		}
 		if index >= len(a) {
@@ -269,9 +256,9 @@ func (q ArrayQuery) Delete(pn *Node) error {
 	n := orNil(*pn)
 	index := int(q)
 	if a := n.Array(); a != nil {
-		index = q.resolveIndex(len(a))
-	} else if index < 0 {
-		return fmt.Errorf("cannot delete array with %d", index)
+		if index = q.resolveIndex(len(a)); index < 0 {
+			return fmt.Errorf("cannot delete array with %d", int(q))
+		}
 	}
 	if en, ok := n.(EditorNode); ok {
 		if err := en.Delete(index); err == nil {
@@ -301,6 +288,7 @@ type ArrayRangeQuery struct {
 	To   *int
 }
 
+// Exec returns the elements in range, or nothing when n is not an array.
 func (q ArrayRangeQuery) Exec(n Node) ([]Node, error) {
 	if a := n.Array(); a != nil {
 		from := resolveRangeBound(q.From, len(a), 0)
@@ -310,7 +298,7 @@ func (q ArrayRangeQuery) Exec(n Node) ([]Node, error) {
 		}
 		return orNilAll(a[from:to]), nil
 	}
-	return nil, fmt.Errorf("cannot index array with range %s", q)
+	return nil, nil
 }
 
 // resolveRangeBound resolves a *int bound for ArrayRangeQuery.Exec against
@@ -560,26 +548,25 @@ func (e Evaluator) Matches(n Node) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	switch len(rs) {
-	case 0:
-		return false, nil
-	case 1:
-		r := orNil(rs[0])
-		switch r.Type() {
-		case TypeBoolValue:
-			return r.Value().Bool(), nil
-		case TypeNumberValue:
-			return r.Value().Float64() > 0, nil
-		case TypeStringValue:
-			return r.Value().String() != "", nil
-		case TypeArray:
-			return len(r.Array()) > 0, nil
-		case TypeMap:
-			return len(r.Map()) > 0, nil
-		}
-		return false, nil
+	return slices.ContainsFunc(rs, truthy), nil
+}
+
+// truthy reports whether n counts as true in a selector.
+func truthy(n Node) bool {
+	r := orNil(n)
+	switch r.Type() {
+	case TypeBoolValue:
+		return r.Value().Bool()
+	case TypeNumberValue:
+		return r.Value().Float64() > 0
+	case TypeStringValue:
+		return r.Value().String() != ""
+	case TypeArray:
+		return len(r.Array()) > 0
+	case TypeMap:
+		return len(r.Map()) > 0
 	}
-	return true, nil
+	return false
 }
 
 func (e Evaluator) String() string {
@@ -596,6 +583,8 @@ type Comparator struct {
 var _ Selector = (*Comparator)(nil)
 
 // Matches evaluates left and right using the operator. (eg. .id == 0)
+// A side that yields nothing matches nothing, as in jq; a null side compares as null.
+// A container side compares by Equal for == and != and never matches an ordered operator.
 func (c Comparator) Matches(n Node) (bool, error) {
 	l, err := c.Left.Exec(n)
 	if err != nil {
@@ -605,27 +594,39 @@ func (c Comparator) Matches(n Node) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	var l0, r0 Node
-	switch len(l) {
-	case 0:
-		l0 = nil
-	case 1:
-		l0 = orNil(l[0])
-	default:
-		return false, fmt.Errorf("%s returns no single value %+v", c.Left, l)
+	if len(l) > 1 {
+		return false, fmt.Errorf("%s returns no single value %s", c.Left, formatResults(l))
 	}
-	switch len(r) {
-	case 0:
-		r0 = nil
-	case 1:
-		r0 = orNil(r[0])
-	default:
-		return false, fmt.Errorf("%s returns no single value %+v", c.Right, r)
+	if len(r) > 1 {
+		return false, fmt.Errorf("%s returns no single value %s", c.Right, formatResults(r))
 	}
-	if l0 == nil || r0 == nil {
-		return (l0 == nil && r0 == nil), nil
+	if len(l) == 0 || len(r) == 0 {
+		return false, nil
 	}
-	return l0.Value().Compare(c.Op, r0.Value()), nil
+	ln, rn := orNil(l[0]), orNil(r[0])
+	if ln.Type().IsValue() && rn.Type().IsValue() {
+		return ln.Value().Compare(c.Op, rn.Value()), nil
+	}
+	switch c.Op {
+	case EQ:
+		return Equal(ln, rn), nil
+	case NE:
+		return !Equal(ln, rn), nil
+	}
+	return false, nil
+}
+
+// formatResults formats query results for an error message, with null as null.
+func formatResults(ns []Node) string {
+	s := make([]string, len(ns))
+	for i, n := range ns {
+		if isNull(n) {
+			s[i] = "null"
+		} else {
+			s[i] = fmt.Sprintf("%+v", n)
+		}
+	}
+	return "[" + strings.Join(s, " ") + "]"
 }
 
 func (c Comparator) String() string {
@@ -688,14 +689,12 @@ var (
 	_ Selector = (*SelectQuery)(nil)
 )
 
-// Find finds a node from n using the Query.
+// Find runs expr on n, reading a Go nil n as null.
+// A key or index step with no value yields null, not nothing.
 func Find(n Node, expr string) ([]Node, error) {
-	if isGoNil(n) || n.IsNil() {
-		return nil, nil
-	}
 	q, err := ParseQuery(expr)
 	if err != nil {
 		return nil, err
 	}
-	return q.Exec(n)
+	return q.Exec(orNil(n))
 }

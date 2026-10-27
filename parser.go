@@ -390,7 +390,7 @@ func (p *parser) skip(n int) {
 }
 
 // parseSequence consumes 0 or more steps until tkEOF or one of stops is seen.
-// 0 steps yield ValueQuery{Nil}, 1 step is returned bare, multiple steps are
+// 0 steps are a syntax error, 1 step is returned bare, multiple steps are
 // wrapped in a FilterQuery.
 func (p *parser) parseSequence(stops ...tokenKind) (Query, error) {
 	var steps []Query
@@ -406,7 +406,10 @@ func (p *parser) parseSequence(stops ...tokenKind) (Query, error) {
 		steps = append(steps, step)
 	}
 	if len(steps) == 0 {
-		return ValueQuery{Nil}, nil
+		if p.peek().kind == tkEOF && !slices.Contains(stops, tkEOF) {
+			return nil, fmt.Errorf("syntax error: no right brackets: %q", p.expr)
+		}
+		return nil, fmt.Errorf("syntax error: empty expression: %q", p.expr)
 	}
 	if len(steps) == 1 {
 		return steps[0], nil
@@ -697,13 +700,12 @@ func (p *parser) parseSelectorOperand() (Query, error) {
 
 // wordValue parses an unquoted bare word into a literal Node.
 func wordValue(s string) Node {
-	if s == "" {
+	switch s {
+	case "null":
 		return Nil
-	}
-	if s == "true" {
+	case "true":
 		return BoolValue(true)
-	}
-	if s == "false" {
+	case "false":
 		return BoolValue(false)
 	}
 	if n, err := strconv.ParseFloat(s, 64); err == nil &&

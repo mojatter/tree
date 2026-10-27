@@ -257,19 +257,19 @@ func NewContainsQuery(args ...string) (Query, error) {
 
 // Exec returns whether the node contains the specified value.
 // For arrays, checks if any element equals the value. For maps, checks if any value equals the value.
-// For strings, checks if the string contains the substring.
+// For strings, checks if the string contains the substring. Null, arrays and maps never equal the value.
 func (q *ContainsQuery) Exec(n Node) ([]Node, error) {
 	switch n.Type() {
 	case TypeArray:
 		for _, item := range n.Array() {
-			if orNil(item).Value().String() == q.Value {
+			if containsValue(item, q.Value) {
 				return ToNodeValues(true), nil
 			}
 		}
 		return ToNodeValues(false), nil
 	case TypeMap:
 		for _, value := range n.Map() {
-			if orNil(value).Value().String() == q.Value {
+			if containsValue(value, q.Value) {
 				return ToNodeValues(true), nil
 			}
 		}
@@ -278,6 +278,12 @@ func (q *ContainsQuery) Exec(n Node) ([]Node, error) {
 		return ToNodeValues(strings.Contains(n.Value().String(), q.Value)), nil
 	}
 	return ToNodeValues(false), nil
+}
+
+// containsValue reports whether n is a string, number or boolean whose text is v.
+func containsValue(n Node, v string) bool {
+	t := orNil(n).Type()
+	return t.IsValue() && !t.IsNilValue() && n.Value().String() == v
 }
 
 func (q *ContainsQuery) String() string {

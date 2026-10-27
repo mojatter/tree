@@ -533,6 +533,21 @@ func TestEdit(t *testing.T) {
 			expr:     `.url = "http://x?a=1"`,
 			want:     Map{"url": StringValue("http://x?a=1")},
 		}, {
+			caseName: "set null keeps the key",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.a = null`,
+			want:     Map{"a": Nil},
+		}, {
+			caseName: "set through a null literal select",
+			n:        Map{"a": Array{Map{"x": Nil}, Map{"x": NumberValue(1)}, Map{}}},
+			expr:     `.a[.x == null].y = 1`,
+			want:     Map{"a": Array{Map{"x": Nil, "y": NumberValue(1)}, Map{"x": NumberValue(1)}, Map{"y": NumberValue(1)}}},
+		}, {
+			caseName: "set through a null literal select leaves a container",
+			n:        Map{"a": Array{Map{"x": Map{"y": NumberValue(1)}}, Map{}}},
+			expr:     `.a[.x == null].x = 0`,
+			want:     Map{"a": Array{Map{"x": Map{"y": NumberValue(1)}}, Map{"x": NumberValue(0)}}},
+		}, {
 			caseName: "set plain value containing equals sign",
 			n:        Map{},
 			expr:     `.s = a=b`,
@@ -1120,9 +1135,9 @@ func TestEdit(t *testing.T) {
 			errstr:   `cannot index array with range [1:2]`,
 		}, {
 			caseName: "slurp left.Exec error propagates up",
-			n:        Map{"items": Map{"x": StringValue("v")}},
-			expr:     `.items[1:2] | .x = 1`,
-			errstr:   `cannot index array with range [1:2]`,
+			n:        Map{"items": Array{Map{"k": NumberValue(1), "z": Map{"k": NumberValue(2)}}}},
+			expr:     `.items[..k == 1] | .x = 1`,
+			errstr:   `..k returns no single value [1 2]`,
 		}, {
 			caseName: "terminal SelectQuery is an unsupported edit query",
 			n:        Map{"items": Array{NumberValue(1)}},
@@ -1167,20 +1182,35 @@ func TestEdit(t *testing.T) {
 			expr:     `.arr[-1].k = 99`,
 			want:     Map{"arr": Array{Map{"k": NumberValue(1)}, Map{"k": NumberValue(99)}}},
 		}, {
-			caseName: "negative index set on map errors",
+			caseName: "negative index set on map sets the key",
 			n:        Map{"x": StringValue("v")},
 			expr:     `[-1] = "z"`,
-			errstr:   `cannot index array with -1`,
+			want:     Map{"x": StringValue("v"), "-1": StringValue("z")},
 		}, {
-			caseName: "negative index append on map errors",
+			caseName: "negative index set on nested map replaces the key",
+			n:        Map{"m": Map{"-1": NumberValue(1), "0": NumberValue(2)}},
+			expr:     `.m[-1] = 9`,
+			want:     Map{"m": Map{"-1": NumberValue(9), "0": NumberValue(2)}},
+		}, {
+			caseName: "negative index append on map appends to the key",
 			n:        Map{"x": StringValue("v")},
 			expr:     `[-1] += "z"`,
-			errstr:   `cannot append to array with -1`,
+			want:     Map{"x": StringValue("v"), "-1": Array{StringValue("z")}},
 		}, {
-			caseName: "negative index delete on map errors",
-			n:        Map{"x": StringValue("v")},
+			caseName: "negative index append on map extends the key's array",
+			n:        Map{"-1": Array{NumberValue(1)}},
+			expr:     `[-1] += 2`,
+			want:     Map{"-1": Array{NumberValue(1), NumberValue(2)}},
+		}, {
+			caseName: "negative index delete on map deletes the key",
+			n:        Map{"x": StringValue("v"), "-1": NumberValue(1)},
 			expr:     `[-1] ^?`,
-			errstr:   `cannot delete array with -1`,
+			want:     Map{"x": StringValue("v")},
+		}, {
+			caseName: "negative index set on scalar errors",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.a[-1] = 1`,
+			errstr:   `cannot index array with -1`,
 		}, {
 			caseName: "walk set with value containing the same key",
 			n:        Map{"a": Map{"b": NumberValue(1)}},
@@ -1774,15 +1804,15 @@ func TestEdit(t *testing.T) {
 			expr:     `"x".b = 1`,
 			errstr:   `syntax error: unsupported edit query: "x"`,
 		}, {
-			caseName: "empty group step is an unsupported edit query",
+			caseName: "empty group step is a syntax error",
 			n:        Map{"a": Array{NumberValue(1)}},
 			expr:     `.a.first ().b = 1`,
-			errstr:   `syntax error: unsupported edit query: ()`,
+			errstr:   `syntax error: empty expression: ".a.first ().b"`,
 		}, {
-			caseName: "empty group as the last step is an unsupported edit query",
+			caseName: "empty group as the last step is a syntax error",
 			n:        Map{},
 			expr:     `.a.() = 1`,
-			errstr:   `syntax error: unsupported edit query: ()`,
+			errstr:   `syntax error: empty expression: ".a.()"`,
 		}, {
 			caseName: "unsupported last step errors before reaching missing data",
 			n:        Map{},

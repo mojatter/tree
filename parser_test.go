@@ -349,6 +349,24 @@ func TestParseQuery(t *testing.T) {
 				},
 			},
 		}, {
+			expr: `[.x == null]`,
+			want: SelectQuery{And{Comparator{MapQuery("x"), EQ, ValueQuery{Nil}}}},
+		}, {
+			expr: `[null == .x]`,
+			want: SelectQuery{And{Comparator{ValueQuery{Nil}, EQ, MapQuery("x")}}},
+		}, {
+			expr: `[.x == "null"]`,
+			want: SelectQuery{And{Comparator{MapQuery("x"), EQ, ValueQuery{StringValue("null")}}}},
+		}, {
+			expr: `[.x == nulls]`,
+			want: SelectQuery{And{Comparator{MapQuery("x"), EQ, ValueQuery{StringValue("nulls")}}}},
+		}, {
+			expr: `.null`,
+			want: MapQuery("null"),
+		}, {
+			expr: `..null`,
+			want: WalkQuery("null"),
+		}, {
 			expr: `1.or`,
 			want: FilterQuery{ValueQuery{NumberValue(1)}, MapQuery("or")},
 		},
@@ -385,6 +403,39 @@ func TestParseQueryErrors(t *testing.T) {
 		{
 			expr:   `<`,
 			errstr: `syntax error: invalid token <: "<"`,
+		}, {
+			expr:   ``,
+			errstr: `syntax error: empty expression: ""`,
+		}, {
+			expr:   ` `,
+			errstr: `syntax error: empty expression: " "`,
+		}, {
+			expr:   `()`,
+			errstr: `syntax error: empty expression: "()"`,
+		}, {
+			expr:   `[.x == ]`,
+			errstr: `syntax error: empty expression: "[.x == ]"`,
+		}, {
+			expr:   `[ == 1]`,
+			errstr: `syntax error: empty expression: "[ == 1]"`,
+		}, {
+			expr:   `[.x and ]`,
+			errstr: `syntax error: empty expression: "[.x and ]"`,
+		}, {
+			expr:   `.a | ()`,
+			errstr: `syntax error: empty expression: ".a | ()"`,
+		}, {
+			expr:   `[()]`,
+			errstr: `syntax error: empty expression: "[()]"`,
+		}, {
+			expr:   `(`,
+			errstr: `syntax error: no right brackets: "("`,
+		}, {
+			expr:   `[.x == `,
+			errstr: `syntax error: no right brackets: "[.x == "`,
+		}, {
+			expr:   `sort("")`,
+			errstr: `syntax error: empty expression: ""`,
 		}, {
 			expr:   `[`,
 			errstr: `syntax error: no right brackets: "["`,

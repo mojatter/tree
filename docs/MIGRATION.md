@@ -236,7 +236,9 @@ the explicit positive index.
 `tree.ArrayQuery(-1).Set(...)`, `Append(...)`, and `Delete(...)` on
 a value that is a `Map` (not an `Array`) used to silently write or
 no-op against the literal key `"-1"`. They now return an error
-because negative indices have no meaning on maps.
+because negative indices have no meaning on maps. (Reversed in
+v0.17.0: `.m[-1]` reads and `.m[-1] = v` writes the literal key
+`"-1"`, as `Map.Get` / `Map.Set` do; see #196.)
 
 ### `.foo-bar` is now a syntax error
 
@@ -323,6 +325,6 @@ that was already working continues to work.
 | `[-3:]`, `[1:-1]` | parse error / silently wrong | Python-style end-relative |
 | `.foo-bar` | silent `FilterQuery{foo, bar}` | syntax error (quote it) |
 | `[foo-bar]` | silent meaningless selector | error |
-| `ArrayQuery(-1).Set/Delete` on `Map` | wrote / no-op'd `"-1"` key | error |
+| `ArrayQuery(-1).Set/Delete` on `Map` | wrote / no-op'd `"-1"` key | error (key `"-1"` again since v0.17.0) |
 | `[.x == Inf]`, `[.x == NaN]` | numeric `+Inf` / `NaN` | string `"Inf"` / `"NaN"` |
 | `[.x == 1.5]`, `[.x == -1.5]`, `[.x == 1e-3]` | parse error | parsed correctly |
