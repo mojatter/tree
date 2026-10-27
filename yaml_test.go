@@ -229,7 +229,7 @@ func TestAnyUnmarshalYAML(t *testing.T) {
 		{caseName: "map", data: "k: 1\n", want: Map{"k": NumberValue(1)}},
 		{caseName: "array with null", data: "- 1\n- null\n", want: Array{NumberValue(1), Nil}},
 		{caseName: "null leaves the node as it is", data: "null\n", want: NumberValue(1)},
-		{caseName: "error leaves the node as it is", data: "{a: [\n", want: NumberValue(1), errstr: "did not find expected node content"},
+		{caseName: "error leaves the node as it is", data: "!!int x\n", want: NumberValue(1), errstr: "cannot decode !!str `x` as a !!int"},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
