@@ -549,14 +549,27 @@ func (r *runner) evaluateNode(node tree.Node) error {
 }
 
 func (r *runner) output(node tree.Node) error {
-	if r.isRaw && node.Type().IsValue() {
-		if _, err := fmt.Fprintln(r.out, node.Value().String()); err != nil {
+	if node == nil {
+		node = tree.Nil // a hole left by growing an array
+	}
+	t := node.Type()
+	if r.isRaw && t.IsValue() {
+		s := node.Value().String()
+		if t.IsNilValue() {
+			s = "null" // NilValue.String() is empty
+		}
+		if _, err := fmt.Fprintln(r.out, s); err != nil {
 			return err
 		}
 		return nil
 	}
 	if r.tmpl != nil {
-		if err := r.tmpl.Execute(r.out, node); err != nil {
+		// A nil data renders missing fields as <no value> and lets {{with .}} skip null.
+		var data any = node
+		if t.IsNilValue() {
+			data = nil
+		}
+		if err := r.tmpl.Execute(r.out, data); err != nil {
 			return err
 		}
 		if _, err := fmt.Fprintln(r.out); err != nil {
