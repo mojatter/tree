@@ -887,15 +887,20 @@ func TestEdit(t *testing.T) {
 			expr:     `.m[]. = 9`,
 			want:     Map{"m": Map{"k": NumberValue(9)}},
 		}, {
-			caseName: "trailing bare dot after [] leaves a null element on append",
+			caseName: "trailing bare dot after [] appends to a null element",
 			n:        Array{Nil},
 			expr:     `.[]. += 1`,
-			want:     Array{Nil},
+			want:     Array{Array{NumberValue(1)}},
 		}, {
-			caseName: "trailing bare dot after [] appends to arrays and leaves null elements",
+			caseName: "trailing bare dot after [] appends to arrays and null elements",
 			n:        Map{"a": Array{Array{NumberValue(1)}, Nil}},
 			expr:     `.a[]. += 1`,
-			want:     Map{"a": Array{Array{NumberValue(1), NumberValue(1)}, Nil}},
+			want:     Map{"a": Array{Array{NumberValue(1), NumberValue(1)}, Array{NumberValue(1)}}},
+		}, {
+			caseName: "trailing bare dot after a slice appends to a null element",
+			n:        Array{Nil, Nil},
+			expr:     `.[1:]. += 1`,
+			want:     Array{Nil, Array{NumberValue(1)}},
 		}, {
 			caseName: "trailing bare dot after [] leaves a null element on delete",
 			n:        Array{Nil},
@@ -1921,11 +1926,21 @@ func TestEdit(t *testing.T) {
 			caseName: "append to a nil pointer root",
 			n:        (*Array)(nil),
 			expr:     `. += 1`,
-			errstr:   "cannot append to .",
+			want:     Array{NumberValue(1)},
 		}, {
 			caseName: "append to a nil root",
 			n:        nil,
 			expr:     `. += 1`,
+			want:     Array{NumberValue(1)},
+		}, {
+			caseName: "append to a null root",
+			n:        Nil,
+			expr:     `. += 1`,
+			want:     Array{NumberValue(1)},
+		}, {
+			caseName: "append to a scalar root returns error",
+			n:        NumberValue(1),
+			expr:     `. += 2`,
 			errstr:   "cannot append to .",
 		},
 	}

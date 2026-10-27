@@ -41,6 +41,10 @@ func (q NopQuery) Set(pn *Node, v Node) error {
 }
 
 func (q NopQuery) Append(pn *Node, v Node) error {
+	if isNullLike(*pn) {
+		*pn = Array{v} // null reads as missing, as for a key
+		return nil
+	}
 	if a := orNil(*pn).Array(); a != nil {
 		*pn = append(a, v)
 		return nil

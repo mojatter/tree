@@ -534,7 +534,7 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 				continue
 			}
 		}
-		if isNullLike(child) && (op != "=" || !isNopQuery(fq[step+1])) { // a trailing . sets a null element; += and ^? leave it as it is
+		if isNullLike(child) && (op == "^?" || !isNopQuery(fq[step+1])) { // a trailing . sets or appends to a null element; ^? leaves it as it is
 			if child = emptyIntermediate(op, fq[step+1:]); child == nil {
 				continue // a null element stays as it is
 			}
@@ -579,7 +579,7 @@ func editElements(pn *Node, n Node, a Array, from, to int, match func(Node) (boo
 				continue
 			}
 		}
-		if isNullLike(child) && (op != "=" || !isNopQuery(fq[step+1])) { // a trailing . sets a null element; += and ^? leave it as it is
+		if isNullLike(child) && (op == "^?" || !isNopQuery(fq[step+1])) { // a trailing . sets or appends to a null element; ^? leaves it as it is
 			if child = emptyIntermediate(op, fq[step+1:]); child == nil {
 				continue // a null element stays as it is
 			}
