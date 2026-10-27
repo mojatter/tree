@@ -248,6 +248,36 @@ func TestMethodQuery(t *testing.T) {
 			n:        Map{"a": nil},
 			want:     []Node{ToValue(false)},
 		}, {
+			caseName: "contains ignores null elements",
+			q:        &ContainsQuery{Value: ""},
+			n:        Array{Nil, ToValue(1)},
+			want:     []Node{ToValue(false)},
+		}, {
+			caseName: "contains ignores nil elements",
+			q:        &ContainsQuery{Value: ""},
+			n:        Array{nil},
+			want:     []Node{ToValue(false)},
+		}, {
+			caseName: "contains ignores null map values",
+			q:        &ContainsQuery{Value: ""},
+			n:        Map{"a": Nil},
+			want:     []Node{ToValue(false)},
+		}, {
+			caseName: "contains ignores nested arrays",
+			q:        &ContainsQuery{Value: ""},
+			n:        Array{Array{ToValue(1)}},
+			want:     []Node{ToValue(false)},
+		}, {
+			caseName: "contains ignores nested maps",
+			q:        &ContainsQuery{Value: ""},
+			n:        Map{"a": Map{"b": ToValue(1)}},
+			want:     []Node{ToValue(false)},
+		}, {
+			caseName: "contains matches an empty string element",
+			q:        &ContainsQuery{Value: ""},
+			n:        Array{StringValue("")},
+			want:     []Node{ToValue(true)},
+		}, {
 			caseName: "sort array of maps by nested field",
 			q: func() Query {
 				q, _ := NewSortQuery(".meta.id")
