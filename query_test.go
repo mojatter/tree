@@ -162,7 +162,7 @@ func TestQuery(t *testing.T) {
 				Comparator{WalkQuery("b c"), EQ, ValueQuery{ToValue(1)}},
 			}},
 			n:      Array{Map{"x": Map{"b c": ToValue(1)}, "y": Map{"b c": ToValue(2)}}},
-			errstr: `.."b c" returns no single value [1 2]`,
+			errstr: `.."b c" returns more than one value [1 2]`,
 		}, {
 			caseName: "select: complex",
 			q: SelectQuery{
@@ -251,7 +251,7 @@ func TestQuery(t *testing.T) {
 			caseName: "select: a side with a null among several values errors",
 			q:        SelectQuery{Comparator{Left: FilterQuery{MapQuery("tags"), SelectQuery{}, MapQuery("x")}, Op: EQ, Right: ValueQuery{ToValue(1)}}},
 			n:        Array{Map{"tags": Array{Map{"x": ToValue(1)}, Map{"y": ToValue(2)}}}},
-			errstr:   `.tags[].x returns no single value [1 null]`,
+			errstr:   `.tags[].x returns more than one value [1 null]`,
 		}, {
 			caseName: "select: null is not ordered",
 			q:        SelectQuery{Comparator{Left: MapQuery("a"), Op: LT, Right: ValueQuery{ToValue(1)}}},

@@ -376,12 +376,12 @@ func TestMethodQuery(t *testing.T) {
 			caseName: "sort key query error",
 			q:        &SortQuery{Expr: "[..k == 1]", Query: SelectQuery{And{Comparator{WalkQuery("k"), EQ, ValueQuery{NumberValue(1)}}}}},
 			n:        Array{Array{Map{"k": NumberValue(1), "z": Map{"k": NumberValue(2)}}}, Array{}},
-			errstr:   `..k returns no single value [1 2]`,
+			errstr:   `..k returns more than one value [1 2]`,
 		}, {
 			caseName: "rsort key query error",
 			q:        &RSortQuery{Expr: "[..k == 1]", Query: SelectQuery{And{Comparator{WalkQuery("k"), EQ, ValueQuery{NumberValue(1)}}}}},
 			n:        Array{Array{Map{"k": NumberValue(1), "z": Map{"k": NumberValue(2)}}}, Array{}},
-			errstr:   `..k returns no single value [1 2]`,
+			errstr:   `..k returns more than one value [1 2]`,
 		}, {
 			caseName: "sort key on a null element sorts as null",
 			q:        &SortQuery{Expr: ".age", Query: MapQuery("age")},

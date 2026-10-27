@@ -1158,7 +1158,7 @@ func TestEdit(t *testing.T) {
 			caseName: "slurp left.Exec error propagates up",
 			n:        Map{"items": Array{Map{"k": NumberValue(1), "z": Map{"k": NumberValue(2)}}}},
 			expr:     `.items[..k == 1] | .x = 1`,
-			errstr:   `..k returns no single value [1 2]`,
+			errstr:   `..k returns more than one value [1 2]`,
 		}, {
 			caseName: "terminal SelectQuery is an unsupported edit query",
 			n:        Map{"items": Array{NumberValue(1)}},

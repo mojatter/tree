@@ -604,10 +604,10 @@ func (c Comparator) Matches(n Node) (bool, error) {
 		return false, err
 	}
 	if len(l) > 1 {
-		return false, fmt.Errorf("%s returns no single value %s", c.Left, formatResults(l))
+		return false, fmt.Errorf("%s returns more than one value %s", c.Left, formatResults(l))
 	}
 	if len(r) > 1 {
-		return false, fmt.Errorf("%s returns no single value %s", c.Right, formatResults(r))
+		return false, fmt.Errorf("%s returns more than one value %s", c.Right, formatResults(r))
 	}
 	if len(l) == 0 || len(r) == 0 {
 		return false, nil
