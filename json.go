@@ -124,6 +124,21 @@ func (n *Array) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// MarshalJSON implements json.Marshaler by encoding the wrapped node, or null when it is a Go nil node.
+// It does not escape HTML itself, so the caller's encoder decides.
+func (n Any) MarshalJSON() ([]byte, error) {
+	if isGoNil(n.Node) {
+		return []byte("null"), nil
+	}
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(n.Node); err != nil {
+		return nil, err
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+}
+
 // MarshalJSON is an implementation of json.Marshaler.
 func (n NilValue) MarshalJSON() ([]byte, error) {
 	return []byte("null"), nil

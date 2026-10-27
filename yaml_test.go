@@ -3,6 +3,7 @@ package tree
 import (
 	"bytes"
 	"reflect"
+	"strings"
 	"testing"
 
 	"go.yaml.in/yaml/v3"
@@ -60,6 +61,13 @@ func TestMarshalYAML(t *testing.T) {
 - true
 `,
 		},
+		{caseName: "Any wrapping Map", n: Any{Node: Map{"k": NumberValue(1)}}, want: "k: 1\n"},
+		{caseName: "pointer Any wrapping String", n: &Any{Node: StringValue("x")}, want: "x\n"},
+		{caseName: "nested Any", n: Any{Node: &Any{Node: BoolValue(true)}}, want: "true\n"},
+		{caseName: "zero Any", n: Any{}, want: "null\n"},
+		{caseName: "Any wrapping nil pointer", n: Any{Node: (*Array)(nil)}, want: "null\n"},
+		{caseName: "nil pointer Any", n: (*Any)(nil), want: "null\n"},
+		{caseName: "Map with Any values", n: Map{"a": Any{Node: StringValue("x")}, "b": Any{}}, want: "a: x\nb: null\n"},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
@@ -211,6 +219,35 @@ func TestArrayUnmarshalYAML(t *testing.T) {
 	}
 }
 
+func TestAnyUnmarshalYAML(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		data     string
+		want     Node
+		errstr   string
+	}{
+		{caseName: "map", data: "k: 1\n", want: Map{"k": NumberValue(1)}},
+		{caseName: "array with null", data: "- 1\n- null\n", want: Array{NumberValue(1), Nil}},
+		{caseName: "null leaves the node as it is", data: "null\n", want: NumberValue(1)},
+		{caseName: "error leaves the node as it is", data: "{a: [\n", want: NumberValue(1), errstr: "did not find expected node content"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			a := Any{Node: NumberValue(1)}
+			err := yaml.Unmarshal([]byte(tc.data), &a)
+			if tc.errstr == "" && err != nil {
+				t.Fatal(err)
+			}
+			if tc.errstr != "" && (err == nil || !strings.Contains(err.Error(), tc.errstr)) {
+				t.Errorf("got %v; want error containing %q", err, tc.errstr)
+			}
+			if !reflect.DeepEqual(a.Node, tc.want) {
+				t.Errorf("got %#v; want %#v", a.Node, tc.want)
+			}
+		})
+	}
+}
+
 func TestMarshalViaYAML(t *testing.T) {
 	testCases := []struct {
 		caseName string
@@ -239,6 +276,13 @@ func TestMarshalViaYAML(t *testing.T) {
 		{caseName: "int", v: 1, want: NumberValue(1)},
 		{caseName: "nil", v: nil, want: Nil},
 		{caseName: "BoolValue passthrough", v: BoolValue(true), want: BoolValue(true)},
+		{
+			caseName: "struct with Any field",
+			v: struct {
+				Extra Any `yaml:"extra"`
+			}{Extra: Any{Node: Map{"k": NumberValue(1)}}},
+			want: Map{"extra": Map{"k": NumberValue(1)}},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
@@ -258,17 +302,20 @@ func TestUnmarshalViaYAML(t *testing.T) {
 		"id":     ToValue(1),
 		"name":   ToValue("Reds"),
 		"colors": ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
+		"extra":  Map{"k": NumberValue(1)},
 	}
 	v := []struct {
 		ID     int      `yaml:"id"`
 		Name   string   `yaml:"name"`
 		Colors []string `yaml:"colors"`
+		Extra  Any      `yaml:"extra"`
 	}{
 		{},
 		{
 			ID:     1,
 			Name:   "Reds",
 			Colors: []string{"Crimson", "Red", "Ruby", "Maroon"},
+			Extra:  Any{Node: Map{"k": NumberValue(1)}},
 		},
 	}
 	got := v[0]
