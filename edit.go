@@ -506,6 +506,12 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 		return editElements(pn, n, a, 0, len(a), match, fq, step, op, v, as)
 	}
 
+	if isNullLike(n) || n.Type().IsArray() {
+		return nil // a null the edit creates nothing for, or an array with no elements, stays as it is
+	}
+	if !n.Type().IsMap() {
+		return fmt.Errorf("cannot index array with %s", sq)
+	}
 	en, ok := n.(EditorNode)
 	if !ok {
 		m := n.Map()
@@ -555,8 +561,8 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 func resolveRangeStep(pn *Node, n Node, rq ArrayRangeQuery, fq FilterQuery, step int, op string, v Node, as assigned) error {
 	a := n.Array()
 	if a == nil {
-		if isNullLike(n) {
-			return nil // a null root the edit creates nothing for stays as it is
+		if isNullLike(n) || n.Type().IsArray() {
+			return nil // a null the edit creates nothing for, or an array with no elements, stays as it is
 		}
 		return fmt.Errorf("cannot index array with range %s", rq)
 	}

@@ -1165,10 +1165,45 @@ func TestEdit(t *testing.T) {
 			expr:     `.items[] = "new"`,
 			errstr:   `syntax error: unsupported edit query: []`,
 		}, {
-			caseName: "SelectQuery intermediate on non-collection is a no-op",
+			caseName: "SelectQuery intermediate on a scalar returns error",
 			n:        Map{"s": StringValue("hi")},
 			expr:     `.s[].x = 1`,
-			want:     Map{"s": StringValue("hi")},
+			errstr:   "cannot index array with []",
+		}, {
+			caseName: "[] on a scalar returns error",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.a[]. = 9`,
+			errstr:   "cannot index array with []",
+		}, {
+			caseName: "select on a scalar returns error",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.a[. == 1]. = 9`,
+			errstr:   "cannot index array with [(. == 1)]",
+		}, {
+			caseName: "[] on null is a no-op",
+			n:        Map{"a": Nil},
+			expr:     `.a[]. = 9`,
+			want:     Map{"a": Nil},
+		}, {
+			caseName: "[] on a pointer to a nil array is a no-op",
+			n:        Map{"a": new(Array)},
+			expr:     `.a[]. = 9`,
+			want:     Map{"a": new(Array)},
+		}, {
+			caseName: "select on a pointer to a nil array is a no-op",
+			n:        Map{"a": new(Array)},
+			expr:     `.a[. == 1]. = 9`,
+			want:     Map{"a": new(Array)},
+		}, {
+			caseName: "slice on a pointer to a nil array is a no-op",
+			n:        Map{"a": new(Array)},
+			expr:     `.a[1:]. = 9`,
+			want:     Map{"a": new(Array)},
+		}, {
+			caseName: "[] on an Any wrapping a nil array is a no-op",
+			n:        Map{"a": Any{Node: Array(nil)}},
+			expr:     `.a[]. = 9`,
+			want:     Map{"a": Any{Node: Array(nil)}},
 		}, {
 			caseName: "SelectQuery with selector iterates Map values matching comparator",
 			n: Map{
@@ -1471,20 +1506,20 @@ func TestEdit(t *testing.T) {
 			expr:     `.x[].y = 1`,
 			want:     Map{"x": Any{Node: Map{"k": Map{"y": NumberValue(1)}}}},
 		}, {
-			caseName: "select step on a scalar editor node is a no-op",
+			caseName: "select step on a scalar editor node returns error",
 			n:        Map{"x": leafEditorNode{StringValue("s")}},
 			expr:     `.x[].y = 1`,
-			want:     Map{"x": leafEditorNode{StringValue("s")}},
+			errstr:   "cannot index array with []",
 		}, {
-			caseName: "trailing bare dot after a select on a scalar editor node is a no-op",
+			caseName: "trailing bare dot after a select on a scalar editor node returns error",
 			n:        Map{"x": leafEditorNode{StringValue("s")}},
 			expr:     `.x[]. = 1`,
-			want:     Map{"x": leafEditorNode{StringValue("s")}},
+			errstr:   "cannot index array with []",
 		}, {
-			caseName: "select with a condition on a scalar editor node is a no-op",
+			caseName: "select with a condition on a scalar editor node returns error",
 			n:        Map{"x": leafEditorNode{StringValue("s")}},
 			expr:     `.x[.y == 1].z = 1`,
-			want:     Map{"x": leafEditorNode{StringValue("s")}},
+			errstr:   "cannot index array with [(.y == 1)]",
 		}, {
 			caseName: "select step on a null editor node is a no-op",
 			n:        Map{"x": leafEditorNode{Nil}},
