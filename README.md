@@ -297,6 +297,14 @@ For more details on built-in methods, see the [Built-in Methods](#built-in-metho
 }
 ```
 
+#### Null
+
+Queries read null like jq. A key, an index, `first()` or `last()` on null, a scalar, a missing key or an out-of-range index gives `null`, so `.store.zz` gives `null`, `.store.book[].isbn` gives one `null` per book without an ISBN and `.store.zz.count()` gives `0`. `[]`, a slice, `..key`, `keys()` and `values()` give nothing when there is nothing to read, and `has()` on null gives `false`. Unlike jq, a key or an index on a scalar and a key on an array also give `null` instead of an error (`.store.book.title` gives `null`; a numeric key such as `.store.book.0` still reads the index), and an index on an object reads the key with that number, as `Map.Get` does (`.m[0]` reads `"0"` and `.m[-1]` reads `"-1"`, like the edits `.m[0] = 1` and `.m[-1] = 1`).
+
+`null` is a literal and `"null"` is a string: `[.isbn == null]` matches books whose ISBN is null or missing, and `[.isbn != "x"]` keeps books without an ISBN. `==` and `!=` compare objects and arrays by value, so an object or an array is never `null`. Ordered operators (`<`, `<=`, `>`, `>=`) with a null, object or array side never match, and a side that gives nothing, such as `.tags[]` on an empty array, never matches. Each side of a comparison must give a single value, so `[.tags[].x == 1]` fails with `returns no single value` when `tags` has more than one element; use a nested select such as `[.tags[.x == 1]]` to match any element. `contains()` matches scalar elements only, never null, arrays or objects.
+
+Besides syntax errors and bad method arguments, a read fails only when a comparison side gives more than one value. Edits stay strict, see [Edit](#edit).
+
 ### Built-in Methods
 
 Tree provides several built-in methods for data manipulation and querying:
@@ -347,7 +355,7 @@ node.Find(".store.book.rsort(\".price\")")  // Books ordered by descending price
 
 ## Edit
 
-An edit expression is `<query> = <value>` (set), `<query> += <value>` (append) or `<query> ^?` (delete). It is split at the first operator outside quotes and parentheses, and `<value>` is parsed as YAML, so `.url = "http://x?a=1"` sets the whole URL. Comparison operators (`==`, `!=`, `<=`, `>=`, `~=`) are never read as an assignment, so `.a ==1` is a syntax error; write `.a = "=1"` to set that string.
+An edit expression is `<query> = <value>` (set), `<query> += <value>` (append) or `<query> ^?` (delete). It is split at the first operator outside quotes and parentheses, and `<value>` is parsed as YAML, so `.url = "http://x?a=1"` sets the whole URL. `.a = null` stores null and keeps the key, while `.a ^?` removes it. Comparison operators (`==`, `!=`, `<=`, `>=`, `~=`) are never read as an assignment, so `.a ==1` is a syntax error; write `.a = "=1"` to set that string.
 
 An edit through `..key`, `[]`, a select or a slice gives each match its own copy of the RHS, so editing one match later leaves the others as they are. A `..key` edit also edits inner matches before outer ones, so it never edits inside the RHS, i.e. a value it has just assigned: `..b = {"b": 1}` on `{"b": {"b": 2}}` gives `{"b": {"b": 1}}`. If an inner match does not fit the rest of the query, the edit stops with an error, as in jq: `..b.c = 1` on `{"b": {"c": {"b": []}}}` fails with `cannot index array with c`. Edits are not transactional: when a match fails, the matches edited before it stay edited.
 
