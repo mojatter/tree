@@ -21,6 +21,16 @@ func TestQuery(t *testing.T) {
 			n:        Array{},
 			want:     []Node{Array{}},
 		}, {
+			caseName: "value: null literal",
+			q:        ValueQuery{Nil},
+			n:        Map{},
+			want:     []Node{Nil},
+		}, {
+			caseName: "value: Go nil literal reads as null",
+			q:        ValueQuery{},
+			n:        Map{},
+			want:     []Node{Nil},
+		}, {
 			caseName: "map: hit",
 			q:        MapQuery("key"),
 			n:        Map{"key": ToValue("value")},
@@ -340,6 +350,10 @@ func TestQueryString(t *testing.T) {
 			caseName: "value number",
 			q:        ValueQuery{NumberValue(1.5)},
 			want:     `1.5`,
+		}, {
+			caseName: "value null",
+			q:        ValueQuery{Nil},
+			want:     `null`,
 		},
 	}
 	for _, tc := range testCases {

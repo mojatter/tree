@@ -1774,15 +1774,15 @@ func TestEdit(t *testing.T) {
 			expr:     `"x".b = 1`,
 			errstr:   `syntax error: unsupported edit query: "x"`,
 		}, {
-			caseName: "empty group step is an unsupported edit query",
+			caseName: "empty group step is a syntax error",
 			n:        Map{"a": Array{NumberValue(1)}},
 			expr:     `.a.first ().b = 1`,
-			errstr:   `syntax error: unsupported edit query: ()`,
+			errstr:   `syntax error: empty expression: ".a.first ().b"`,
 		}, {
-			caseName: "empty group as the last step is an unsupported edit query",
+			caseName: "empty group as the last step is a syntax error",
 			n:        Map{},
 			expr:     `.a.() = 1`,
-			errstr:   `syntax error: unsupported edit query: ()`,
+			errstr:   `syntax error: empty expression: ".a.()"`,
 		}, {
 			caseName: "unsupported last step errors before reaching missing data",
 			n:        Map{},

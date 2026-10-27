@@ -72,6 +72,14 @@ func TestValueCompare(t *testing.T) {
 		want bool
 	}{
 		{StringValue("x"), EQ, nil, false},
+		{Nil, EQ, Nil, true},
+		{Nil, EQ, nil, true},
+		{Nil, NE, Nil, false},
+		{Nil, NE, NumberValue(1), true},
+		{Nil, EQ, StringValue("null"), false},
+		{Nil, LT, NumberValue(1), false},
+		{Nil, LE, Nil, false},
+		{StringValue("null"), EQ, Nil, false},
 		{StringValue("x"), EQ, StringValue("x"), true},
 		{StringValue("x"), EQ, StringValue("y"), false},
 		{StringValue("1"), EQ, NumberValue(1), false},

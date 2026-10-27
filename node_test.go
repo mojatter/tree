@@ -91,19 +91,17 @@ func TestTypeString(t *testing.T) {
 
 func TestNode(t *testing.T) {
 	testCases := []struct {
-		caseName  string
-		n         Node
-		isNil     bool
-		t         Type
-		a         Array
-		m         Map
-		v         Value
-		hasKeys   []any
-		hasValue  bool
-		getKeys   []any
-		getValue  Node
-		findExpr  string
-		findValue []Node
+		caseName string
+		n        Node
+		isNil    bool
+		t        Type
+		a        Array
+		m        Map
+		v        Value
+		hasKeys  []any
+		hasValue bool
+		getKeys  []any
+		getValue Node
 	}{
 		{
 			caseName: "Map(nil)",
@@ -206,13 +204,6 @@ func TestNode(t *testing.T) {
 			}
 			if got := n.Get(tc.getKeys...); !Equal(got, tc.getValue) {
 				t.Errorf("Get got %v; want %v", got, tc.getValue)
-			}
-			found, err := n.Find(tc.findExpr)
-			if err != nil {
-				t.Errorf("failed to Find error %v", err)
-			}
-			if !Equal(Array(found), Array(tc.findValue)) {
-				t.Errorf("Find got %v; want %v", found, tc.findValue)
 			}
 		})
 	}

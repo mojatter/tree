@@ -56,12 +56,9 @@ type ValueQuery struct {
 	Node
 }
 
-// Exec returns the constant value.
+// Exec returns the constant value, with a Go nil as null.
 func (q ValueQuery) Exec(n Node) ([]Node, error) {
-	if q.IsNil() {
-		return nil, nil
-	}
-	return []Node{q.Node}, nil
+	return []Node{orNil(q.Node)}, nil
 }
 
 func (q ValueQuery) String() string {
