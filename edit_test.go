@@ -183,6 +183,21 @@ func TestEdit(t *testing.T) {
 			expr:     `[2] += "blue"`,
 			want:     Array{Array{StringValue("red")}, nil, Array{StringValue("blue")}},
 		}, {
+			caseName: "append to nested array by numeric key",
+			n:        Map{"a": Array{Array{StringValue("red")}}},
+			expr:     `.a.0 += "blue"`,
+			want:     Map{"a": Array{Array{StringValue("red"), StringValue("blue")}}},
+		}, {
+			caseName: "append by numeric key past the end of an array",
+			n:        Array{},
+			expr:     `.1 += "blue"`,
+			want:     Array{nil, Array{StringValue("blue")}},
+		}, {
+			caseName: "append by non-numeric key to an array returns error",
+			n:        Array{},
+			expr:     `.a += "blue"`,
+			errstr:   `cannot append to "a"`,
+		}, {
 			caseName: "append to non-array element returns error",
 			n:        Array{StringValue("red")},
 			expr:     `[0] += "blue"`,

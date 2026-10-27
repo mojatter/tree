@@ -110,6 +110,11 @@ func (q MapQuery) Append(pn *Node, v Node) error {
 		}
 		return en.Set(key, Array{v})
 	}
+	if n.Array() != nil {
+		if i, err := strconv.Atoi(key); err == nil && i >= 0 {
+			return ArrayQuery(i).Append(pn, v) // a numeric key appends at that index, as Set does
+		}
+	}
 	return fmt.Errorf("cannot append to %q", key)
 }
 
