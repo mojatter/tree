@@ -195,10 +195,9 @@ func (q ArrayQuery) Set(pn *Node, v Node) error {
 	n := orNil(*pn)
 	index := int(q)
 	if a := n.Array(); a != nil {
-		index = q.resolveIndex(len(a))
-	}
-	if index < 0 {
-		return fmt.Errorf("cannot index array with %d", int(q))
+		if index = q.resolveIndex(len(a)); index < 0 {
+			return fmt.Errorf("cannot index array with %d", int(q))
+		}
 	}
 	if en, ok := n.(EditorNode); ok {
 		return en.Set(index, v)
@@ -218,18 +217,15 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 	n := orNil(*pn)
 	index := int(q)
 	if a := n.Array(); a != nil {
-		index = q.resolveIndex(len(a))
-	} else if index < 0 {
-		return fmt.Errorf("cannot append to array with %d", index)
+		if index = q.resolveIndex(len(a)); index < 0 {
+			return fmt.Errorf("cannot append to array with %d", int(q))
+		}
 	}
 	if en, ok := n.(EditorNode); ok {
 		if n.Has(index) && !isNullLike(n.Get(index)) {
 			if ca := n.Get(index).Array(); ca != nil {
 				return en.Set(index, append(ca, v))
 			}
-			return fmt.Errorf("cannot append to array with %d", int(q))
-		}
-		if index < 0 {
 			return fmt.Errorf("cannot append to array with %d", int(q))
 		}
 		return en.Set(index, Array{v})
@@ -241,9 +237,6 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 				*pn = a
 				return nil
 			}
-			return fmt.Errorf("cannot append to array with %d", int(q))
-		}
-		if index < 0 {
 			return fmt.Errorf("cannot append to array with %d", int(q))
 		}
 		if index >= len(a) {
@@ -263,9 +256,9 @@ func (q ArrayQuery) Delete(pn *Node) error {
 	n := orNil(*pn)
 	index := int(q)
 	if a := n.Array(); a != nil {
-		index = q.resolveIndex(len(a))
-	} else if index < 0 {
-		return fmt.Errorf("cannot delete array with %d", index)
+		if index = q.resolveIndex(len(a)); index < 0 {
+			return fmt.Errorf("cannot delete array with %d", int(q))
+		}
 	}
 	if en, ok := n.(EditorNode); ok {
 		if err := en.Delete(index); err == nil {

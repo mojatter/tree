@@ -1182,20 +1182,35 @@ func TestEdit(t *testing.T) {
 			expr:     `.arr[-1].k = 99`,
 			want:     Map{"arr": Array{Map{"k": NumberValue(1)}, Map{"k": NumberValue(99)}}},
 		}, {
-			caseName: "negative index set on map errors",
+			caseName: "negative index set on map sets the key",
 			n:        Map{"x": StringValue("v")},
 			expr:     `[-1] = "z"`,
-			errstr:   `cannot index array with -1`,
+			want:     Map{"x": StringValue("v"), "-1": StringValue("z")},
 		}, {
-			caseName: "negative index append on map errors",
+			caseName: "negative index set on nested map replaces the key",
+			n:        Map{"m": Map{"-1": NumberValue(1), "0": NumberValue(2)}},
+			expr:     `.m[-1] = 9`,
+			want:     Map{"m": Map{"-1": NumberValue(9), "0": NumberValue(2)}},
+		}, {
+			caseName: "negative index append on map appends to the key",
 			n:        Map{"x": StringValue("v")},
 			expr:     `[-1] += "z"`,
-			errstr:   `cannot append to array with -1`,
+			want:     Map{"x": StringValue("v"), "-1": Array{StringValue("z")}},
 		}, {
-			caseName: "negative index delete on map errors",
-			n:        Map{"x": StringValue("v")},
+			caseName: "negative index append on map extends the key's array",
+			n:        Map{"-1": Array{NumberValue(1)}},
+			expr:     `[-1] += 2`,
+			want:     Map{"-1": Array{NumberValue(1), NumberValue(2)}},
+		}, {
+			caseName: "negative index delete on map deletes the key",
+			n:        Map{"x": StringValue("v"), "-1": NumberValue(1)},
 			expr:     `[-1] ^?`,
-			errstr:   `cannot delete array with -1`,
+			want:     Map{"x": StringValue("v")},
+		}, {
+			caseName: "negative index set on scalar errors",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.a[-1] = 1`,
+			errstr:   `cannot index array with -1`,
 		}, {
 			caseName: "walk set with value containing the same key",
 			n:        Map{"a": Map{"b": NumberValue(1)}},
