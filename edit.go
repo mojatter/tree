@@ -232,7 +232,7 @@ func skipWord(expr string, p int) int {
 // editQuery applies an edit operation to a node using the specified query.
 // Supports FilterQuery, EditorQuery and indexQuery types.
 func editQuery(pn *Node, q Query, op string, v Node) error {
-	q, err := editStep(orNil(*pn), q)
+	q, err := editStep(unwrapAny(*pn), q)
 	if err != nil {
 		return err
 	}
@@ -328,7 +328,7 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 		return editLast(pn, fq[len(fq)-1], op, v, as)
 	}
 
-	n := orNil(*pn)
+	n := unwrapAny(*pn)
 	q, err := editStep(n, fq[step])
 	if err != nil {
 		return err

@@ -1958,6 +1958,26 @@ func TestEdit(t *testing.T) {
 			expr:     `.a.x = 1`,
 			want:     Map{"a": Map{"x": NumberValue(1)}},
 		}, {
+			caseName: "delete by index inside an Any edits the pointer array it wraps",
+			n:        Map{"a": Any{Node: &Array{NumberValue(1), NumberValue(2)}}},
+			expr:     `.a[0] ^?`,
+			want:     Map{"a": Any{Node: &Array{NumberValue(2)}}},
+		}, {
+			caseName: "set past the end inside an Any grows the pointer array it wraps",
+			n:        Map{"a": Any{Node: &Array{NumberValue(1)}}},
+			expr:     `.a[2] = 5`,
+			want:     Map{"a": Any{Node: &Array{NumberValue(1), nil, NumberValue(5)}}},
+		}, {
+			caseName: "delete by key inside a pointer Any edits the map it wraps",
+			n:        Map{"a": &Any{Node: &pointerEditorNode{Map{"b": NumberValue(1)}}}},
+			expr:     `.a.b ^?`,
+			want:     Map{"a": &Any{Node: &pointerEditorNode{Map{}}}},
+		}, {
+			caseName: "delete by index on an Any root edits the pointer array it wraps",
+			n:        Any{Node: &Array{NumberValue(1), NumberValue(2)}},
+			expr:     `[0] ^?`,
+			want:     Any{Node: &Array{NumberValue(2)}},
+		}, {
 			caseName: "append to a nil pointer root",
 			n:        (*Array)(nil),
 			expr:     `. += 1`,

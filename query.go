@@ -86,7 +86,7 @@ func (q MapQuery) Exec(n Node) ([]Node, error) {
 }
 
 func (q MapQuery) Set(pn *Node, v Node) error {
-	n := orNil(*pn)
+	n := unwrapAny(*pn)
 	key := string(q)
 	if en, ok := n.(EditorNode); ok {
 		return en.Set(key, v)
@@ -103,7 +103,7 @@ func (q MapQuery) Set(pn *Node, v Node) error {
 }
 
 func (q MapQuery) Append(pn *Node, v Node) error {
-	n := orNil(*pn)
+	n := unwrapAny(*pn)
 	key := string(q)
 	if en, ok := n.(EditorNode); ok {
 		if n.Has(key) && !isNullLike(n.Get(key)) {
@@ -123,7 +123,7 @@ func (q MapQuery) Append(pn *Node, v Node) error {
 }
 
 func (q MapQuery) Delete(pn *Node) error {
-	n := orNil(*pn)
+	n := unwrapAny(*pn)
 	key := string(q)
 	if en, ok := n.(EditorNode); ok {
 		if err := en.Delete(key); err == nil {
@@ -201,7 +201,7 @@ func (q ArrayQuery) Exec(n Node) ([]Node, error) {
 }
 
 func (q ArrayQuery) Set(pn *Node, v Node) error {
-	n := orNil(*pn)
+	n := unwrapAny(*pn)
 	index := int(q)
 	if a := n.Array(); a != nil {
 		if index = q.resolveIndex(len(a)); index < 0 {
@@ -223,7 +223,7 @@ func (q ArrayQuery) Set(pn *Node, v Node) error {
 }
 
 func (q ArrayQuery) Append(pn *Node, v Node) error {
-	n := orNil(*pn)
+	n := unwrapAny(*pn)
 	index := int(q)
 	if a := n.Array(); a != nil {
 		if index = q.resolveIndex(len(a)); index < 0 {
@@ -262,7 +262,7 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 }
 
 func (q ArrayQuery) Delete(pn *Node) error {
-	n := orNil(*pn)
+	n := unwrapAny(*pn)
 	index := int(q)
 	if a := n.Array(); a != nil {
 		if index = q.resolveIndex(len(a)); index < 0 {
