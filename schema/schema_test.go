@@ -36,6 +36,58 @@ func TestValidate(t *testing.T) {
 			rules:    QueryRules{".missing": String{}},
 		},
 		{
+			caseName: "missing key under a filter query fires per element",
+			n:        tree.Map{"arr": tree.Array{tree.Map{"k": tree.V("a")}, tree.Map{}}},
+			rules:    QueryRules{".arr[].k": Required(String{})},
+			wantErrs: []string{".arr[].k: required"},
+		},
+		{
+			caseName: "[] after a key read as null on some elements keeps keyed paths",
+			n:        tree.Map{"arr": tree.Array{tree.Map{"k": tree.Map{"a": tree.V(1)}}, tree.Map{}}},
+			rules:    QueryRules{".arr[].k[]": String{}},
+			wantErrs: []string{`.arr[].k["a"]: expected string, got number`},
+		},
+		{
+			caseName: "[][] with a null element leaves the document unchanged",
+			n:        tree.Array{tree.Nil, tree.Array{tree.V("x")}},
+			rules:    QueryRules{"[][]": String{}},
+		},
+		{
+			caseName: "top-level [] with a leading space",
+			n:        tree.A("ok", 1),
+			rules:    QueryRules{" []": String{}},
+			wantErrs: []string{"[1]: expected string"},
+		},
+		{
+			caseName: "top-level [] on an array",
+			n:        tree.A("ok", 1),
+			rules:    QueryRules{"[]": String{}},
+			wantErrs: []string{"[1]: expected string"},
+		},
+		{
+			caseName: "top-level [] on a map",
+			n:        tree.Map{"a": tree.V("x"), "b": tree.V(1)},
+			rules:    QueryRules{"[]": String{}},
+			wantErrs: []string{`["b"]: expected string`},
+		},
+		{
+			caseName: "[] inside Every",
+			n:        tree.Map{"arr": tree.A(tree.A("a", 1))},
+			rules:    QueryRules{".arr": Every{Rules: QueryRules{"[]": String{}}}},
+			wantErrs: []string{".arr[0][1]: expected string"},
+		},
+		{
+			caseName: "key step on a scalar passes an optional rule",
+			n:        tree.Map{"name": tree.V("alice")},
+			rules:    QueryRules{".name.first": String{}},
+		},
+		{
+			caseName: "key step on a scalar fires a required rule",
+			n:        tree.Map{"name": tree.V("alice")},
+			rules:    QueryRules{".name.first": Required(String{})},
+			wantErrs: []string{".name.first: required"},
+		},
+		{
 			caseName: "required string present",
 			n:        tree.Map{"name": tree.V("alice")},
 			rules:    QueryRules{".name": Required(String{})},
@@ -89,8 +141,12 @@ func TestValidate(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
+			before := tree.CloneDeep(tc.n)
 			err := Validate(tc.n, tc.rules)
 			checkErrs(t, err, tc.wantErrs)
+			if !tree.Equal(tc.n, before) {
+				t.Errorf("Validate changed the document: got %v; want %v", tc.n, before)
+			}
 		})
 	}
 }

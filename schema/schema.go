@@ -52,7 +52,7 @@ func (e *ErrQuery) Unwrap() error {
 // ends with "[]", matches are reported with a concrete path:
 // .arr[0]/.arr[1]... for array parents and .obj["a"]/.obj["b"]...
 // for map parents (keys sorted). If the base of "[]" resolves to more
-// than one parent, numeric indices are used as the fallback.
+// than one non-null parent, numeric indices are used as the fallback.
 func Validate(n tree.Node, rules QueryRules) error {
 	return ValidateWithPrefix(n, rules, "")
 }
@@ -119,7 +119,7 @@ func validateNode(n tree.Node, rules QueryRules, prefix string) ([]error, *ErrQu
 }
 
 // validateExpanded runs r against each matched value of a "[]"-suffixed
-// query. When the base query resolves to a single map parent, error
+// query. When the base query resolves to a single non-null map parent, error
 // paths include the concrete key (e.g. .obj["a"]); otherwise numeric
 // indices are used (e.g. .arr[0]). prefix is prepended to the base
 // so nested contexts (from Every) render full paths.
@@ -129,10 +129,17 @@ func validateNode(n tree.Node, rules QueryRules, prefix string) ([]error, *ErrQu
 // full "[]"-suffixed query successfully, but it is handled for safety.
 func validateExpanded(root tree.Node, base string, vs []tree.Node, r Rule, prefix string) ([]error, *ErrQuery) {
 	display := joinPath(prefix, base)
-	parents, err := tree.Find(root, base)
+	q := base
+	if strings.TrimSpace(q) == "" {
+		q = "." // a bare "[]" expands the current node
+	}
+	parents, err := tree.Find(root, q)
 	if err != nil {
 		return nil, &ErrQuery{Query: joinPath(prefix, base), Err: err}
 	}
+	// A key step after [] reads null for elements without the key; they have nothing to expand.
+	// Find may return the document's own array, so filter a copy.
+	parents = slices.DeleteFunc(slices.Clone(parents), func(n tree.Node) bool { return n.Type().IsNilValue() })
 	if len(parents) == 1 && parents[0].Type().IsMap() {
 		m := parents[0].Map()
 		var errs []error

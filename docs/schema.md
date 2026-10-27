@@ -209,7 +209,12 @@ validation's need for attribution.
 
 ## Nil semantics
 
-When a query yields no matches, the rule is invoked with `tree.Nil`:
+When a query yields no matches, the rule is invoked with `tree.Nil`.
+A key step on missing data yields `tree.Nil` itself, so `.arr[].k`
+passes `tree.Nil` once for each element without `k`. A key step
+on a scalar or an array also yields `tree.Nil`, so
+`".name.first": String{}` passes when `.name` is a string; add a
+`".name": Map{}` rule or use `Required` to check the shape:
 
 - Leaf rules (`String`, `Int`, `Float`, `Bool`, `Array`, `Map`) and
   composites (`And`, `Or`, `Not`, `Every`) return nil on `Nil`. A
