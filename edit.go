@@ -349,7 +349,7 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 
 	case WalkQuery:
 		key := string(tq)
-		return tq.walkEdit(n, as, func(en EditorNode) error {
+		_, err := tq.walkEdit(pn, as, func(en EditorNode) error {
 			child := en.Get(key)
 			if isNullLike(child) {
 				if child = emptyIntermediate(op, fq[step+1:]); child == nil {
@@ -363,6 +363,7 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 
 			return en.Set(key, child)
 		})
+		return err
 
 	case SelectQuery:
 		return resolveSelectStep(pn, n, tq, fq, step, op, v, as)
@@ -520,13 +521,8 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 		}
 		en = m // a wrapper such as Any shares its Map, so writes reach it
 	}
-	var keys []any
-	if err := en.Each(func(k any, _ Node) error {
-		if k != nil { // a node that is not a container calls back once with a nil key
-			keys = append(keys, k)
-		}
-		return nil
-	}); err != nil {
+	keys, err := snapshotKeys(en)
+	if err != nil {
 		return err
 	}
 	for _, k := range keys {

@@ -34,6 +34,19 @@ type mapCopyingEditorNode struct{ EditorNode }
 
 func (n mapCopyingEditorNode) Map() Map { return maps.Clone(n.EditorNode.Map()) }
 
+// freshArrayNode is a custom array node, not an EditorNode, whose Array returns a new slice on each call.
+type freshArrayNode []Node
+
+func (n freshArrayNode) IsNil() bool                               { return false }
+func (n freshArrayNode) Type() Type                                { return TypeArray }
+func (n freshArrayNode) Array() Array                              { return append(Array{}, n...) }
+func (n freshArrayNode) Map() Map                                  { return nil }
+func (n freshArrayNode) Value() Value                              { return nil }
+func (n freshArrayNode) Has(keys ...any) bool                      { return n.Array().Has(keys...) }
+func (n freshArrayNode) Get(keys ...any) Node                      { return n.Array().Get(keys...) }
+func (n freshArrayNode) Each(cb func(key any, n Node) error) error { return n.Array().Each(cb) }
+func (n freshArrayNode) Find(expr string) ([]Node, error)          { return Find(n, expr) }
+
 // leafEditorNode is a custom EditorNode holding a scalar or null, which rejects every edit.
 type leafEditorNode struct{ Node }
 
@@ -285,6 +298,72 @@ func TestEdit(t *testing.T) {
 					NumberValue(3),
 				},
 			},
+		}, {
+			caseName: "walk append to a scalar returns error",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `..a += 1`,
+			errstr:   `cannot append to "a"`,
+		}, {
+			caseName: "walk append stops at a scalar after inner matches",
+			n:        Map{"a": NumberValue(1), "b": Map{"a": Array{}}},
+			expr:     `..a += 1`,
+			errstr:   `cannot append to "a"`,
+		}, {
+			caseName: "walk set by index edits nested arrays",
+			n:        Map{"a": Array{Array{NumberValue(1)}, Array{NumberValue(2)}}},
+			expr:     `..0 = 9`,
+			want:     Map{"a": Array{NumberValue(9), Array{NumberValue(9)}}},
+		}, {
+			caseName: "walk delete by index edits nested arrays",
+			n:        Map{"a": Array{Array{NumberValue(1)}, Array{NumberValue(2)}}},
+			expr:     `..0 ^?`,
+			want:     Map{"a": Array{Array{}}},
+		}, {
+			caseName: "walk set by index on an array root",
+			n:        Array{Array{NumberValue(1)}, Array{NumberValue(2)}},
+			expr:     `..0 = 9`,
+			want:     Array{NumberValue(9), Array{NumberValue(9)}},
+		}, {
+			caseName: "walk set inside an Any",
+			n:        Map{"a": Any{Node: Map{"b": NumberValue(1)}}},
+			expr:     `..b = 9`,
+			want:     Map{"a": Any{Node: Map{"b": NumberValue(9)}}},
+		}, {
+			caseName: "walk delete inside an Any wrapping an array",
+			n:        Map{"a": Any{Node: Array{NumberValue(1)}}},
+			expr:     `..0 ^?`,
+			want:     Map{"a": Array{}},
+		}, {
+			caseName: "walk delete inside an Any wrapping a pointer array edits it in place",
+			n:        Map{"a": Any{Node: &Array{NumberValue(1), NumberValue(2)}}},
+			expr:     `..0 ^?`,
+			want:     Map{"a": Any{Node: &Array{NumberValue(2)}}},
+		}, {
+			caseName: "walk delete inside a pointer Any wrapping a pointer array edits it in place",
+			n:        Map{"a": &Any{Node: &Array{NumberValue(1), NumberValue(2)}}},
+			expr:     `..0 ^?`,
+			want:     Map{"a": &Any{Node: &Array{NumberValue(2)}}},
+		}, {
+			caseName: "walk with no match keeps an Any root",
+			n:        Any{Node: Array{Map{"y": NumberValue(1)}}},
+			expr:     `..x = 1`,
+			want:     Any{Node: Array{Map{"y": NumberValue(1)}}},
+		}, {
+			caseName: "walk with no match keeps a custom array node",
+			n:        Map{"a": freshArrayNode{Map{"y": NumberValue(1)}}},
+			expr:     `..x = 1`,
+			want:     Map{"a": freshArrayNode{Map{"y": NumberValue(1)}}},
+		}, {
+			caseName: "walk delete inside a custom array node replaces it with the edited array",
+			n:        Map{"a": freshArrayNode{NumberValue(1), NumberValue(2)}},
+			expr:     `..0 ^?`,
+			want:     Map{"a": Array{NumberValue(2)}},
+		}, {
+			caseName: "walk append failing inside an Any keeps the wrapper",
+			n:        Map{"a": Any{Node: Array{Array{NumberValue(1)}, NumberValue(2)}}},
+			expr:     `..0 += 1`,
+			want:     Map{"a": Any{Node: Array{Array{NumberValue(1)}, NumberValue(2)}}},
+			errstr:   `cannot append to "0"`,
 		}, {
 			caseName: "walk delete key",
 			n: Map{
@@ -1993,6 +2072,11 @@ func TestEdit(t *testing.T) {
 			expr:     `. += 1`,
 			want:     Array{NumberValue(1)},
 		}, {
+			caseName: "append to a pointer to a nil array",
+			n:        Map{"a": new(Array)},
+			expr:     `.a += 1`,
+			want:     Map{"a": Array{NumberValue(1)}},
+		}, {
 			caseName: "append to a scalar root returns error",
 			n:        NumberValue(1),
 			expr:     `. += 2`,
@@ -2008,6 +2092,9 @@ func TestEdit(t *testing.T) {
 				}
 				if err.Error() != tc.errstr {
 					t.Errorf("got error %s; want %s", err.Error(), tc.errstr)
+				}
+				if tc.want != nil && !reflect.DeepEqual(tc.n, tc.want) {
+					t.Errorf("got %#v after the error; want %#v", tc.n, tc.want)
 				}
 				return
 			}

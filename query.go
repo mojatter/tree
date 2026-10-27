@@ -41,15 +41,22 @@ func (q NopQuery) Set(pn *Node, v Node) error {
 }
 
 func (q NopQuery) Append(pn *Node, v Node) error {
-	if isNullLike(*pn) {
-		*pn = Array{v} // null reads as missing, as for a key
-		return nil
-	}
-	if a := orNil(*pn).Array(); a != nil {
-		*pn = append(a, v)
+	if r, ok := appendTo(*pn, v); ok {
+		*pn = r
 		return nil
 	}
 	return fmt.Errorf("cannot append to %s", ".")
+}
+
+// appendTo returns n with v appended: Array{v} when n is null or a nil container, and false when n is not an array.
+func appendTo(n, v Node) (Node, bool) {
+	if isNullLike(n) {
+		return Array{v}, true // null reads as missing, as for a key
+	}
+	if a := n.Array(); a != nil || n.Type().IsArray() {
+		return append(a, v), true
+	}
+	return nil, false
 }
 
 func (q NopQuery) Delete(pn *Node) error {
@@ -106,13 +113,10 @@ func (q MapQuery) Append(pn *Node, v Node) error {
 	n := unwrapAny(*pn)
 	key := string(q)
 	if en, ok := n.(EditorNode); ok {
-		if n.Has(key) && !isNullLike(n.Get(key)) {
-			if ca := n.Get(key).Array(); ca != nil {
-				return en.Set(key, append(ca, v))
-			}
-			return fmt.Errorf("cannot append to %q", key)
+		if r, ok := appendTo(n.Get(key), v); ok {
+			return en.Set(key, r)
 		}
-		return en.Set(key, Array{v})
+		return fmt.Errorf("cannot append to %q", key)
 	}
 	if n.Array() != nil {
 		if i, err := strconv.Atoi(key); err == nil && i >= 0 {
@@ -231,30 +235,23 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 		}
 	}
 	if en, ok := n.(EditorNode); ok {
-		if n.Has(index) && !isNullLike(n.Get(index)) {
-			if ca := n.Get(index).Array(); ca != nil {
-				return en.Set(index, append(ca, v))
-			}
-			return fmt.Errorf("cannot append to array with %d", int(q))
+		if r, ok := appendTo(n.Get(index), v); ok {
+			return en.Set(index, r)
 		}
-		return en.Set(index, Array{v})
+		return fmt.Errorf("cannot append to array with %d", int(q))
 	}
 	if a := n.Array(); a != nil {
-		if n.Has(index) && !isNullLike(a[index]) {
-			if ca := a[index].Array(); ca != nil {
-				a[index] = append(ca, v)
-				*pn = a
-				return nil
-			}
-			return fmt.Errorf("cannot append to array with %d", int(q))
-		}
 		if index >= len(a) {
 			var err error
 			if a, err = growArray(a, index); err != nil {
 				return err
 			}
 		}
-		a[index] = Array{v}
+		r, ok := appendTo(a[index], v)
+		if !ok {
+			return fmt.Errorf("cannot append to array with %d", int(q))
+		}
+		a[index] = r
 		*pn = a
 		return nil
 	}
@@ -420,53 +417,96 @@ func (q WalkQuery) Exec(root Node) ([]Node, error) {
 	return r, nil
 }
 
-// walkEdit calls fn on each editable node holding the key, descendants first, skipping values this edit has stored.
-func (q WalkQuery) walkEdit(n Node, as assigned, fn func(en EditorNode) error) error {
-	if isGoNil(n) || as.has(n) {
-		return nil
+// walkEdit calls fn on each container holding the key, descendants first, skipping values this edit has stored.
+// A node that is not an EditorNode is edited through its Map or a copy of its Array; once edited, the copy
+// replaces *pn and replaced reports it, so the caller writes *pn back.
+func (q WalkQuery) walkEdit(pn *Node, as assigned, fn func(en EditorNode) error) (replaced bool, err error) {
+	n := unwrapAny(*pn)
+	if isNull(n) || as.has(n) {
+		return false, nil
 	}
-	if err := n.Each(func(key any, c Node) error {
-		if key == nil {
-			return nil
+	en, ok := n.(EditorNode)
+	var a Array
+	copied := false
+	if !ok {
+		if m := n.Map(); m != nil {
+			en = m
+		} else if a = n.Array(); a != nil {
+			en = &a
+			copied = true
+		} else {
+			return false, nil
 		}
-		return q.walkEdit(c, as, fn)
-	}); err != nil {
-		return err
 	}
-	if en, ok := n.(EditorNode); ok && n.Has(string(q)) {
-		return fn(en)
+	keys, err := snapshotKeys(en)
+	if err != nil {
+		return false, err
 	}
-	return nil
+	edited := false
+	defer func() {
+		if edited && copied { // ^? reslices a, and a wrapper is replaced by its Array
+			*pn = a
+			replaced = true
+		}
+	}()
+
+	for _, k := range keys {
+		c := en.Get(k)
+		r, err := q.walkEdit(&c, as, fn)
+		if r {
+			edited = true
+			if serr := en.Set(k, c); serr != nil {
+				return false, serr
+			}
+		}
+		if err != nil {
+			return false, err
+		}
+	}
+	if en.Has(string(q)) {
+		if err := fn(en); err != nil {
+			return false, err
+		}
+		edited = true
+	}
+	return false, nil
+}
+
+// snapshotKeys returns the keys of en, so an edit may change en while they are visited.
+func snapshotKeys(en EditorNode) ([]any, error) {
+	var keys []any
+	err := en.Each(func(k any, _ Node) error {
+		if k != nil { // a node that is not a container calls back once with a nil key
+			keys = append(keys, k)
+		}
+		return nil
+	})
+	return keys, err
 }
 
 // edit applies op at every match, descendants first, recording stored copies in as and stopping at the first error.
 func (q WalkQuery) edit(pn *Node, op string, v Node, as assigned) error {
 	key := string(q)
-	return q.walkEdit(*pn, as, func(en EditorNode) error {
+	_, err := q.walkEdit(pn, as, func(en EditorNode) error {
 		switch op {
 		case "=":
 			c := cloneEditValue(v)
 			as.add(c)
 			return en.Set(key, c)
 		case "+=":
-			child := en.Get(key)
-			if isNullLike(child) {
-				c := cloneEditValue(v)
-				as.add(c)
-				return en.Set(key, Array{c})
-			}
-			ca := child.Array()
-			if ca == nil {
-				return nil
-			}
 			c := cloneEditValue(v)
+			r, ok := appendTo(en.Get(key), c)
+			if !ok {
+				return fmt.Errorf("cannot append to %q", key)
+			}
 			as.add(c)
-			return en.Set(key, append(ca, c))
+			return en.Set(key, r)
 		case "^?":
 			return en.Delete(key)
 		}
 		return fmt.Errorf("syntax error: unsupported edit operation %q", op)
 	})
+	return err
 }
 
 // Set stores a copy of v (for built-in containers) at every match, descendants first, stopping at the first error.
