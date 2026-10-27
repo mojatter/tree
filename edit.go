@@ -46,7 +46,11 @@ func Edit(pn *Node, expr string) error {
 			if op == "^?" {
 				return nil // deleting from a null root leaves it as it is
 			}
+			if err := execForEdit(&c, fq, op, v); err != nil {
+				return err // a failing edit leaves the null root as it was
+			}
 			*pn = c
+			return nil
 		}
 	}
 
@@ -383,9 +387,6 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 			if child == nil {
 				return nil
 			}
-			if err := en.Set(key, child); err != nil {
-				return err
-			}
 		}
 
 		if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
@@ -402,7 +403,6 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 			if child == nil {
 				return nil
 			}
-			m[key] = child
 		}
 
 		if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
@@ -454,9 +454,6 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 			child = emptyIntermediate(op, fq[step+1:])
 			if child == nil {
 				return nil
-			}
-			if err := en.Set(index, child); err != nil {
-				return err
 			}
 		}
 
