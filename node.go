@@ -165,7 +165,7 @@ func (n Any) Each(cb func(key any, n Node) error) error {
 
 // Find finds nodes in the wrapped Node using the query expression.
 func (n Any) Find(expr string) ([]Node, error) {
-	return n.Node.Find(expr)
+	return orNil(n.Node).Find(expr)
 }
 
 // Array represents an array of Node.

@@ -533,6 +533,16 @@ func TestEdit(t *testing.T) {
 			expr:     `.url = "http://x?a=1"`,
 			want:     Map{"url": StringValue("http://x?a=1")},
 		}, {
+			caseName: "set null keeps the key",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.a = null`,
+			want:     Map{"a": Nil},
+		}, {
+			caseName: "set through a null literal select",
+			n:        Map{"a": Array{Map{"x": Nil}, Map{"x": NumberValue(1)}, Map{}}},
+			expr:     `.a[.x == null].y = 1`,
+			want:     Map{"a": Array{Map{"x": Nil, "y": NumberValue(1)}, Map{"x": NumberValue(1)}, Map{"y": NumberValue(1)}}},
+		}, {
 			caseName: "set plain value containing equals sign",
 			n:        Map{},
 			expr:     `.s = a=b`,
@@ -1120,9 +1130,9 @@ func TestEdit(t *testing.T) {
 			errstr:   `cannot index array with range [1:2]`,
 		}, {
 			caseName: "slurp left.Exec error propagates up",
-			n:        Map{"items": Map{"x": StringValue("v")}},
-			expr:     `.items[1:2] | .x = 1`,
-			errstr:   `cannot index array with range [1:2]`,
+			n:        Map{"items": Array{Map{"k": NumberValue(1), "z": Map{"k": NumberValue(2)}}}},
+			expr:     `.items[..k == 1] | .x = 1`,
+			errstr:   `..k returns no single value [1 2]`,
 		}, {
 			caseName: "terminal SelectQuery is an unsupported edit query",
 			n:        Map{"items": Array{NumberValue(1)}},

@@ -74,15 +74,10 @@ type MapQuery string
 
 var _ EditorQuery = (MapQuery)("")
 
+// Exec returns the value at the key, or null when n is null, a scalar or lacks the key.
+// An array reads a numeric key as an index, as Array.Get does.
 func (q MapQuery) Exec(n Node) ([]Node, error) {
-	key := string(q)
-	if n.Type().IsValue() {
-		return nil, fmt.Errorf("cannot index array with %q", key)
-	}
-	if n.Has(key) {
-		return []Node{orNil(n.Get(key))}, nil
-	}
-	return nil, nil
+	return []Node{orNil(n.Get(string(q)))}, nil
 }
 
 func (q MapQuery) Set(pn *Node, v Node) error {
@@ -183,15 +178,16 @@ func (q ArrayQuery) resolveIndex(n int) int {
 	return i
 }
 
+// Exec returns the element at the index, or null when it is out of range or n is not an array (a map reads the key "0").
 func (q ArrayQuery) Exec(n Node) ([]Node, error) {
 	if a := n.Array(); a != nil {
 		index := q.resolveIndex(len(a))
 		if index >= 0 && index < len(a) {
 			return []Node{orNil(a[index])}, nil
 		}
-		return nil, nil
+		return []Node{Nil}, nil
 	}
-	return nil, fmt.Errorf("cannot index array with %d", int(q))
+	return []Node{orNil(n.Get(int(q)))}, nil
 }
 
 func (q ArrayQuery) Set(pn *Node, v Node) error {
@@ -298,6 +294,7 @@ type ArrayRangeQuery struct {
 	To   *int
 }
 
+// Exec returns the elements in range, or nothing when n is not an array.
 func (q ArrayRangeQuery) Exec(n Node) ([]Node, error) {
 	if a := n.Array(); a != nil {
 		from := resolveRangeBound(q.From, len(a), 0)
@@ -307,7 +304,7 @@ func (q ArrayRangeQuery) Exec(n Node) ([]Node, error) {
 		}
 		return orNilAll(a[from:to]), nil
 	}
-	return nil, fmt.Errorf("cannot index array with range %s", q)
+	return nil, nil
 }
 
 // resolveRangeBound resolves a *int bound for ArrayRangeQuery.Exec against
@@ -685,14 +682,12 @@ var (
 	_ Selector = (*SelectQuery)(nil)
 )
 
-// Find finds a node from n using the Query.
+// Find runs expr on n, reading a Go nil n as null.
+// A key or index step with no value yields null, not nothing.
 func Find(n Node, expr string) ([]Node, error) {
-	if isGoNil(n) || n.IsNil() {
-		return nil, nil
-	}
 	q, err := ParseQuery(expr)
 	if err != nil {
 		return nil, err
 	}
-	return q.Exec(n)
+	return q.Exec(orNil(n))
 }
