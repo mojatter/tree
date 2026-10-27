@@ -73,6 +73,24 @@ func (n *Array) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+// UnmarshalYAML implements yaml.Unmarshaler (yaml.v3), leaving n as it is on error or null (yaml.v3 skips it for null).
+func (n *Any) UnmarshalYAML(value *yaml.Node) error {
+	var v any
+	if err := value.Decode(&v); err != nil {
+		return err
+	}
+	n.Node = ToNode(v)
+	return nil
+}
+
+// MarshalYAML implements yaml.Marshaler by encoding the wrapped node, or null when it is a Go nil node.
+func (n Any) MarshalYAML() (any, error) {
+	if isGoNil(n.Node) {
+		return nil, nil
+	}
+	return n.Node, nil
+}
+
 // MarshalYAML is an implementation of yaml.Marshaler.
 func (n NilValue) MarshalYAML() (any, error) {
 	return nil, nil

@@ -63,6 +63,14 @@ func TestNodeMarshalJSON(t *testing.T) {
 			},
 			want: `["1",2,true]`,
 		},
+		{caseName: "Any wrapping Map", n: Any{Node: Map{"k": NumberValue(1)}}, want: `{"k":1}`},
+		{caseName: "pointer Any wrapping String", n: &Any{Node: StringValue("x")}, want: `"x"`},
+		{caseName: "nested Any", n: Any{Node: &Any{Node: BoolValue(true)}}, want: `true`},
+		{caseName: "zero Any", n: Any{}, want: `null`},
+		{caseName: "Any wrapping nil pointer", n: Any{Node: (*Array)(nil)}, want: `null`},
+		{caseName: "nil pointer Any", n: (*Any)(nil), want: `null`},
+		{caseName: "Map with Any values", n: Map{"a": Any{Node: StringValue("x")}, "b": Any{}}, want: `{"a":"x","b":null}`},
+		{caseName: "Any wrapping String with HTML", n: Any{Node: StringValue("<x>")}, want: `"\u003cx\u003e"`},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
@@ -74,6 +82,18 @@ func TestNodeMarshalJSON(t *testing.T) {
 				t.Errorf("got %s; want %s", string(got), tc.want)
 			}
 		})
+	}
+}
+
+func TestNodeMarshalJSONEscapeHTML(t *testing.T) {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(Map{"a": StringValue("<x>"), "b": Any{Node: StringValue("<x>")}}); err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"a":"<x>","b":"<x>"}` + "\n"; buf.String() != want {
+		t.Errorf("got %s; want %s", buf.String(), want)
 	}
 }
 
@@ -670,6 +690,13 @@ func TestMarshalViaJSON(t *testing.T) {
 		{caseName: "int", v: 1, want: NumberValue(1)},
 		{caseName: "nil", v: nil, want: Nil},
 		{caseName: "BoolValue passthrough", v: BoolValue(true), want: BoolValue(true)},
+		{
+			caseName: "struct with Any field",
+			v: struct {
+				Extra Any `json:"extra"`
+			}{Extra: Any{Node: Map{"k": NumberValue(1)}}},
+			want: Map{"extra": Map{"k": NumberValue(1)}},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
@@ -689,17 +716,20 @@ func TestUnmarshalViaJSON(t *testing.T) {
 		"id":     ToValue(1),
 		"name":   ToValue("Reds"),
 		"colors": ToArrayValues("Crimson", "Red", "Ruby", "Maroon"),
+		"extra":  Map{"k": NumberValue(1)},
 	}
 	v := []struct {
 		ID     int      `json:"id"`
 		Name   string   `json:"name"`
 		Colors []string `json:"colors"`
+		Extra  Any      `json:"extra"`
 	}{
 		{},
 		{
 			ID:     1,
 			Name:   "Reds",
 			Colors: []string{"Crimson", "Red", "Ruby", "Maroon"},
+			Extra:  Any{Node: Map{"k": NumberValue(1)}},
 		},
 	}
 	got := v[0]
