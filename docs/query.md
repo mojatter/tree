@@ -222,7 +222,7 @@ An edit fails for a syntax error, an unsupported step (see [Paths](#paths)), mor
 
 An edit whose steps are all keys, indexes, `first()` and `last()` leaves the document as it was when it fails, a `null` root included: `.a[16777216] = 1` on `{}` leaves `{}` and on `null` leaves `null`. An edit with several matches keeps the matches edited before the failure (see [Multiple matches](#multiple-matches)); `^?` with a trailing `.` runs the selector on every element or value of a container before it deletes any of them, so a selector that fails deletes nothing from that container, while the containers it deleted from before, through `..key` or an earlier `[]`, stay edited: `..a[.t[] == 1]. ^?` on `{"x": {"a": [{"t": [1]}]}, "y": {"a": [{"t": [1, 2]}]}}` empties `x.a` and then fails on `y.a`. A caller that needs the document untouched after any failure edits a deep copy, `c := tree.CloneDeep(n)` (`Clone` copies only the top level); tq `-U` writes a file only when every edit on it succeeds.
 
-Messages that say "array" for another receiver, and whether they quote the key, are tracked in [#98](https://github.com/mojatter/tree/issues/98).
+Messages that say "array" for another receiver, and whether they quote the key, are tracked in [#202](https://github.com/mojatter/tree/issues/202).
 
 ## Deviations
 
