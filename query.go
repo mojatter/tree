@@ -418,8 +418,9 @@ func (q WalkQuery) Exec(root Node) ([]Node, error) {
 }
 
 // walkEdit calls fn on each container holding the key, descendants first, skipping values this edit has stored.
-// A node that is not an EditorNode is edited through its Map or a copy of its Array; once edited, the copy
-// replaces *pn and replaced reports it, so the caller writes *pn back.
+// A node that is not an EditorNode is edited through its Map or the Array its Array method returns, which for a
+// plain Array shares its backing array; once edited, that Array replaces *pn and replaced reports it, so the caller
+// writes *pn back.
 func (q WalkQuery) walkEdit(pn *Node, as assigned, fn func(en EditorNode) error) (replaced bool, err error) {
 	n := unwrapAny(*pn)
 	if isNull(n) || as.has(n) {
@@ -427,13 +428,13 @@ func (q WalkQuery) walkEdit(pn *Node, as assigned, fn func(en EditorNode) error)
 	}
 	en, ok := n.(EditorNode)
 	var a Array
-	copied := false
+	viaArray := false // edited through a, which is written back
 	if !ok {
 		if m := n.Map(); m != nil {
 			en = m
 		} else if a = n.Array(); a != nil {
 			en = &a
-			copied = true
+			viaArray = true
 		} else {
 			return false, nil
 		}
@@ -444,7 +445,7 @@ func (q WalkQuery) walkEdit(pn *Node, as assigned, fn func(en EditorNode) error)
 	}
 	edited := false
 	defer func() {
-		if edited && copied { // ^? reslices a, and a wrapper is replaced by its Array
+		if edited && viaArray { // ^? reslices a, and a wrapper is replaced by its Array
 			*pn = a
 			replaced = true
 		}
@@ -455,8 +456,8 @@ func (q WalkQuery) walkEdit(pn *Node, as assigned, fn func(en EditorNode) error)
 		r, err := q.walkEdit(&c, as, fn)
 		if r {
 			edited = true
-			if serr := en.Set(k, c); serr != nil {
-				return false, serr
+			if serr := en.Set(k, c); serr != nil && err == nil {
+				err = serr // the error the walk stopped for comes first
 			}
 		}
 		if err != nil {
@@ -516,7 +517,7 @@ func (q WalkQuery) Set(pn *Node, v Node) error {
 	return q.edit(pn, "=", v, as)
 }
 
-// Append appends a copy of v (for built-in containers) to every matched array, descendants first, stopping at the first error.
+// Append appends a copy of v (for built-in containers) to every matched array or null, descendants first, stopping at the first error, such as a match that is neither.
 func (q WalkQuery) Append(pn *Node, v Node) error {
 	as := assigned{}
 	as.add(v) // never edit inside v itself when it is part of the document
