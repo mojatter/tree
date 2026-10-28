@@ -1520,6 +1520,12 @@ func TestEdit(t *testing.T) {
 			expr:     `..b += 1`,
 			errstr:   `set failed`,
 		}, {
+			caseName: "walk append reports the error it stopped for before a set error of editor node",
+			n:        Map{"x": setFailingEditorNode{Map{"y": Array{Array{NumberValue(0), Array{}}, NumberValue(5)}}}},
+			expr:     `..1 += 1`,
+			want:     Map{"x": setFailingEditorNode{Map{"y": Array{Array{NumberValue(0), Array{NumberValue(1)}}, NumberValue(5)}}}},
+			errstr:   `cannot append to "1"`,
+		}, {
 			caseName: "walk set fails on editor node an outer match would replace",
 			n:        Map{"b": setFailingEditorNode{Map{"b": NumberValue(0)}}},
 			expr:     `..b = 1`,
