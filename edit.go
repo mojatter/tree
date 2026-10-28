@@ -522,6 +522,8 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 	if err != nil {
 		return err
 	}
+	deletes := deletesMatches(fq, step, op)
+	var del []any // found before any delete, so a failing match changes nothing, as for an array
 	for _, k := range keys {
 		child := orNil(en.Get(k))
 		if sq.Selector != nil {
@@ -533,7 +535,11 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 				continue
 			}
 		}
-		if isNullLike(child) && (op == "^?" || !isNopQuery(fq[step+1])) { // a trailing . sets or appends to a null element; ^? leaves it as it is
+		if deletes {
+			del = append(del, k)
+			continue
+		}
+		if isNullLike(child) && !isNopQuery(fq[step+1]) { // a trailing . sets or appends to a null element
 			if child = emptyIntermediate(op, fq[step+1:]); child == nil {
 				continue // a null element stays as it is
 			}
@@ -547,7 +553,17 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 			return err
 		}
 	}
+	for _, k := range del {
+		if err := en.Delete(k); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// deletesMatches reports whether op is ^? and a trailing . follows step, so each match is deleted itself.
+func deletesMatches(fq FilterQuery, step int, op string) bool {
+	return op == "^?" && isNopQuery(fq[step+1])
 }
 
 // resolveRangeStep handles an ArrayRangeQuery intermediate step with write-back, like [i] for each index in range.
@@ -566,6 +582,9 @@ func resolveRangeStep(pn *Node, n Node, rq ArrayRangeQuery, fq FilterQuery, step
 
 // editElements edits a[from:to], skipping elements match rejects, and writes them back through n when it is an EditorNode.
 func editElements(pn *Node, n Node, a Array, from, to int, match func(Node) (bool, error), fq FilterQuery, step int, op string, v Node, as assigned) error {
+	if deletesMatches(fq, step, op) {
+		return deleteElements(pn, n, a, from, to, match)
+	}
 	en, isEditor := n.(EditorNode)
 	for i := from; i < to; i++ {
 		child := orNil(a[i])
@@ -578,7 +597,7 @@ func editElements(pn *Node, n Node, a Array, from, to int, match func(Node) (boo
 				continue
 			}
 		}
-		if isNullLike(child) && (op == "^?" || !isNopQuery(fq[step+1])) { // a trailing . sets or appends to a null element; ^? leaves it as it is
+		if isNullLike(child) && !isNopQuery(fq[step+1]) { // a trailing . sets or appends to a null element
 			if child = emptyIntermediate(op, fq[step+1:]); child == nil {
 				continue // a null element stays as it is
 			}
@@ -600,6 +619,50 @@ func editElements(pn *Node, n Node, a Array, from, to int, match func(Node) (boo
 		*pn = a
 	}
 	return nil
+}
+
+// deleteElements deletes the elements of a[from:to] match accepts, through n when it is an EditorNode and otherwise in place, as (*Array).Delete does.
+func deleteElements(pn *Node, n Node, a Array, from, to int, match func(Node) (bool, error)) error {
+	var del []int // found before any delete, so a failing match changes nothing
+	for i := from; i < to; i++ {
+		if match != nil {
+			ok, err := match(orNil(a[i]))
+			if err != nil {
+				return err
+			}
+			if !ok {
+				continue
+			}
+		}
+		del = append(del, i)
+	}
+	if pa, ok := n.(*Array); ok {
+		*pa = compact(*pa, del) // at once, as deleting one index at a time shifts the tail each time
+		return nil
+	}
+	if en, ok := n.(EditorNode); ok {
+		for _, i := range slices.Backward(del) { // back to front, so a delete never shifts an index still to delete
+			if err := en.Delete(i); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	*pn = compact(a, del)
+	return nil
+}
+
+// compact removes the elements of a at the ascending indexes del in place, as (*Array).Delete does for one.
+func compact(a Array, del []int) Array {
+	if len(del) == 0 {
+		return a
+	}
+	kept, next := a[:del[0]], del[0]
+	for _, i := range del {
+		kept = append(kept, a[next:i]...)
+		next = i + 1
+	}
+	return append(kept, a[next:]...)
 }
 
 // isNullLike reports whether n is null or a nil Map or Array, which an edit replaces like null.
