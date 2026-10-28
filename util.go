@@ -96,6 +96,23 @@ func orNil(n Node) Node {
 	return n
 }
 
+// unwrapAny returns the node an Any or *Any wraps, so an EditorNode inside is edited in place, with a Go nil as Nil.
+func unwrapAny(n Node) Node {
+	for {
+		switch w := n.(type) {
+		case Any:
+			n = w.Node
+		case *Any:
+			if w == nil {
+				return Nil
+			}
+			n = w.Node
+		default:
+			return orNil(n)
+		}
+	}
+}
+
 // isGoNil reports whether n is a nil interface, a nil pointer node such as (*Array)(nil), or an Any or *Any wrapping one.
 func isGoNil(n Node) bool {
 	switch tn := n.(type) {

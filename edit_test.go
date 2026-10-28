@@ -2,6 +2,7 @@ package tree
 
 import (
 	"errors"
+	"fmt"
 	"maps"
 	"reflect"
 	"testing"
@@ -32,6 +33,19 @@ func (mapHidingEditorNode) Map() Map { return nil }
 type mapCopyingEditorNode struct{ EditorNode }
 
 func (n mapCopyingEditorNode) Map() Map { return maps.Clone(n.EditorNode.Map()) }
+
+// freshArrayNode is a custom array node, not an EditorNode, whose Array returns a new slice on each call.
+type freshArrayNode []Node
+
+func (n freshArrayNode) IsNil() bool                               { return false }
+func (n freshArrayNode) Type() Type                                { return TypeArray }
+func (n freshArrayNode) Array() Array                              { return append(Array{}, n...) }
+func (n freshArrayNode) Map() Map                                  { return nil }
+func (n freshArrayNode) Value() Value                              { return nil }
+func (n freshArrayNode) Has(keys ...any) bool                      { return n.Array().Has(keys...) }
+func (n freshArrayNode) Get(keys ...any) Node                      { return n.Array().Get(keys...) }
+func (n freshArrayNode) Each(cb func(key any, n Node) error) error { return n.Array().Each(cb) }
+func (n freshArrayNode) Find(expr string) ([]Node, error)          { return Find(n, expr) }
 
 // leafEditorNode is a custom EditorNode holding a scalar or null, which rejects every edit.
 type leafEditorNode struct{ Node }
@@ -183,6 +197,21 @@ func TestEdit(t *testing.T) {
 			expr:     `[2] += "blue"`,
 			want:     Array{Array{StringValue("red")}, nil, Array{StringValue("blue")}},
 		}, {
+			caseName: "append to nested array by numeric key",
+			n:        Map{"a": Array{Array{StringValue("red")}}},
+			expr:     `.a.0 += "blue"`,
+			want:     Map{"a": Array{Array{StringValue("red"), StringValue("blue")}}},
+		}, {
+			caseName: "append by numeric key past the end of an array",
+			n:        Array{},
+			expr:     `.1 += "blue"`,
+			want:     Array{nil, Array{StringValue("blue")}},
+		}, {
+			caseName: "append by non-numeric key to an array returns error",
+			n:        Array{},
+			expr:     `.a += "blue"`,
+			errstr:   `cannot append to "a"`,
+		}, {
 			caseName: "append to non-array element returns error",
 			n:        Array{StringValue("red")},
 			expr:     `[0] += "blue"`,
@@ -269,6 +298,72 @@ func TestEdit(t *testing.T) {
 					NumberValue(3),
 				},
 			},
+		}, {
+			caseName: "walk append to a scalar returns error",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `..a += 1`,
+			errstr:   `cannot append to "a"`,
+		}, {
+			caseName: "walk append stops at a scalar after inner matches",
+			n:        Map{"a": NumberValue(1), "b": Map{"a": Array{}}},
+			expr:     `..a += 1`,
+			errstr:   `cannot append to "a"`,
+		}, {
+			caseName: "walk set by index edits nested arrays",
+			n:        Map{"a": Array{Array{NumberValue(1)}, Array{NumberValue(2)}}},
+			expr:     `..0 = 9`,
+			want:     Map{"a": Array{NumberValue(9), Array{NumberValue(9)}}},
+		}, {
+			caseName: "walk delete by index edits nested arrays",
+			n:        Map{"a": Array{Array{NumberValue(1)}, Array{NumberValue(2)}}},
+			expr:     `..0 ^?`,
+			want:     Map{"a": Array{Array{}}},
+		}, {
+			caseName: "walk set by index on an array root",
+			n:        Array{Array{NumberValue(1)}, Array{NumberValue(2)}},
+			expr:     `..0 = 9`,
+			want:     Array{NumberValue(9), Array{NumberValue(9)}},
+		}, {
+			caseName: "walk set inside an Any",
+			n:        Map{"a": Any{Node: Map{"b": NumberValue(1)}}},
+			expr:     `..b = 9`,
+			want:     Map{"a": Any{Node: Map{"b": NumberValue(9)}}},
+		}, {
+			caseName: "walk delete inside an Any wrapping an array",
+			n:        Map{"a": Any{Node: Array{NumberValue(1)}}},
+			expr:     `..0 ^?`,
+			want:     Map{"a": Array{}},
+		}, {
+			caseName: "walk delete inside an Any wrapping a pointer array edits it in place",
+			n:        Map{"a": Any{Node: &Array{NumberValue(1), NumberValue(2)}}},
+			expr:     `..0 ^?`,
+			want:     Map{"a": Any{Node: &Array{NumberValue(2)}}},
+		}, {
+			caseName: "walk delete inside a pointer Any wrapping a pointer array edits it in place",
+			n:        Map{"a": &Any{Node: &Array{NumberValue(1), NumberValue(2)}}},
+			expr:     `..0 ^?`,
+			want:     Map{"a": &Any{Node: &Array{NumberValue(2)}}},
+		}, {
+			caseName: "walk with no match keeps an Any root",
+			n:        Any{Node: Array{Map{"y": NumberValue(1)}}},
+			expr:     `..x = 1`,
+			want:     Any{Node: Array{Map{"y": NumberValue(1)}}},
+		}, {
+			caseName: "walk with no match keeps a custom array node",
+			n:        Map{"a": freshArrayNode{Map{"y": NumberValue(1)}}},
+			expr:     `..x = 1`,
+			want:     Map{"a": freshArrayNode{Map{"y": NumberValue(1)}}},
+		}, {
+			caseName: "walk delete inside a custom array node replaces it with the edited array",
+			n:        Map{"a": freshArrayNode{NumberValue(1), NumberValue(2)}},
+			expr:     `..0 ^?`,
+			want:     Map{"a": Array{NumberValue(2)}},
+		}, {
+			caseName: "walk append failing inside an Any keeps the wrapper",
+			n:        Map{"a": Any{Node: Array{Array{NumberValue(1)}, NumberValue(2)}}},
+			expr:     `..0 += 1`,
+			want:     Map{"a": Any{Node: Array{Array{NumberValue(1)}, NumberValue(2)}}},
+			errstr:   `cannot append to "0"`,
 		}, {
 			caseName: "walk delete key",
 			n: Map{
@@ -871,15 +966,20 @@ func TestEdit(t *testing.T) {
 			expr:     `.m[]. = 9`,
 			want:     Map{"m": Map{"k": NumberValue(9)}},
 		}, {
-			caseName: "trailing bare dot after [] leaves a null element on append",
+			caseName: "trailing bare dot after [] appends to a null element",
 			n:        Array{Nil},
 			expr:     `.[]. += 1`,
-			want:     Array{Nil},
+			want:     Array{Array{NumberValue(1)}},
 		}, {
-			caseName: "trailing bare dot after [] appends to arrays and leaves null elements",
+			caseName: "trailing bare dot after [] appends to arrays and null elements",
 			n:        Map{"a": Array{Array{NumberValue(1)}, Nil}},
 			expr:     `.a[]. += 1`,
-			want:     Map{"a": Array{Array{NumberValue(1), NumberValue(1)}, Nil}},
+			want:     Map{"a": Array{Array{NumberValue(1), NumberValue(1)}, Array{NumberValue(1)}}},
+		}, {
+			caseName: "trailing bare dot after a slice appends to a null element",
+			n:        Array{Nil, Nil},
+			expr:     `.[1:]. += 1`,
+			want:     Array{Nil, Array{NumberValue(1)}},
 		}, {
 			caseName: "trailing bare dot after [] leaves a null element on delete",
 			n:        Array{Nil},
@@ -1137,17 +1237,52 @@ func TestEdit(t *testing.T) {
 			caseName: "slurp left.Exec error propagates up",
 			n:        Map{"items": Array{Map{"k": NumberValue(1), "z": Map{"k": NumberValue(2)}}}},
 			expr:     `.items[..k == 1] | .x = 1`,
-			errstr:   `..k returns no single value [1 2]`,
+			errstr:   `..k returns more than one value [1 2]`,
 		}, {
 			caseName: "terminal SelectQuery is an unsupported edit query",
 			n:        Map{"items": Array{NumberValue(1)}},
 			expr:     `.items[] = "new"`,
 			errstr:   `syntax error: unsupported edit query: []`,
 		}, {
-			caseName: "SelectQuery intermediate on non-collection is a no-op",
+			caseName: "SelectQuery intermediate on a scalar returns error",
 			n:        Map{"s": StringValue("hi")},
 			expr:     `.s[].x = 1`,
-			want:     Map{"s": StringValue("hi")},
+			errstr:   "cannot index array with []",
+		}, {
+			caseName: "[] on a scalar returns error",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.a[]. = 9`,
+			errstr:   "cannot index array with []",
+		}, {
+			caseName: "select on a scalar returns error",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.a[. == 1]. = 9`,
+			errstr:   "cannot index array with [(. == 1)]",
+		}, {
+			caseName: "[] on null is a no-op",
+			n:        Map{"a": Nil},
+			expr:     `.a[]. = 9`,
+			want:     Map{"a": Nil},
+		}, {
+			caseName: "[] on a pointer to a nil array is a no-op",
+			n:        Map{"a": new(Array)},
+			expr:     `.a[]. = 9`,
+			want:     Map{"a": new(Array)},
+		}, {
+			caseName: "select on a pointer to a nil array is a no-op",
+			n:        Map{"a": new(Array)},
+			expr:     `.a[. == 1]. = 9`,
+			want:     Map{"a": new(Array)},
+		}, {
+			caseName: "slice on a pointer to a nil array is a no-op",
+			n:        Map{"a": new(Array)},
+			expr:     `.a[1:]. = 9`,
+			want:     Map{"a": new(Array)},
+		}, {
+			caseName: "[] on an Any wrapping a nil array is a no-op",
+			n:        Map{"a": Any{Node: Array(nil)}},
+			expr:     `.a[]. = 9`,
+			want:     Map{"a": Any{Node: Array(nil)}},
 		}, {
 			caseName: "SelectQuery with selector iterates Map values matching comparator",
 			n: Map{
@@ -1450,20 +1585,20 @@ func TestEdit(t *testing.T) {
 			expr:     `.x[].y = 1`,
 			want:     Map{"x": Any{Node: Map{"k": Map{"y": NumberValue(1)}}}},
 		}, {
-			caseName: "select step on a scalar editor node is a no-op",
+			caseName: "select step on a scalar editor node returns error",
 			n:        Map{"x": leafEditorNode{StringValue("s")}},
 			expr:     `.x[].y = 1`,
-			want:     Map{"x": leafEditorNode{StringValue("s")}},
+			errstr:   "cannot index array with []",
 		}, {
-			caseName: "trailing bare dot after a select on a scalar editor node is a no-op",
+			caseName: "trailing bare dot after a select on a scalar editor node returns error",
 			n:        Map{"x": leafEditorNode{StringValue("s")}},
 			expr:     `.x[]. = 1`,
-			want:     Map{"x": leafEditorNode{StringValue("s")}},
+			errstr:   "cannot index array with []",
 		}, {
-			caseName: "select with a condition on a scalar editor node is a no-op",
+			caseName: "select with a condition on a scalar editor node returns error",
 			n:        Map{"x": leafEditorNode{StringValue("s")}},
 			expr:     `.x[.y == 1].z = 1`,
-			want:     Map{"x": leafEditorNode{StringValue("s")}},
+			errstr:   "cannot index array with [(.y == 1)]",
 		}, {
 			caseName: "select step on a null editor node is a no-op",
 			n:        Map{"x": leafEditorNode{Nil}},
@@ -1902,14 +2037,97 @@ func TestEdit(t *testing.T) {
 			expr:     `.a.x = 1`,
 			want:     Map{"a": Map{"x": NumberValue(1)}},
 		}, {
+			caseName: "delete by index inside an Any edits the pointer array it wraps",
+			n:        Map{"a": Any{Node: &Array{NumberValue(1), NumberValue(2)}}},
+			expr:     `.a[0] ^?`,
+			want:     Map{"a": Any{Node: &Array{NumberValue(2)}}},
+		}, {
+			caseName: "set past the end inside an Any grows the pointer array it wraps",
+			n:        Map{"a": Any{Node: &Array{NumberValue(1)}}},
+			expr:     `.a[2] = 5`,
+			want:     Map{"a": Any{Node: &Array{NumberValue(1), nil, NumberValue(5)}}},
+		}, {
+			caseName: "delete by key inside a pointer Any edits the map it wraps",
+			n:        Map{"a": &Any{Node: &pointerEditorNode{Map{"b": NumberValue(1)}}}},
+			expr:     `.a.b ^?`,
+			want:     Map{"a": &Any{Node: &pointerEditorNode{Map{}}}},
+		}, {
+			caseName: "delete by index on an Any root edits the pointer array it wraps",
+			n:        Any{Node: &Array{NumberValue(1), NumberValue(2)}},
+			expr:     `[0] ^?`,
+			want:     Any{Node: &Array{NumberValue(2)}},
+		}, {
 			caseName: "append to a nil pointer root",
 			n:        (*Array)(nil),
 			expr:     `. += 1`,
-			errstr:   "cannot append to .",
+			want:     Array{NumberValue(1)},
 		}, {
 			caseName: "append to a nil root",
 			n:        nil,
 			expr:     `. += 1`,
+			want:     Array{NumberValue(1)},
+		}, {
+			caseName: "append to a null root",
+			n:        Nil,
+			expr:     `. += 1`,
+			want:     Array{NumberValue(1)},
+		}, {
+			caseName: "append to a pointer to a nil array",
+			n:        Map{"a": new(Array)},
+			expr:     `.a += 1`,
+			want:     Map{"a": Array{NumberValue(1)}},
+		}, {
+			caseName: "failing set leaves no intermediate on a map",
+			n:        Map{},
+			expr:     `.a[16777216] = 1`,
+			want:     Map{},
+			errstr:   "array index 16777216 exceeds maximum 16777215",
+		}, {
+			caseName: "failing set leaves a null root as it was",
+			n:        Nil,
+			expr:     `.a[16777216] = 1`,
+			want:     Nil,
+			errstr:   "array index 16777216 exceeds maximum 16777215",
+		}, {
+			caseName: "failing append leaves a null root as it was",
+			n:        Nil,
+			expr:     `.a[16777216] += 1`,
+			want:     Nil,
+			errstr:   "array index 16777216 exceeds maximum 16777215",
+		}, {
+			caseName: "failing set leaves a nil pointer root as it was",
+			n:        (*Map)(nil),
+			expr:     `.a[16777216] = 1`,
+			want:     (*Map)(nil),
+			errstr:   "array index 16777216 exceeds maximum 16777215",
+		}, {
+			caseName: "failing set leaves a null key as it was",
+			n:        Map{"a": Nil},
+			expr:     `.a.b[16777216] = 1`,
+			want:     Map{"a": Nil},
+			errstr:   "array index 16777216 exceeds maximum 16777215",
+		}, {
+			caseName: "failing set leaves an array ungrown",
+			n:        Map{"a": Array{NumberValue(0)}},
+			expr:     `.a[3][16777216] = 1`,
+			want:     Map{"a": Array{NumberValue(0)}},
+			errstr:   "array index 16777216 exceeds maximum 16777215",
+		}, {
+			caseName: "failing set leaves no intermediate in a pointer array",
+			n:        Map{"a": &Array{}},
+			expr:     `.a[0].b[16777216] = 1`,
+			want:     Map{"a": &Array{}},
+			errstr:   "array index 16777216 exceeds maximum 16777215",
+		}, {
+			caseName: "failing set leaves no intermediate in a custom node",
+			n:        &pointerEditorNode{Map{}},
+			expr:     `.a.b[16777216] = 1`,
+			want:     &pointerEditorNode{Map{}},
+			errstr:   "array index 16777216 exceeds maximum 16777215",
+		}, {
+			caseName: "append to a scalar root returns error",
+			n:        NumberValue(1),
+			expr:     `. += 2`,
 			errstr:   "cannot append to .",
 		},
 	}
@@ -1922,6 +2140,9 @@ func TestEdit(t *testing.T) {
 				}
 				if err.Error() != tc.errstr {
 					t.Errorf("got error %s; want %s", err.Error(), tc.errstr)
+				}
+				if tc.want != nil && !reflect.DeepEqual(tc.n, tc.want) {
+					t.Errorf("got %#v after the error; want %#v", tc.n, tc.want)
 				}
 				return
 			}
@@ -2416,6 +2637,176 @@ func TestEditNopQuerySteps(t *testing.T) {
 			}
 			if want := (Array{NumberValue(1)}); !reflect.DeepEqual(n, want) {
 				t.Errorf("got %#v; want %#v", n, want)
+			}
+		})
+	}
+}
+
+// TestEditSetParity pins .[k] = v, += v and ^? to Set and Delete; see docs/query.md.
+func TestEditSetParity(t *testing.T) {
+	keys := []any{"a", "", "0", "1", "-1", 0, 1, 5, -1, -5}
+	v := V(9)
+	// goEdit applies op to a clone of n through the Go API.
+	goEdit := func(n Node, op string, k any) (Node, error) {
+		c := CloneDeep(n)
+		var en EditorNode
+		var a Array
+		if m := c.Map(); m != nil {
+			en = m
+		} else {
+			a = c.Array()
+			en = &a
+		}
+		if i, ok := k.(int); ok && i < 0 && c.Type().IsArray() {
+			k = len(a) + i // deviation: a negative index counts from the end
+		}
+		var err error
+		switch op {
+		case "=":
+			err = en.Set(k, v)
+		case "+=":
+			child := en.Get(k)
+			if !isNull(child) && child.Array() == nil {
+				return nil, errors.New("not an array")
+			}
+			err = en.Set(k, append(child.Array(), v))
+		case "^?":
+			err = en.Delete(k)
+		}
+		if a != nil {
+			return a, err
+		}
+		return c, err
+	}
+	testCases := []struct {
+		caseName string
+		n        Node
+	}{
+		{caseName: "map", n: Map{"a": V(1), "": A(1), "0": V("zero"), "1": Nil, "-1": V("minus")}},
+		{caseName: "array", n: Array{V("x"), Nil, A(1)}},
+		{caseName: "empty map", n: Map{}},
+		{caseName: "empty array", n: Array{}},
+	}
+	for _, tc := range testCases {
+		for _, op := range []string{"=", "+=", "^?"} {
+			for _, k := range keys {
+				expr := fmt.Sprintf(".[%q] %s", k, op)
+				if i, ok := k.(int); ok {
+					expr = fmt.Sprintf(".[%d] %s", i, op)
+				}
+				if op != "^?" {
+					expr += " 9"
+				}
+				t.Run(tc.caseName+"/"+expr, func(t *testing.T) {
+					want, wantErr := goEdit(tc.n, op, k)
+					got := CloneDeep(tc.n)
+					err := Edit(&got, expr)
+					if (err != nil) != (wantErr != nil) {
+						t.Fatalf("got error %v; want error %v", err, wantErr)
+					}
+					if err == nil && !Equal(got, want) {
+						t.Errorf("got %v; want %v", got, want)
+					}
+				})
+			}
+		}
+	}
+}
+
+// TestEditDocExamples runs the edit examples in docs/query.md; add a row for each example added there.
+func TestEditDocExamples(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		input    string
+		expr     string
+		want     string
+		errstr   string
+	}{
+		// Edits
+		{caseName: "value is YAML", input: `{}`, expr: `.url = "http://x?a=1"`, want: `{"url": "http://x?a=1"}`},
+		{caseName: "array value", input: `{}`, expr: `.a = [1, 2]`, want: `{"a": [1, 2]}`},
+		{caseName: "comparison is not an assignment", input: `{"a": [{"b": 1}, {"b": 2}]}`, expr: `.a[.b == 1].c = 2`, want: `{"a": [{"b": 1, "c": 2}, {"b": 2}]}`},
+		{caseName: "== alone", input: `{}`, expr: `.a ==1`, errstr: `syntax error: invalid edit expression ".a ==1"`},
+		{caseName: "quoted =", input: `{}`, expr: `.a = "=1"`, want: `{"a": "=1"}`},
+		// Go equivalents
+		{caseName: "negative index on an object", input: `{"m": {}}`, expr: `.m[-1] = 1`, want: `{"m": {"-1": 1}}`},
+		{caseName: "numeric key on an array", input: `{"a": []}`, expr: `.a.1 = 1`, want: `{"a": [null, 1]}`},
+		{caseName: "grow an array", input: `{"a": [0]}`, expr: `.a[3] = 1`, want: `{"a": [0, null, null, 1]}`},
+		{caseName: "delete a missing key", input: `{"a": {}}`, expr: `.a.zz ^?`, want: `{"a": {}}`},
+		{caseName: "delete past the end", input: `{"a": [1]}`, expr: `.a[5] ^?`, want: `{"a": [1]}`},
+		{caseName: "set null keeps the key", input: `{"a": 1}`, expr: `.a = null`, want: `{"a": null}`},
+		{caseName: "delete removes the key", input: `{"a": 1}`, expr: `.a ^?`, want: `{}`},
+		{caseName: "first() on a scalar", input: `{"a": 1}`, expr: `.a.first() = 1`, errstr: `cannot index array with 0`},
+		// Paths
+		{caseName: "unsupported method", input: `{"a": []}`, expr: `.a.sort()[0] = 1`, errstr: `syntax error: unsupported edit query: sort()`},
+		{caseName: "[] as the last step", input: `{"a": []}`, expr: `.a[] = 1`, errstr: `syntax error: unsupported edit query: []`},
+		{caseName: "trailing pipe", input: `{"a": 1}`, expr: `.a |= 1`, errstr: `syntax error: unsupported edit query: |`},
+		{caseName: "group without a pipe", input: `{"a": [{}]}`, expr: `(.a[0]).b = 1`, want: `{"a": [{"b": 1}]}`},
+		{caseName: "group with a pipe", input: `{"a": [1]}`, expr: `(.a | .[0]) = 9`, want: `{"a": [1]}`},
+		{caseName: "pipe edits the collected array", input: `{"a": [1]}`, expr: `.a | .[0] = 9`, want: `{"a": [1]}`},
+		{caseName: "bare dot before an index", input: `[1]`, expr: `.[0] = 9`, want: `[9]`},
+		{caseName: "trailing bare dot after a key", input: `{"a": 1}`, expr: `.a. = 9`, want: `{"a": 9}`},
+		{caseName: "trailing bare dot after a walk", input: `{"b": 1, "c": {"b": 2}}`, expr: `..b. ^?`, want: `{"c": {}}`},
+		{caseName: "trailing bare dot sets null elements", input: `{"a": [null, 2]}`, expr: `.a[]. = 1`, want: `{"a": [1, 1]}`},
+		{caseName: "trailing bare dot appends to null elements", input: `{"a": [null, [2]]}`, expr: `.a[]. += 1`, want: `{"a": [[1], [2, 1]]}`},
+		{caseName: "trailing bare dot keeps null elements on delete", input: `{"a": [null]}`, expr: `.a[]. ^?`, want: `{"a": [null]}`},
+		{caseName: "[] on null", input: `{"a": null}`, expr: `.a[]. = 1`, want: `{"a": null}`},
+		{caseName: "slice on null", input: `{"a": null}`, expr: `.a[1:]. = 1`, want: `{"a": null}`},
+		{caseName: "slice", input: `{"a": [0, 0, 0]}`, expr: `.a[1:]. = 1`, want: `{"a": [0, 1, 1]}`},
+		// Multiple matches
+		{caseName: "walk never edits the RHS", input: `{"b": {"b": 2}}`, expr: `..b = {"b": 1}`, want: `{"b": {"b": 1}}`},
+		{caseName: "walk stops at a mismatch", input: `{"b": {"c": {"b": []}}}`, expr: `..b.c = 1`, errstr: `cannot index array with c`},
+		{caseName: "walk append stops at a scalar", input: `{"a": 1, "b": {"a": []}}`, expr: `..a += 1`, want: `{"a": 1, "b": {"a": [1]}}`, errstr: `cannot append to "a"`},
+		{caseName: "walk by index edits arrays", input: `{"a": [[1], [2]]}`, expr: `..0 = 9`, want: `{"a": [9, [9]]}`},
+		// Null intermediates
+		{caseName: "null element", input: `{"a": [null]}`, expr: `.a[0].x = 1`, want: `{"a": [{"x": 1}]}`},
+		{caseName: "append to null", input: `{"a": null}`, expr: `.a += 1`, want: `{"a": [1]}`},
+		{caseName: "null before []", input: `{"a": null}`, expr: `.a.b[].c = 1`, want: `{"a": null}`},
+		{caseName: "null before last()", input: `{"a": null}`, expr: `.a.last() = 1`, want: `{"a": null}`},
+		{caseName: "null root", input: `null`, expr: `.a.b = 1`, want: `{"a": {"b": 1}}`},
+		{caseName: "append to a null root", input: `null`, expr: `. += 1`, want: `[1]`},
+		{caseName: "negative index on a null root", input: `null`, expr: `.[-1] = 1`, want: `null`},
+		// Edit errors
+		{caseName: "key on a scalar", input: `{"a": 1}`, expr: `.a.b = 1`, errstr: `cannot index array with "b"`},
+		{caseName: "append before the start", input: `{"a": []}`, expr: `.a[-5] += 1`, errstr: `cannot append to array with -5`},
+		{caseName: "delete before the start", input: `{"a": [1]}`, expr: `.a[-5] ^?`, errstr: `cannot delete array with -5`},
+		{caseName: "append is one element", input: `{"a": [0]}`, expr: `.a += [1]`, want: `{"a": [0, [1]]}`},
+		{caseName: "key on an array", input: `{"a": []}`, expr: `.a.b = 1`, errstr: `cannot index array with b`},
+		{caseName: "negative index before the start", input: `{"a": []}`, expr: `.a[-5] = 1`, errstr: `cannot index array with -5`},
+		{caseName: "append to a scalar", input: `{"a": 1}`, expr: `.a += 1`, errstr: `cannot append to "a"`},
+		{caseName: "delete on a scalar", input: `{"a": 1}`, expr: `.a.b ^?`, errstr: `cannot delete "b"`},
+		{caseName: "first() on an object", input: `{"a": {}}`, expr: `.a.first() = 1`, errstr: `cannot edit first() of a map`},
+		{caseName: "[] on a scalar", input: `{"a": 1}`, expr: `.a[]. = 1`, errstr: `cannot index array with []`},
+		{caseName: "slice on a scalar", input: `{"a": 1}`, expr: `.a[1:]. = 1`, errstr: `cannot index array with range [1:]`},
+		{caseName: "index too large", input: `{}`, expr: `.a[16777216] = 1`, want: `{}`, errstr: `array index 16777216 exceeds maximum 16777215`},
+		{caseName: "index too large on a null root", input: `null`, expr: `.a[16777216] = 1`, want: `null`, errstr: `array index 16777216 exceeds maximum 16777215`},
+		{caseName: "append to a scalar root", input: `1`, expr: `. += 1`, errstr: `cannot append to .`},
+		{caseName: "delete the root", input: `{}`, expr: `. ^?`, errstr: `cannot delete .`},
+		{caseName: "several YAML documents", input: `{}`, expr: ".a = 1\n---\n2", errstr: `syntax error: multiple YAML documents in edit value "1\n---\n2"`},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			n, err := UnmarshalJSON([]byte(tc.input))
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = Edit(&n, tc.expr)
+			if tc.errstr != "" {
+				if err == nil || err.Error() != tc.errstr {
+					t.Fatalf("got error %v; want %s", err, tc.errstr)
+				}
+				if tc.want == "" {
+					return
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			want, err := UnmarshalJSON([]byte(tc.want))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !Equal(n, want) {
+				t.Errorf("got %v; want %s", n, tc.want)
 			}
 		})
 	}

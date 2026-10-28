@@ -46,7 +46,11 @@ func Edit(pn *Node, expr string) error {
 			if op == "^?" {
 				return nil // deleting from a null root leaves it as it is
 			}
+			if err := execForEdit(&c, fq, op, v); err != nil {
+				return err // a failing edit leaves the null root as it was
+			}
 			*pn = c
+			return nil
 		}
 	}
 
@@ -232,7 +236,7 @@ func skipWord(expr string, p int) int {
 // editQuery applies an edit operation to a node using the specified query.
 // Supports FilterQuery, EditorQuery and indexQuery types.
 func editQuery(pn *Node, q Query, op string, v Node) error {
-	q, err := editStep(orNil(*pn), q)
+	q, err := editStep(unwrapAny(*pn), q)
 	if err != nil {
 		return err
 	}
@@ -328,7 +332,7 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 		return editLast(pn, fq[len(fq)-1], op, v, as)
 	}
 
-	n := orNil(*pn)
+	n := unwrapAny(*pn)
 	q, err := editStep(n, fq[step])
 	if err != nil {
 		return err
@@ -349,7 +353,7 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 
 	case WalkQuery:
 		key := string(tq)
-		return tq.walkEdit(n, as, func(en EditorNode) error {
+		_, err := tq.walkEdit(pn, as, func(en EditorNode) error {
 			child := en.Get(key)
 			if isNullLike(child) {
 				if child = emptyIntermediate(op, fq[step+1:]); child == nil {
@@ -363,6 +367,7 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 
 			return en.Set(key, child)
 		})
+		return err
 
 	case SelectQuery:
 		return resolveSelectStep(pn, n, tq, fq, step, op, v, as)
@@ -382,9 +387,6 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 			if child == nil {
 				return nil
 			}
-			if err := en.Set(key, child); err != nil {
-				return err
-			}
 		}
 
 		if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
@@ -401,7 +403,6 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 			if child == nil {
 				return nil
 			}
-			m[key] = child
 		}
 
 		if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
@@ -454,9 +455,6 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 			if child == nil {
 				return nil
 			}
-			if err := en.Set(index, child); err != nil {
-				return err
-			}
 		}
 
 		if err := resolveAndEdit(&child, fq, step+1, op, v, as); err != nil {
@@ -506,6 +504,12 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 		return editElements(pn, n, a, 0, len(a), match, fq, step, op, v, as)
 	}
 
+	if isNullLike(n) || n.Type().IsArray() {
+		return nil // a null the edit creates nothing for, or an array with no elements, stays as it is
+	}
+	if !n.Type().IsMap() {
+		return fmt.Errorf("cannot index array with %s", sq)
+	}
 	en, ok := n.(EditorNode)
 	if !ok {
 		m := n.Map()
@@ -514,13 +518,8 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 		}
 		en = m // a wrapper such as Any shares its Map, so writes reach it
 	}
-	var keys []any
-	if err := en.Each(func(k any, _ Node) error {
-		if k != nil { // a node that is not a container calls back once with a nil key
-			keys = append(keys, k)
-		}
-		return nil
-	}); err != nil {
+	keys, err := snapshotKeys(en)
+	if err != nil {
 		return err
 	}
 	for _, k := range keys {
@@ -534,7 +533,7 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 				continue
 			}
 		}
-		if isNullLike(child) && (op != "=" || !isNopQuery(fq[step+1])) { // a trailing . sets a null element; += and ^? leave it as it is
+		if isNullLike(child) && (op == "^?" || !isNopQuery(fq[step+1])) { // a trailing . sets or appends to a null element; ^? leaves it as it is
 			if child = emptyIntermediate(op, fq[step+1:]); child == nil {
 				continue // a null element stays as it is
 			}
@@ -555,8 +554,8 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 func resolveRangeStep(pn *Node, n Node, rq ArrayRangeQuery, fq FilterQuery, step int, op string, v Node, as assigned) error {
 	a := n.Array()
 	if a == nil {
-		if isNullLike(n) {
-			return nil // a null root the edit creates nothing for stays as it is
+		if isNullLike(n) || n.Type().IsArray() {
+			return nil // a null the edit creates nothing for, or an array with no elements, stays as it is
 		}
 		return fmt.Errorf("cannot index array with range %s", rq)
 	}
@@ -579,7 +578,7 @@ func editElements(pn *Node, n Node, a Array, from, to int, match func(Node) (boo
 				continue
 			}
 		}
-		if isNullLike(child) && (op != "=" || !isNopQuery(fq[step+1])) { // a trailing . sets a null element; += and ^? leave it as it is
+		if isNullLike(child) && (op == "^?" || !isNopQuery(fq[step+1])) { // a trailing . sets or appends to a null element; ^? leaves it as it is
 			if child = emptyIntermediate(op, fq[step+1:]); child == nil {
 				continue // a null element stays as it is
 			}

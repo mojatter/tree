@@ -299,15 +299,13 @@ For more details on built-in methods, see the [Built-in Methods](#built-in-metho
 
 #### Null
 
-Queries read null like jq. A key, an index, `first()` or `last()` on null, a scalar, a missing key or an out-of-range index gives `null`, so `.store.zz` gives `null`, `.store.book[].isbn` gives one `null` per book without an ISBN and `.store.zz.count()` gives `0`. `[]`, a slice, `..key`, `keys()` and `values()` give nothing when there is nothing to read, and `has()` on null gives `false`. Unlike jq, a key or an index on a scalar and a key on an array also give `null` instead of an error (`.store.book.title` gives `null`; a numeric key such as `.store.book.0` still reads the index), and an index on an object reads the key with that number, as `Map.Get` does (`.m[0]` reads `"0"` and `.m[-1]` reads `"-1"`, like the edits `.m[0] = 1` and `.m[-1] = 1`).
+A key, an index, `first()` or `last()` with nothing to read gives `null`, so `.store.zz` gives `null` and `.store.book[].isbn` gives one `null` per book without an ISBN, while `[]`, a slice and `..key` give nothing. `null` is a literal and `"null"` is a string: `[.isbn == null]` matches books whose ISBN is null or missing. Each side of a comparison must give a single value, so use a nested select such as `[.tags[.x == 1]]` to match any element.
 
-`null` is a literal and `"null"` is a string: `[.isbn == null]` matches books whose ISBN is null or missing, and `[.isbn != "x"]` keeps books without an ISBN. `==` and `!=` compare objects and arrays by value, so an object or an array is never `null`. Ordered operators (`<`, `<=`, `>`, `>=`) with a null, object or array side never match, and a side that gives nothing, such as `.tags[]` on an empty array, never matches. Each side of a comparison must give a single value, so `[.tags[].x == 1]` fails with `returns no single value` when `tags` has more than one element; use a nested select such as `[.tags[.x == 1]]` to match any element. `contains()` matches scalar elements only, never null, arrays or objects.
-
-Besides syntax errors and bad method arguments, a read fails only when a comparison side gives more than one value. Edits stay strict, see [Edit](#edit).
+See [docs/query.md](docs/query.md) for the full rules, including what each step and method gives on null, scalars, arrays and objects, and where tree differs from jq.
 
 ### Built-in Methods
 
-Tree provides several built-in methods for data manipulation and querying:
+Tree provides several built-in methods for data manipulation and querying. See [docs/query.md](docs/query.md#methods) for what each gives on null, scalars, arrays and objects.
 
 #### Aggregate Methods
 - **`count()`** - Returns the count of elements in arrays or maps
@@ -357,13 +355,7 @@ node.Find(".store.book.rsort(\".price\")")  // Books ordered by descending price
 
 An edit expression is `<query> = <value>` (set), `<query> += <value>` (append) or `<query> ^?` (delete). It is split at the first operator outside quotes and parentheses, and `<value>` is parsed as YAML, so `.url = "http://x?a=1"` sets the whole URL. `.a = null` stores null and keeps the key, while `.a ^?` removes it. Comparison operators (`==`, `!=`, `<=`, `>=`, `~=`) are never read as an assignment, so `.a ==1` is a syntax error; write `.a = "=1"` to set that string.
 
-An edit through `..key`, `[]`, a select or a slice gives each match its own copy of the RHS, so editing one match later leaves the others as they are. A `..key` edit also edits inner matches before outer ones, so it never edits inside the RHS, i.e. a value it has just assigned: `..b = {"b": 1}` on `{"b": {"b": 2}}` gives `{"b": {"b": 1}}`. If an inner match does not fit the rest of the query, the edit stops with an error, as in jq: `..b.c = 1` on `{"b": {"c": {"b": []}}}` fails with `cannot index array with c`. Edits are not transactional: when a match fails, the matches edited before it stay edited.
-
-An edit goes through keys, indexes, `[]`, selects, slices (each element in range, like `[i]`), `..`, and `first()` and `last()`, which edit like `[0]` and `[-1]` and fail on a map. Any other step, such as another method, a literal or a parenthesised group containing a pipe inside a longer path, is a syntax error before any data is read (`.a.sort()[0] = 1` fails with `syntax error: unsupported edit query: sort()`), and so is `[]`, a select, a slice or a trailing `|` (as in jq's `.a |= 1`) as the last step. Parentheses around steps without a pipe are ignored, so `(.a[0]).b = 1` edits like `.a[0].b = 1`, and so are parentheses around the whole query: `(.a | .[0]) = 9` edits like `.a | .[0] = 9`, which changes only the array `|` collects, not the document.
-
-A null reached by a step, including a Go `nil` value such as a hole left by growing an array, a nil pointer node such as `(*tree.Array)(nil)` and a nil `Map` or `Array`, is treated as missing: `=` and `+=` create what the rest of the query needs when every later step is a key, a non-negative index or `first()`, and otherwise, like `^?`, leave it as it is (`.a.b[].c = 1` and `.a.last() = 1` on `{"a": null}` change nothing). `.a[0].x = 1` on `{"a": [null]}` gives `{"a": [{"x": 1}]}`, and `.a += 1` on `{"a": null}` gives `{"a": [1]}`. A null root is replaced the same way (`.a.b = 1` on `null` gives `{"a": {"b": 1}}`, and `.[-1] = 1` on `null` changes nothing). Get, Find and the other queries read a Go `nil` value or a nil pointer node as null.
-
-Bare `.` and `..` steps are ignored in an edit path, so `.[0]` edits like `[0]`, `.a.` like `.a` and `..b. ^?` deletes like `..b ^?`; after `[]`, a select or a slice, a trailing `.` names the matched elements themselves (`.a[]. = 1` sets every element of `a`, null elements included; `+=` and `^?` leave a null element as it is).
+An edit writes through keys, indexes, `first()`, `last()`, `[]`, selects, slices and `..key`, creates missing objects and arrays on the way (`.a.b = 1` on `{}` gives `{"a": {"b": 1}}`), and fails on a step it cannot write, such as a key on a number. See [docs/query.md](docs/query.md#edits) for the full rules and the Go call each edit corresponds to.
 
 ```go
 func ExampleEdit() {
