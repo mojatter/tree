@@ -55,22 +55,21 @@ func (t Type) IsNumberValue() bool {
 	return t == TypeNumberValue
 }
 
-// String returns a short, lowercase label suitable for use in error
-// messages: "array", "map", "nil", "string", "bool", or "number".
-// The unspecialised "value" bitmask returns "value"; an unknown
-// bit pattern returns "unknown".
+// String returns the JSON name of t, as type() does: "array", "object",
+// "null", "string", "boolean" or "number"; the bare TypeValue bitmask is
+// "value" and an unknown bit pattern "unknown".
 func (t Type) String() string {
 	switch t {
 	case TypeArray:
 		return "array"
 	case TypeMap:
-		return "map"
+		return "object"
 	case TypeNilValue:
-		return "nil"
+		return "null"
 	case TypeStringValue:
 		return "string"
 	case TypeBoolValue:
-		return "bool"
+		return "boolean"
 	case TypeNumberValue:
 		return "number"
 	case TypeValue:

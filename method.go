@@ -169,8 +169,7 @@ func (q *EmptyQuery) String() string {
 	return "empty()"
 }
 
-// TypeQuery returns the type name of the node.
-// Returns "array", "object", "string", "number", "boolean", or "null".
+// TypeQuery returns the JSON name of the node's type; see Type.String.
 type TypeQuery struct{}
 
 // NewTypeQuery creates a new TypeQuery instance.
@@ -179,27 +178,9 @@ func NewTypeQuery(args ...string) (Query, error) {
 	return &TypeQuery{}, nil
 }
 
-// Exec returns the type name of the node as a string.
-// Returns "array", "object", "string", "number", "boolean", or "null".
+// Exec returns n.Type().String() as a string node.
 func (q *TypeQuery) Exec(n Node) ([]Node, error) {
-	var typeName string
-	switch n.Type() {
-	case TypeArray:
-		typeName = "array"
-	case TypeMap:
-		typeName = "object"
-	case TypeStringValue:
-		typeName = "string"
-	case TypeNumberValue:
-		typeName = "number"
-	case TypeBoolValue:
-		typeName = "boolean"
-	case TypeNilValue:
-		typeName = "null"
-	default:
-		typeName = "unknown"
-	}
-	return ToNodeValues(typeName), nil
+	return ToNodeValues(n.Type().String()), nil
 }
 
 func (q *TypeQuery) String() string {

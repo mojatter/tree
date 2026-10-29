@@ -79,7 +79,7 @@ func (r *Registry) Register(name string, fac Factory, fields ...string) {
 // with Required(...).
 func (r *Registry) Parse(spec tree.Node) (Rule, error) {
 	if !spec.Type().IsMap() {
-		return nil, fmt.Errorf("rule spec must be map, got %s", spec.Type())
+		return nil, fmt.Errorf("rule spec must be object, got %s", spec.Type())
 	}
 	m := spec.Map()
 
@@ -143,7 +143,7 @@ func ParseQueryRules(spec tree.Node) (QueryRules, error) {
 // queries are aggregated and capped at reg.MaxReportedErrors.
 func ParseQueryRulesWith(spec tree.Node, reg *Registry) (QueryRules, error) {
 	if !spec.Type().IsMap() {
-		return nil, fmt.Errorf("query rules spec must be map, got %s", spec.Type())
+		return nil, fmt.Errorf("query rules spec must be object, got %s", spec.Type())
 	}
 	m := spec.Map()
 	out := QueryRules{}
@@ -276,7 +276,7 @@ func optKeyedRules(spec tree.Node, key string, reg *Registry) (map[string]Rule, 
 		return nil, nil
 	}
 	if !n.Type().IsMap() {
-		return nil, fmt.Errorf("%q must be map, got %s", key, n.Type())
+		return nil, fmt.Errorf("%q must be object, got %s", key, n.Type())
 	}
 	m := n.Map()
 	out := make(map[string]Rule, len(m))
@@ -398,7 +398,7 @@ func optBoolPtr(spec tree.Node, key string) (*bool, error) {
 		return nil, nil
 	}
 	if !n.Type().IsBoolValue() {
-		return nil, fmt.Errorf("%q must be bool, got %s", key, n.Type())
+		return nil, fmt.Errorf("%q must be boolean, got %s", key, n.Type())
 	}
 	v := n.Value().Bool()
 	return &v, nil

@@ -173,7 +173,7 @@ func TestEvery(t *testing.T) {
 			caseName: "non-collection rejected",
 			rule:     Every{Rules: QueryRules{".name": String{}}},
 			n:        tree.V("x"),
-			wantErrs: []string{".x: expected array or map, got string"},
+			wantErrs: []string{".x: expected array or object, got string"},
 		},
 		{
 			caseName: "array all pass",
@@ -310,7 +310,7 @@ func TestBool(t *testing.T) {
 		{caseName: "nil skip", n: tree.Nil},
 		{caseName: "true", n: tree.V(true)},
 		{caseName: "false", n: tree.V(false)},
-		{caseName: "string rejected", n: tree.V("true"), wantErrs: []string{".x: expected bool, got string"}},
+		{caseName: "string rejected", n: tree.V("true"), wantErrs: []string{".x: expected boolean, got string"}},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
@@ -350,7 +350,7 @@ func TestMap(t *testing.T) {
 	}{
 		{caseName: "nil skip", rule: Map{}, n: tree.Nil},
 		{caseName: "plain map", rule: Map{}, n: tree.Map{}},
-		{caseName: "not map", rule: Map{}, n: tree.V("x"), wantErrs: []string{".x: expected map, got string"}},
+		{caseName: "not map", rule: Map{}, n: tree.V("x"), wantErrs: []string{".x: expected object, got string"}},
 		{caseName: "no known keys allows any", rule: Map{}, n: tree.Map{"anything": tree.V(1)}},
 		{
 			caseName: "unknown keys reported sorted",

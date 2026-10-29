@@ -6,6 +6,11 @@ import (
 	"testing"
 )
 
+// bareValueNode is a custom node whose Type is the unspecialised TypeValue.
+type bareValueNode struct{ Node }
+
+func (bareValueNode) Type() Type { return TypeValue }
+
 func TestMethodQuery(t *testing.T) {
 	testCases := []struct {
 		caseName string
@@ -104,6 +109,11 @@ func TestMethodQuery(t *testing.T) {
 			q:        &TypeQuery{},
 			n:        Nil,
 			want:     []Node{StringValue("null")},
+		}, {
+			caseName: "type bare value",
+			q:        &TypeQuery{},
+			n:        bareValueNode{Nil},
+			want:     []Node{StringValue("value")},
 		}, {
 			caseName: "has key in map true",
 			q:        &HasQuery{Key: "name"},

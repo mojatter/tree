@@ -70,7 +70,7 @@ func ExampleValidate_composite() {
 	}
 	// Output:
 	// .allow: expected string, got number
-	// .allow: expected bool, got number
+	// .allow: expected boolean, got number
 	// .labels.tier: expected number, got string
 	// .password: length 5 less than min 8
 	// .tags[1].name: required
@@ -139,5 +139,5 @@ func ExampleParseQueryRules() {
 	// .age: value 200 greater than max 150
 	// .name: required
 	// .role: value "guest" not in enum [admin user]
-	// .role: expected bool, got string
+	// .role: expected boolean, got string
 }

@@ -41,7 +41,7 @@ func TestRegistry_Parse(t *testing.T) {
 		{
 			caseName: "spec not a map",
 			spec:     tree.V("x"),
-			wantErrs: []string{"rule spec must be map"},
+			wantErrs: []string{"rule spec must be object"},
 		},
 		{
 			caseName: "missing type",
@@ -71,7 +71,7 @@ func TestRegistry_Parse(t *testing.T) {
 		{
 			caseName: "required not bool",
 			spec:     tree.Map{"type": tree.V("string"), "required": tree.V("yes")},
-			wantErrs: []string{`"required" must be bool, got string`},
+			wantErrs: []string{`"required" must be boolean, got string`},
 		},
 		{
 			caseName: "valid string",
@@ -114,7 +114,7 @@ func TestRegistry_Parse(t *testing.T) {
 		{
 			caseName: "array maxLen type mismatch",
 			spec:     tree.Map{"type": tree.V("array"), "maxLen": tree.V(true)},
-			wantErrs: []string{`"maxLen" must be integer, got bool`},
+			wantErrs: []string{`"maxLen" must be integer, got boolean`},
 		},
 		{
 			caseName: "map keys element not string",
@@ -124,7 +124,7 @@ func TestRegistry_Parse(t *testing.T) {
 		{
 			caseName: "map keyedRules not a map",
 			spec:     tree.Map{"type": tree.V("map"), "keyedRules": tree.A("a")},
-			wantErrs: []string{`"keyedRules" must be map, got array`},
+			wantErrs: []string{`"keyedRules" must be object, got array`},
 		},
 		{
 			caseName: "map keyedRules nested rule error",
@@ -189,12 +189,12 @@ func TestRegistry_Parse(t *testing.T) {
 		{
 			caseName: "nil of element is null",
 			spec:     tree.Map{"type": tree.V("and"), "of": tree.Array{nil}},
-			wantErrs: []string{"and.of[0]: rule spec must be map, got nil"},
+			wantErrs: []string{"and.of[0]: rule spec must be object, got null"},
 		},
 		{
 			caseName: "nil enum element is null",
 			spec:     tree.Map{"type": tree.V("string"), "enum": tree.Array{nil}},
-			wantErrs: []string{`"enum"[0] must be string, got nil`},
+			wantErrs: []string{`"enum"[0] must be string, got null`},
 		},
 	}
 	r := BuiltinRegistry()
@@ -359,12 +359,12 @@ func TestParseQueryRules(t *testing.T) {
 		{
 			caseName: "spec not a map",
 			spec:     tree.V("x"),
-			wantErrs: []string{"query rules spec must be map"},
+			wantErrs: []string{"query rules spec must be object"},
 		},
 		{
 			caseName: "nil rule spec is null",
 			spec:     tree.Map{".a": nil},
-			wantErrs: []string{".a: rule spec must be map, got nil"},
+			wantErrs: []string{".a: rule spec must be object, got null"},
 		},
 		{
 			caseName: "valid mixed rules",
