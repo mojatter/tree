@@ -269,7 +269,7 @@ func (n *Array) Append(v Node) error {
 func (n *Array) Set(key any, v Node) error {
 	i, ok := n.toIndex(key)
 	if i == -1 {
-		return fmt.Errorf("cannot index array with %v", key)
+		return errIndex(n, key)
 	}
 	if !ok {
 		a, err := growArray(*n, i)
@@ -299,7 +299,7 @@ func growArray(a Array, i int) (Array, error) {
 func (n *Array) Delete(key any) error {
 	i, ok := n.toIndex(key)
 	if i == -1 {
-		return fmt.Errorf("cannot index array with %v", key)
+		return errIndex(n, key)
 	}
 	if ok {
 		a := *n
@@ -403,13 +403,13 @@ func (n Map) Values() []Node {
 
 // Append returns an error.
 func (n Map) Append(v Node) error {
-	return fmt.Errorf("cannot append to map")
+	return errAppend(n)
 }
 
 // Set sets v to n[key].
 func (n Map) Set(key any, v Node) error {
 	if n == nil {
-		return fmt.Errorf("cannot set %v in a nil map", key)
+		return fmt.Errorf("cannot set %s in a nil map", formatStep(key))
 	}
 	switch tk := key.(type) {
 	case int:
@@ -419,7 +419,7 @@ func (n Map) Set(key any, v Node) error {
 		n[tk] = v
 		return nil
 	}
-	return fmt.Errorf("cannot index array with %v", key)
+	return errIndex(n, key)
 }
 
 // Delete deletes n[key].
@@ -432,7 +432,7 @@ func (n Map) Delete(key any) error {
 		delete(n, tk)
 		return nil
 	}
-	return fmt.Errorf("cannot index array with %v", key)
+	return errIndex(n, key)
 }
 
 // Each calls the callback function for each value of the Map, in sorted key order.

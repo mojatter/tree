@@ -45,7 +45,7 @@ func (q NopQuery) Append(pn *Node, v Node) error {
 		*pn = r
 		return nil
 	}
-	return fmt.Errorf("cannot append to %s", ".")
+	return errAppend(*pn)
 }
 
 // appendTo returns n with v appended: Array{v} when n is null or a nil container, and false when n is not an array.
@@ -106,43 +106,44 @@ func (q MapQuery) Set(pn *Node, v Node) error {
 		*pn = a
 		return nil
 	}
-	return fmt.Errorf("cannot index array with %q", key)
+	return errIndex(n, key)
 }
 
 func (q MapQuery) Append(pn *Node, v Node) error {
 	n := unwrapAny(*pn)
 	key := string(q)
 	if en, ok := n.(EditorNode); ok {
-		if r, ok := appendTo(n.Get(key), v); ok {
-			return en.Set(key, r)
+		c := n.Get(key)
+		if r, ok := appendTo(c, v); ok {
+			return en.Set(key, r) // a *Array rejects a key that is not an index, as Set does
 		}
-		return fmt.Errorf("cannot append to %q", key)
+		return errAppend(c)
 	}
-	if n.Array() != nil {
-		if i, err := strconv.Atoi(key); err == nil && i >= 0 {
-			return ArrayQuery(i).Append(pn, v) // a numeric key appends at that index, as Set does
+	if a := n.Array(); a != nil {
+		i, _ := a.toIndex(key)
+		if i < 0 {
+			return errIndex(n, key) // an array reads a key as an index, as Set does
 		}
+		return ArrayQuery(i).Append(pn, v)
 	}
-	return fmt.Errorf("cannot append to %q", key)
+	return errIndex(n, key)
 }
 
 func (q MapQuery) Delete(pn *Node) error {
 	n := unwrapAny(*pn)
 	key := string(q)
 	if en, ok := n.(EditorNode); ok {
-		if err := en.Delete(key); err == nil {
-			return nil
-		}
+		return en.Delete(key)
 	}
 	if a := n.Array(); a != nil {
 		if err := a.Delete(key); err != nil {
-			return fmt.Errorf("cannot delete %q", key)
+			return err
 		}
 
 		*pn = a
 		return nil
 	}
-	return fmt.Errorf("cannot delete %q", key)
+	return errIndex(n, key)
 }
 
 func (q MapQuery) String() string {
@@ -209,7 +210,7 @@ func (q ArrayQuery) Set(pn *Node, v Node) error {
 	index := int(q)
 	if a := n.Array(); a != nil {
 		if index = q.resolveIndex(len(a)); index < 0 {
-			return fmt.Errorf("cannot index array with %d", int(q))
+			return errIndex(n, int(q))
 		}
 	}
 	if en, ok := n.(EditorNode); ok {
@@ -223,7 +224,7 @@ func (q ArrayQuery) Set(pn *Node, v Node) error {
 		*pn = a
 		return nil
 	}
-	return fmt.Errorf("cannot index array with %d", int(q))
+	return errIndex(n, int(q))
 }
 
 func (q ArrayQuery) Append(pn *Node, v Node) error {
@@ -231,14 +232,15 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 	index := int(q)
 	if a := n.Array(); a != nil {
 		if index = q.resolveIndex(len(a)); index < 0 {
-			return fmt.Errorf("cannot append to array with %d", int(q))
+			return errIndex(n, int(q))
 		}
 	}
 	if en, ok := n.(EditorNode); ok {
-		if r, ok := appendTo(n.Get(index), v); ok {
+		c := n.Get(index)
+		if r, ok := appendTo(c, v); ok {
 			return en.Set(index, r)
 		}
-		return fmt.Errorf("cannot append to array with %d", int(q))
+		return errAppend(c)
 	}
 	if a := n.Array(); a != nil {
 		if index >= len(a) {
@@ -249,13 +251,13 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 		}
 		r, ok := appendTo(a[index], v)
 		if !ok {
-			return fmt.Errorf("cannot append to array with %d", int(q))
+			return errAppend(a[index])
 		}
 		a[index] = r
 		*pn = a
 		return nil
 	}
-	return fmt.Errorf("cannot append to array with %d", int(q))
+	return errIndex(n, int(q))
 }
 
 func (q ArrayQuery) Delete(pn *Node) error {
@@ -263,23 +265,21 @@ func (q ArrayQuery) Delete(pn *Node) error {
 	index := int(q)
 	if a := n.Array(); a != nil {
 		if index = q.resolveIndex(len(a)); index < 0 {
-			return fmt.Errorf("cannot delete array with %d", int(q))
+			return errIndex(n, int(q))
 		}
 	}
 	if en, ok := n.(EditorNode); ok {
-		if err := en.Delete(index); err == nil {
-			return nil
-		}
+		return en.Delete(index)
 	}
 	if a := n.Array(); a != nil {
 		if err := a.Delete(index); err != nil {
-			return fmt.Errorf("cannot delete array with %d", int(q))
+			return err
 		}
 
 		*pn = a
 		return nil
 	}
-	return fmt.Errorf("cannot delete array with %d", int(q))
+	return errIndex(n, int(q))
 }
 
 func (q ArrayQuery) String() string {
@@ -496,9 +496,10 @@ func (q WalkQuery) edit(pn *Node, op string, v Node, as assigned) error {
 			return en.Set(key, c)
 		case "+=":
 			c := cloneEditValue(v)
-			r, ok := appendTo(en.Get(key), c)
+			cur := en.Get(key)
+			r, ok := appendTo(cur, c)
 			if !ok {
-				return fmt.Errorf("cannot append to %q", key)
+				return errAppend(cur)
 			}
 			as.add(c)
 			return en.Set(key, r)

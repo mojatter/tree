@@ -54,6 +54,17 @@ func (leafEditorNode) Append(Node) error   { return errors.New("leaf append") }
 func (leafEditorNode) Set(any, Node) error { return errors.New("leaf set") }
 func (leafEditorNode) Delete(any) error    { return errors.New("leaf delete") }
 
+// countingEditorNode is an EditorNode that counts its Get calls.
+type countingEditorNode struct {
+	EditorNode
+	gets *int
+}
+
+func (n countingEditorNode) Get(keys ...any) Node {
+	*n.gets++
+	return n.EditorNode.Get(keys...)
+}
+
 func TestEdit(t *testing.T) {
 	testCases := []struct {
 		caseName string
@@ -111,7 +122,7 @@ func TestEdit(t *testing.T) {
 			caseName: "set on non-map returns error",
 			n:        StringValue("str"),
 			expr:     `.key = {}`,
-			errstr:   `cannot index array with "key"`,
+			errstr:   `cannot index string with "key"`,
 		},
 
 		// --- Append error cases ---
@@ -119,22 +130,22 @@ func TestEdit(t *testing.T) {
 			caseName: "append to map root returns error",
 			n:        Map{"key": StringValue("str")},
 			expr:     `. += {}`,
-			errstr:   "cannot append to .",
+			errstr:   "cannot append to object",
 		}, {
 			caseName: "append to string root returns error",
 			n:        StringValue("str"),
 			expr:     `. += {}`,
-			errstr:   "cannot append to .",
+			errstr:   "cannot append to string",
 		}, {
 			caseName: "append to map string value returns error",
 			n:        Map{"key": StringValue("str")},
 			expr:     `.key += {}`,
-			errstr:   `cannot append to "key"`,
+			errstr:   `cannot append to string`,
 		}, {
 			caseName: "append to string value returns error",
 			n:        StringValue("str"),
 			expr:     `.key += {}`,
-			errstr:   `cannot append to "key"`,
+			errstr:   `cannot index string with "key"`,
 		},
 
 		// --- Set operations on Array ---
@@ -152,7 +163,7 @@ func TestEdit(t *testing.T) {
 			caseName: "set on non-array by index returns error",
 			n:        StringValue("str"),
 			expr:     `[0] = "red"`,
-			errstr:   `cannot index array with 0`,
+			errstr:   `cannot index string with 0`,
 		}, {
 			caseName: "set on array by dot-index",
 			n:        Array{},
@@ -210,17 +221,52 @@ func TestEdit(t *testing.T) {
 			caseName: "append by non-numeric key to an array returns error",
 			n:        Array{},
 			expr:     `.a += "blue"`,
-			errstr:   `cannot append to "a"`,
+			errstr:   `cannot index array with "a"`,
+		}, {
+			caseName: "append by non-numeric key to a pointer array returns the same error",
+			n:        &Array{},
+			expr:     `.a += "blue"`,
+			errstr:   `cannot index array with "a"`,
+		}, {
+			caseName: "append by non-numeric key to an array in Any returns the same error",
+			n:        Map{"x": Any{Node: Array{}}},
+			expr:     `.x.a += "blue"`,
+			errstr:   `cannot index array with "a"`,
+		}, {
+			caseName: "delete by non-numeric key from an array in Any returns the same error",
+			n:        Map{"x": Any{Node: &Array{}}},
+			expr:     `.x.a ^?`,
+			errstr:   `cannot index array with "a"`,
+		}, {
+			caseName: "append before the start of an array in Any reports the index",
+			n:        Map{"x": &Any{Node: Array{NumberValue(1)}}},
+			expr:     `.x[-5] += 1`,
+			errstr:   `cannot index array with -5`,
+		}, {
+			caseName: "append by non-numeric key reports set error of editor node array",
+			n:        Map{"x": setFailingEditorNode{&Array{}}},
+			expr:     `.x.a += "blue"`,
+			errstr:   `set failed`,
+		}, {
+			caseName: "append through first() on a scalar names the step",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.a.first() += 1`,
+			errstr:   `cannot index number with first()`,
+		}, {
+			caseName: "delete through last() on a scalar names the step",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.a.last() ^?`,
+			errstr:   `cannot index number with last()`,
 		}, {
 			caseName: "append to non-array element returns error",
 			n:        Array{StringValue("red")},
 			expr:     `[0] += "blue"`,
-			errstr:   `cannot append to array with 0`,
+			errstr:   `cannot append to string`,
 		}, {
 			caseName: "append to non-array root returns error",
 			n:        StringValue("red"),
 			expr:     `[0] += "blue"`,
-			errstr:   `cannot append to array with 0`,
+			errstr:   `cannot index string with 0`,
 		}, {
 			caseName: "append to array root",
 			n:        Array{},
@@ -258,12 +304,12 @@ func TestEdit(t *testing.T) {
 			caseName: "delete key on non-map returns error",
 			n:        StringValue("str"),
 			expr:     `.key ^?`,
-			errstr:   `cannot delete "key"`,
+			errstr:   `cannot index string with "key"`,
 		}, {
 			caseName: "delete index on non-array returns error",
 			n:        StringValue("str"),
 			expr:     `[0] ^?`,
-			errstr:   `cannot delete array with 0`,
+			errstr:   `cannot index string with 0`,
 		},
 
 		// --- Recursive walk operations ---
@@ -302,12 +348,12 @@ func TestEdit(t *testing.T) {
 			caseName: "walk append to a scalar returns error",
 			n:        Map{"a": NumberValue(1)},
 			expr:     `..a += 1`,
-			errstr:   `cannot append to "a"`,
+			errstr:   `cannot append to number`,
 		}, {
 			caseName: "walk append stops at a scalar after inner matches",
 			n:        Map{"a": NumberValue(1), "b": Map{"a": Array{}}},
 			expr:     `..a += 1`,
-			errstr:   `cannot append to "a"`,
+			errstr:   `cannot append to number`,
 		}, {
 			caseName: "walk set by index edits nested arrays",
 			n:        Map{"a": Array{Array{NumberValue(1)}, Array{NumberValue(2)}}},
@@ -363,7 +409,7 @@ func TestEdit(t *testing.T) {
 			n:        Map{"a": Any{Node: Array{Array{NumberValue(1)}, NumberValue(2)}}},
 			expr:     `..0 += 1`,
 			want:     Map{"a": Any{Node: Array{Array{NumberValue(1)}, NumberValue(2)}}},
-			errstr:   `cannot append to "0"`,
+			errstr:   `cannot append to number`,
 		}, {
 			caseName: "walk delete key",
 			n: Map{
@@ -1073,6 +1119,18 @@ func TestEdit(t *testing.T) {
 			expr:     `.x[]. ^?`,
 			errstr:   `delete failed`,
 		}, {
+			caseName: "delete by index reports delete error of editor node",
+			n:        Map{"x": deleteFailingEditorNode{&Array{NumberValue(1), NumberValue(2)}}},
+			expr:     `.x[0] ^?`,
+			want:     Map{"x": deleteFailingEditorNode{&Array{NumberValue(1), NumberValue(2)}}},
+			errstr:   `delete failed`,
+		}, {
+			caseName: "delete by key reports delete error of editor node",
+			n:        Map{"x": deleteFailingEditorNode{Map{"k": NumberValue(1)}}},
+			expr:     `.x.k ^?`,
+			want:     Map{"x": deleteFailingEditorNode{Map{"k": NumberValue(1)}}},
+			errstr:   `delete failed`,
+		}, {
 			caseName: "delete through a trailing bare dot after [] on null is a no-op",
 			n:        Map{"a": Nil},
 			expr:     `.a[]. ^?`,
@@ -1081,12 +1139,12 @@ func TestEdit(t *testing.T) {
 			caseName: "delete through a trailing bare dot after [] on a scalar fails",
 			n:        Map{"a": NumberValue(1)},
 			expr:     `.a[]. ^?`,
-			errstr:   `cannot index array with []`,
+			errstr:   `cannot iterate over number`,
 		}, {
 			caseName: "delete through a trailing bare dot after a slice on a scalar fails",
 			n:        Map{"a": NumberValue(1)},
 			expr:     `.a[1:]. ^?`,
-			errstr:   `cannot index array with range [1:]`,
+			errstr:   `cannot index number with [1:]`,
 		}, {
 			caseName: "delete after [] and a key leaves the elements",
 			n:        Map{"a": Array{Map{"b": NumberValue(1)}, Map{"b": NumberValue(2), "c": NumberValue(3)}}},
@@ -1101,22 +1159,22 @@ func TestEdit(t *testing.T) {
 			caseName: "non-numeric map key on Array errors",
 			n:        Map{"arr": Array{NumberValue(1)}},
 			expr:     `.arr.badkey.x = 1`,
-			errstr:   `cannot index array with badkey`,
+			errstr:   `cannot index array with "badkey"`,
 		}, {
 			caseName: "non-numeric map key on empty Array errors",
 			n:        Map{"x": Array{}},
 			expr:     `.x.foo.c = 1`,
-			errstr:   `cannot index array with foo`,
+			errstr:   `cannot index array with "foo"`,
 		}, {
 			caseName: "non-numeric map key on empty Array at final step errors the same way",
 			n:        Map{"x": Array{}},
 			expr:     `.x.foo = 1`,
-			errstr:   `cannot index array with foo`,
+			errstr:   `cannot index array with "foo"`,
 		}, {
 			caseName: "delete through non-numeric map key on Array errors",
 			n:        Map{"x": Array{}},
 			expr:     `.x.foo.c ^?`,
-			errstr:   `cannot index array with foo`,
+			errstr:   `cannot index array with "foo"`,
 		}, {
 			caseName: "nil element at Array MapQuery step with non-collection next is a no-op",
 			n:        Map{"arr": Array{nil, nil}},
@@ -1131,12 +1189,12 @@ func TestEdit(t *testing.T) {
 			caseName: "MapQuery intermediate on non-collection errors",
 			n:        Map{"s": StringValue("hi")},
 			expr:     `.s.x.y = 1`,
-			errstr:   `cannot index array with "x"`,
+			errstr:   `cannot index string with "x"`,
 		}, {
 			caseName: "delete through MapQuery intermediate on non-collection errors",
 			n:        Map{"x": NumberValue(1)},
 			expr:     `.x.y.c ^?`,
-			errstr:   `cannot index array with "y"`,
+			errstr:   `cannot index number with "y"`,
 		}, {
 			caseName: "null intermediate reached through select is replaced",
 			n:        Map{"a": Array{NilValue{}}},
@@ -1146,7 +1204,7 @@ func TestEdit(t *testing.T) {
 			caseName: "ArrayQuery intermediate on non-collection errors",
 			n:        Map{"s": StringValue("hi")},
 			expr:     `.s[0].x = 1`,
-			errstr:   `cannot index array with 0`,
+			errstr:   `cannot index string with 0`,
 		}, {
 			caseName: "null ArrayQuery intermediate reached through select is replaced",
 			n:        Map{"a": Array{NilValue{}}},
@@ -1274,37 +1332,37 @@ func TestEdit(t *testing.T) {
 			caseName: "error from MapQuery terminal propagates through map step",
 			n:        Map{"s": StringValue("hi")},
 			expr:     `.s.x = 1`,
-			errstr:   `cannot index array with "x"`,
+			errstr:   `cannot index string with "x"`,
 		}, {
 			caseName: "error from MapQuery terminal propagates through Array map step",
 			n:        Map{"arr": Array{StringValue("hi")}},
 			expr:     `.arr.0.x = 1`,
-			errstr:   `cannot index array with "x"`,
+			errstr:   `cannot index string with "x"`,
 		}, {
 			caseName: "error from MapQuery terminal propagates through ArrayQuery step",
 			n:        Array{StringValue("hi")},
 			expr:     `[0].x = 1`,
-			errstr:   `cannot index array with "x"`,
+			errstr:   `cannot index string with "x"`,
 		}, {
 			caseName: "error from SelectQuery Array branch propagates through iteration",
 			n:        Map{"items": Array{StringValue("oops")}},
 			expr:     `.items[].name = "x"`,
-			errstr:   `cannot index array with "name"`,
+			errstr:   `cannot index string with "name"`,
 		}, {
 			caseName: "error from SelectQuery Map branch propagates through iteration",
 			n:        Map{"items": Map{"a": StringValue("oops")}},
 			expr:     `.items[].name = "x"`,
-			errstr:   `cannot index array with "name"`,
+			errstr:   `cannot index string with "name"`,
 		}, {
 			caseName: "error from WalkQuery intermediate recursion propagates up",
 			n:        Map{"outer": Map{"name": StringValue("str")}},
 			expr:     `..name.x = 1`,
-			errstr:   `cannot index array with "x"`,
+			errstr:   `cannot index string with "x"`,
 		}, {
 			caseName: "error from default-branch terminal step propagates up",
 			n:        Array{StringValue("hi")},
 			expr:     `..[0].x = 1`,
-			errstr:   `cannot index array with "x"`,
+			errstr:   `cannot index string with "x"`,
 		}, {
 			caseName: "EditorNode ArrayQuery intermediate with missing key and non-collection next is a no-op",
 			n:        Map{"arr": Map{"x": StringValue("v")}},
@@ -1314,12 +1372,12 @@ func TestEdit(t *testing.T) {
 			caseName: "error from EditorNode ArrayQuery branch recursion propagates up",
 			n:        Map{"arr": Map{"0": StringValue("oops")}},
 			expr:     `.arr[0].x = 1`,
-			errstr:   `cannot index array with "x"`,
+			errstr:   `cannot index string with "x"`,
 		}, {
 			caseName: "slice step on a map errors",
 			n:        Map{"items": Map{"x": StringValue("v")}},
 			expr:     `.items[1:2].x = 1`,
-			errstr:   `cannot index array with range [1:2]`,
+			errstr:   `cannot index object with [1:2]`,
 		}, {
 			caseName: "slurp left.Exec error propagates up",
 			n:        Map{"items": Array{Map{"k": NumberValue(1), "z": Map{"k": NumberValue(2)}}}},
@@ -1334,17 +1392,17 @@ func TestEdit(t *testing.T) {
 			caseName: "SelectQuery intermediate on a scalar returns error",
 			n:        Map{"s": StringValue("hi")},
 			expr:     `.s[].x = 1`,
-			errstr:   "cannot index array with []",
+			errstr:   "cannot iterate over string",
 		}, {
 			caseName: "[] on a scalar returns error",
 			n:        Map{"a": NumberValue(1)},
 			expr:     `.a[]. = 9`,
-			errstr:   "cannot index array with []",
+			errstr:   "cannot iterate over number",
 		}, {
 			caseName: "select on a scalar returns error",
 			n:        Map{"a": NumberValue(1)},
 			expr:     `.a[. == 1]. = 9`,
-			errstr:   "cannot index array with [(. == 1)]",
+			errstr:   "cannot iterate over number",
 		}, {
 			caseName: "[] on null is a no-op",
 			n:        Map{"a": Nil},
@@ -1370,6 +1428,31 @@ func TestEdit(t *testing.T) {
 			n:        Map{"a": Any{Node: Array(nil)}},
 			expr:     `.a[]. = 9`,
 			want:     Map{"a": Any{Node: Array(nil)}},
+		}, {
+			caseName: "set by index on an Any wrapping a nil array replaces it like null",
+			n:        Map{"a": Any{Node: Array(nil)}},
+			expr:     `.a[0] = 1`,
+			want:     Map{"a": Array{NumberValue(1)}},
+		}, {
+			caseName: "set by index on an Any wrapping a nil array as root replaces it like null",
+			n:        Any{Node: Array(nil)},
+			expr:     `[0] = 1`,
+			want:     Array{NumberValue(1)},
+		}, {
+			caseName: "negative index on an Any wrapping a nil array is a no-op",
+			n:        Map{"a": Any{Node: Array(nil)}},
+			expr:     `.a[-1] = 1`,
+			want:     Map{"a": Any{Node: Array(nil)}},
+		}, {
+			caseName: "set by key on an Any wrapping a nil map replaces it like null",
+			n:        Map{"a": Any{Node: Map(nil)}},
+			expr:     `.a.x = 1`,
+			want:     Map{"a": Map{"x": NumberValue(1)}},
+		}, {
+			caseName: "set by key on a pointer Any wrapping a nil map replaces it like null",
+			n:        Map{"a": &Any{Node: Map(nil)}},
+			expr:     `.a.x.y = 1`,
+			want:     Map{"a": Map{"x": Map{"y": NumberValue(1)}}},
 		}, {
 			caseName: "SelectQuery with selector iterates Map values matching comparator",
 			n: Map{
@@ -1432,7 +1515,7 @@ func TestEdit(t *testing.T) {
 			caseName: "negative index set on scalar errors",
 			n:        Map{"a": NumberValue(1)},
 			expr:     `.a[-1] = 1`,
-			errstr:   `cannot index array with -1`,
+			errstr:   `cannot index number with -1`,
 		}, {
 			caseName: "walk set with value containing the same key",
 			n:        Map{"a": Map{"b": NumberValue(1)}},
@@ -1497,17 +1580,17 @@ func TestEdit(t *testing.T) {
 			caseName: "negative index on scalar errors",
 			n:        Map{"a": NumberValue(1)},
 			expr:     `.a[-1].b = 1`,
-			errstr:   `cannot index array with -1`,
+			errstr:   `cannot index number with -1`,
 		}, {
 			caseName: "walk intermediate set edits inner match first and fails on its shape",
 			n:        Map{"b": Map{"c": Map{"b": Array{}}}},
 			expr:     `..b.c = 1`,
-			errstr:   `cannot index array with c`,
+			errstr:   `cannot index array with "c"`,
 		}, {
 			caseName: "walk intermediate set fails on scalar inner match",
 			n:        Map{"b": Map{"c": Map{"b": NumberValue(1)}}},
 			expr:     `..b.c = 1`,
-			errstr:   `cannot index array with "c"`,
+			errstr:   `cannot index number with "c"`,
 		}, {
 			caseName: "walk set does not edit the assigned value",
 			n:        Map{"b": Map{"b": NumberValue(0)}},
@@ -1527,12 +1610,12 @@ func TestEdit(t *testing.T) {
 			caseName: "walk intermediate set fails on scalar below inner match",
 			n:        Map{"b": Map{"b": Map{"b": NumberValue(0)}}},
 			expr:     `..b.b.b = {"x": 1}`,
-			errstr:   `cannot index array with "b"`,
+			errstr:   `cannot index number with "b"`,
 		}, {
 			caseName: "walk intermediate set fails on scalar inner match with index",
 			n:        Map{"b": Array{Map{"b": NumberValue(0)}}},
 			expr:     `..b[0].b = [{"c": 0}]`,
-			errstr:   `cannot index array with 0`,
+			errstr:   `cannot index number with 0`,
 		}, {
 			caseName: "walk intermediate append edits inner matches first",
 			n:        Map{"b": Map{"b": Map{"b": Map{"c": Array{}}}}},
@@ -1565,7 +1648,7 @@ func TestEdit(t *testing.T) {
 			caseName: "walk intermediate set fails on scalar inner match before assigning",
 			n:        Map{"b": Map{"b": Map{"b": NumberValue(0)}}},
 			expr:     `..b.b = []`,
-			errstr:   `cannot index array with "b"`,
+			errstr:   `cannot index number with "b"`,
 		}, {
 			caseName: "walk set on value-typed editor node does not edit the assigned value",
 			n:        Map{"b": valueEditorNode{Map{"b": NumberValue(0)}}},
@@ -1611,7 +1694,7 @@ func TestEdit(t *testing.T) {
 			n:        Map{"x": setFailingEditorNode{Map{"y": Array{Array{NumberValue(0), Array{}}, NumberValue(5)}}}},
 			expr:     `..1 += 1`,
 			want:     Map{"x": setFailingEditorNode{Map{"y": Array{Array{NumberValue(0), Array{NumberValue(1)}}, NumberValue(5)}}}},
-			errstr:   `cannot append to "1"`,
+			errstr:   `cannot append to number`,
 		}, {
 			caseName: "walk set fails on editor node an outer match would replace",
 			n:        Map{"b": setFailingEditorNode{Map{"b": NumberValue(0)}}},
@@ -1681,17 +1764,17 @@ func TestEdit(t *testing.T) {
 			caseName: "select step on a scalar editor node returns error",
 			n:        Map{"x": leafEditorNode{StringValue("s")}},
 			expr:     `.x[].y = 1`,
-			errstr:   "cannot index array with []",
+			errstr:   "cannot iterate over string",
 		}, {
 			caseName: "trailing bare dot after a select on a scalar editor node returns error",
 			n:        Map{"x": leafEditorNode{StringValue("s")}},
 			expr:     `.x[]. = 1`,
-			errstr:   "cannot index array with []",
+			errstr:   "cannot iterate over string",
 		}, {
 			caseName: "select with a condition on a scalar editor node returns error",
 			n:        Map{"x": leafEditorNode{StringValue("s")}},
 			expr:     `.x[.y == 1].z = 1`,
-			errstr:   "cannot index array with [(.y == 1)]",
+			errstr:   "cannot iterate over string",
 		}, {
 			caseName: "select step on a null editor node is a no-op",
 			n:        Map{"x": leafEditorNode{Nil}},
@@ -1703,20 +1786,55 @@ func TestEdit(t *testing.T) {
 			expr:     `.x[].y = 1`,
 			errstr:   `set failed`,
 		}, {
+			caseName: "first() on a scalar editor node reports its set error as [0] does",
+			n:        Map{"x": leafEditorNode{StringValue("s")}},
+			expr:     `.x.first() = 1`,
+			errstr:   "leaf set",
+		}, {
+			caseName: "first() step on a scalar editor node reports its set error as [0] does",
+			n:        Map{"x": leafEditorNode{StringValue("s")}},
+			expr:     `.x.first().y = 1`,
+			errstr:   "leaf set",
+		}, {
+			caseName: "first() += on a scalar editor node reports its set error as [0] does",
+			n:        Map{"x": leafEditorNode{StringValue("s")}},
+			expr:     `.x.first() += 1`,
+			errstr:   "leaf set",
+		}, {
+			caseName: "last() ^? on a scalar editor node reports its delete error as [-1] does",
+			n:        Map{"x": leafEditorNode{StringValue("s")}},
+			expr:     `.x.last() ^?`,
+			errstr:   "leaf delete",
+		}, {
+			caseName: "key with a quote and a tab is quoted as the query prints it",
+			n:        Map{"a": NumberValue(1)},
+			expr:     ".a.\"b\\\"c\td\" = 1",
+			errstr:   "cannot index number with \"b\\\"c\td\"",
+		}, {
 			caseName: "first() on an editor node without map errors as on a map",
 			n:        Map{"x": mapHidingEditorNode{Map{"k": NumberValue(1)}}},
 			expr:     `.x.first() = 1`,
-			errstr:   `cannot edit first() of a map`,
+			errstr:   `cannot index object with first()`,
 		}, {
 			caseName: "last() step on an editor node without map errors as on a map",
 			n:        Map{"x": mapHidingEditorNode{Map{"k": NumberValue(1)}}},
 			expr:     `.x.last().y = 1`,
-			errstr:   `cannot edit last() of a map`,
+			errstr:   `cannot index object with last()`,
 		}, {
 			caseName: "intermediate map step leaves editor node wrapping nil map",
 			n:        Map{"x": valueEditorNode{Map(nil)}},
 			expr:     `.x.y.c = 1`,
 			want:     Map{"x": valueEditorNode{Map(nil)}},
+		}, {
+			caseName: "last map step on editor node wrapping nil map reports its own set error",
+			n:        Map{"x": valueEditorNode{Map(nil)}},
+			expr:     `.x.k = 1`,
+			errstr:   `cannot set "k" in a nil map`,
+		}, {
+			caseName: "last index step on editor node wrapping nil map reports its own set error",
+			n:        Map{"x": valueEditorNode{Map(nil)}},
+			expr:     `.x[0] = 1`,
+			errstr:   `cannot set 0 in a nil map`,
 		}, {
 			caseName: "intermediate map step replaces null value",
 			n:        Map{"y": Nil},
@@ -1736,7 +1854,7 @@ func TestEdit(t *testing.T) {
 			caseName: "intermediate map step rejects non-numeric key on pointer array",
 			n:        Map{"x": &Array{}},
 			expr:     `.x.foo.c = 1`,
-			errstr:   `cannot index array with foo`,
+			errstr:   `cannot index array with "foo"`,
 		}, {
 			caseName: "intermediate map step keeps nil pointer array",
 			n:        Map{"x": new(Array)},
@@ -1935,7 +2053,7 @@ func TestEdit(t *testing.T) {
 			caseName: "slice step on a string errors",
 			n:        Map{"s": StringValue("hi")},
 			expr:     `.s[0:1].x = 1`,
-			errstr:   `cannot index array with range [0:1]`,
+			errstr:   `cannot index string with [0:1]`,
 		}, {
 			caseName: "last() step edits the last element",
 			n:        Map{"a": Array{Map{"b": NumberValue(0)}, Map{"b": NumberValue(5)}}},
@@ -2010,12 +2128,12 @@ func TestEdit(t *testing.T) {
 			caseName: "first() step on a map errors",
 			n:        Map{"m": Map{"k": NumberValue(1)}},
 			expr:     `.m.first().x = 1`,
-			errstr:   `cannot edit first() of a map`,
+			errstr:   `cannot index object with first()`,
 		}, {
 			caseName: "last() as the last step on a map errors",
 			n:        Map{"m": Map{"k": NumberValue(1)}},
 			expr:     `.m.last() = 1`,
-			errstr:   `cannot edit last() of a map`,
+			errstr:   `cannot index object with last()`,
 		}, {
 			caseName: "other method step is an unsupported edit query",
 			n:        Map{"a": Array{Map{"b": NumberValue(0)}}},
@@ -2221,7 +2339,7 @@ func TestEdit(t *testing.T) {
 			caseName: "append to a scalar root returns error",
 			n:        NumberValue(1),
 			expr:     `. += 2`,
-			errstr:   "cannot append to .",
+			errstr:   "cannot append to number",
 		},
 	}
 	for _, tc := range testCases {
@@ -2352,12 +2470,12 @@ func TestEditSequence(t *testing.T) {
 			caseName: "select set on holes left by array growth",
 			n:        Map{"a": Array{}},
 			exprs:    []string{`.a[2] = 1`, `.a[].x = 1`},
-			errstr:   `cannot index array with "x"`,
+			errstr:   `cannot index number with "x"`,
 		}, {
 			caseName: "select intermediate set on holes left by array growth",
 			n:        Map{"a": Array{}},
 			exprs:    []string{`.a[2] = 1`, `.a[].x.y = 1`},
-			errstr:   `cannot index array with "x"`,
+			errstr:   `cannot index number with "x"`,
 		},
 	}
 	for _, tc := range testCases {
@@ -2735,6 +2853,45 @@ func TestEditNopQuerySteps(t *testing.T) {
 	}
 }
 
+func TestEditAppendErrorGetsChildOnce(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		node     func(gets *int) Node
+		expr     string
+		wantGets int
+	}{
+		{
+			caseName: "key step",
+			node:     func(gets *int) Node { return countingEditorNode{Map{"a": NumberValue(1)}, gets} },
+			expr:     `.a += 1`,
+			wantGets: 1,
+		}, {
+			caseName: "index step",
+			node:     func(gets *int) Node { return countingEditorNode{&Array{NumberValue(1)}, gets} },
+			expr:     `.[0] += 1`,
+			wantGets: 1,
+		}, {
+			caseName: "walk step",
+			node:     func(gets *int) Node { return Map{"x": countingEditorNode{Map{"a": NumberValue(1)}, gets}} },
+			expr:     `..a += 1`,
+			wantGets: 2, // the walk also reads a to descend into it
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			gets := 0
+			n := tc.node(&gets)
+			err := Edit(&n, tc.expr)
+			if err == nil || err.Error() != "cannot append to number" {
+				t.Fatalf("got error %v; want cannot append to number", err)
+			}
+			if gets != tc.wantGets {
+				t.Errorf("got %d Get calls; want %d", gets, tc.wantGets)
+			}
+		})
+	}
+}
+
 // TestEditSetParity pins .[k] = v, += v and ^? to Set and Delete; see docs/query.md.
 func TestEditSetParity(t *testing.T) {
 	keys := []any{"a", "", "0", "1", "-1", 0, 1, 5, -1, -5}
@@ -2829,7 +2986,7 @@ func TestEditDocExamples(t *testing.T) {
 		{caseName: "delete past the end", input: `{"a": [1]}`, expr: `.a[5] ^?`, want: `{"a": [1]}`},
 		{caseName: "set null keeps the key", input: `{"a": 1}`, expr: `.a = null`, want: `{"a": null}`},
 		{caseName: "delete removes the key", input: `{"a": 1}`, expr: `.a ^?`, want: `{}`},
-		{caseName: "first() on a scalar", input: `{"a": 1}`, expr: `.a.first() = 1`, errstr: `cannot index array with 0`},
+		{caseName: "first() on a scalar", input: `{"a": 1}`, expr: `.a.first() = 1`, errstr: `cannot index number with first()`},
 		// Paths
 		{caseName: "unsupported method", input: `{"a": []}`, expr: `.a.sort()[0] = 1`, errstr: `syntax error: unsupported edit query: sort()`},
 		{caseName: "[] as the last step", input: `{"a": []}`, expr: `.a[] = 1`, errstr: `syntax error: unsupported edit query: []`},
@@ -2852,8 +3009,8 @@ func TestEditDocExamples(t *testing.T) {
 		{caseName: "slice", input: `{"a": [0, 0, 0]}`, expr: `.a[1:]. = 1`, want: `{"a": [0, 1, 1]}`},
 		// Multiple matches
 		{caseName: "walk never edits the RHS", input: `{"b": {"b": 2}}`, expr: `..b = {"b": 1}`, want: `{"b": {"b": 1}}`},
-		{caseName: "walk stops at a mismatch", input: `{"b": {"c": {"b": []}}}`, expr: `..b.c = 1`, errstr: `cannot index array with c`},
-		{caseName: "walk append stops at a scalar", input: `{"a": 1, "b": {"a": []}}`, expr: `..a += 1`, want: `{"a": 1, "b": {"a": [1]}}`, errstr: `cannot append to "a"`},
+		{caseName: "walk stops at a mismatch", input: `{"b": {"c": {"b": []}}}`, expr: `..b.c = 1`, errstr: `cannot index array with "c"`},
+		{caseName: "walk append stops at a scalar", input: `{"a": 1, "b": {"a": []}}`, expr: `..a += 1`, want: `{"a": 1, "b": {"a": [1]}}`, errstr: `cannot append to number`},
 		{caseName: "walk by index edits arrays", input: `{"a": [[1], [2]]}`, expr: `..0 = 9`, want: `{"a": [9, [9]]}`},
 		// Null intermediates
 		{caseName: "null element", input: `{"a": [null]}`, expr: `.a[0].x = 1`, want: `{"a": [{"x": 1}]}`},
@@ -2867,23 +3024,23 @@ func TestEditDocExamples(t *testing.T) {
 		{caseName: "delete a null key", input: `{"a": null}`, expr: `.a ^?`, want: `{}`},
 		{caseName: "trailing bare dot deletes a null element", input: `{"a": [null]}`, expr: `.a[]. ^?`, want: `{"a": []}`},
 		// Edit errors
-		{caseName: "key on a scalar", input: `{"a": 1}`, expr: `.a.b = 1`, errstr: `cannot index array with "b"`},
-		{caseName: "append before the start", input: `{"a": []}`, expr: `.a[-5] += 1`, errstr: `cannot append to array with -5`},
-		{caseName: "delete before the start", input: `{"a": [1]}`, expr: `.a[-5] ^?`, errstr: `cannot delete array with -5`},
+		{caseName: "key on a scalar", input: `{"a": 1}`, expr: `.a.b = 1`, errstr: `cannot index number with "b"`},
+		{caseName: "append before the start", input: `{"a": []}`, expr: `.a[-5] += 1`, errstr: `cannot index array with -5`},
+		{caseName: "delete before the start", input: `{"a": [1]}`, expr: `.a[-5] ^?`, errstr: `cannot index array with -5`},
 		{caseName: "append is one element", input: `{"a": [0]}`, expr: `.a += [1]`, want: `{"a": [0, [1]]}`},
-		{caseName: "key on an array", input: `{"a": []}`, expr: `.a.b = 1`, errstr: `cannot index array with b`},
+		{caseName: "key on an array", input: `{"a": []}`, expr: `.a.b = 1`, errstr: `cannot index array with "b"`},
 		{caseName: "negative index before the start", input: `{"a": []}`, expr: `.a[-5] = 1`, errstr: `cannot index array with -5`},
-		{caseName: "append to a scalar", input: `{"a": 1}`, expr: `.a += 1`, errstr: `cannot append to "a"`},
-		{caseName: "delete on a scalar", input: `{"a": 1}`, expr: `.a.b ^?`, errstr: `cannot delete "b"`},
-		{caseName: "first() on an object", input: `{"a": {}}`, expr: `.a.first() = 1`, errstr: `cannot edit first() of a map`},
-		{caseName: "[] on a scalar", input: `{"a": 1}`, expr: `.a[]. = 1`, errstr: `cannot index array with []`},
-		{caseName: "slice on a scalar", input: `{"a": 1}`, expr: `.a[1:]. = 1`, errstr: `cannot index array with range [1:]`},
+		{caseName: "append to a scalar", input: `{"a": 1}`, expr: `.a += 1`, errstr: `cannot append to number`},
+		{caseName: "delete on a scalar", input: `{"a": 1}`, expr: `.a.b ^?`, errstr: `cannot index number with "b"`},
+		{caseName: "first() on an object", input: `{"a": {}}`, expr: `.a.first() = 1`, errstr: `cannot index object with first()`},
+		{caseName: "[] on a scalar", input: `{"a": 1}`, expr: `.a[]. = 1`, errstr: `cannot iterate over number`},
+		{caseName: "slice on a scalar", input: `{"a": 1}`, expr: `.a[1:]. = 1`, errstr: `cannot index number with [1:]`},
 		{caseName: "index too large", input: `{}`, expr: `.a[16777216] = 1`, want: `{}`, errstr: `array index 16777216 exceeds maximum 16777215`},
 		{caseName: "index too large on a null root", input: `null`, expr: `.a[16777216] = 1`, want: `null`, errstr: `array index 16777216 exceeds maximum 16777215`},
 		{caseName: "= keeps the matches edited before the one whose selector fails", input: `{"a": [{"t": [1]}, {"t": [1, 2]}]}`, expr: `.a[.t[] == 1]. = 9`, want: `{"a": [9, {"t": [1, 2]}]}`, errstr: `.t[] returns more than one value [1 2]`},
 		{caseName: "trailing bare dot deletes from the containers before the one whose selector fails", input: `{"x": {"a": [{"t": [1]}]}, "y": {"a": [{"t": [1, 2]}]}}`, expr: `..a[.t[] == 1]. ^?`, want: `{"x": {"a": []}, "y": {"a": [{"t": [1, 2]}]}}`, errstr: `.t[] returns more than one value [1 2]`},
-		{caseName: "append to a scalar root", input: `1`, expr: `. += 1`, errstr: `cannot append to .`},
-		{caseName: "trailing bare dot fails to append to other elements", input: `{"a": [1]}`, expr: `.a[]. += 1`, errstr: `cannot append to .`},
+		{caseName: "append to a scalar root", input: `1`, expr: `. += 1`, errstr: `cannot append to number`},
+		{caseName: "trailing bare dot fails to append to other elements", input: `{"a": [1]}`, expr: `.a[]. += 1`, errstr: `cannot append to number`},
 		{caseName: "delete the root", input: `{}`, expr: `. ^?`, errstr: `cannot delete .`},
 		{caseName: "several YAML documents", input: `{}`, expr: ".a = 1\n---\n2", errstr: `syntax error: multiple YAML documents in edit value "1\n---\n2"`},
 	}
