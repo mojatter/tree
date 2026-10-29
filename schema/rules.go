@@ -140,7 +140,7 @@ func (r Every) Validate(n tree.Node, q string) error {
 			errs = append(errs, sub...)
 		}
 	default:
-		return fmt.Errorf("%s: expected array or map, got %s", q, n.Type())
+		return fmt.Errorf("%s: expected array or object, got %s", q, n.Type())
 	}
 	return errors.Join(errs...)
 }
@@ -278,7 +278,7 @@ func (Bool) Validate(n tree.Node, q string) error {
 		return nil
 	}
 	if !n.Type().IsBoolValue() {
-		return fmt.Errorf("%s: expected bool, got %s", q, n.Type())
+		return fmt.Errorf("%s: expected boolean, got %s", q, n.Type())
 	}
 	return nil
 }
@@ -333,7 +333,7 @@ func (r Map) Validate(n tree.Node, q string) error {
 		return nil
 	}
 	if !n.Type().IsMap() {
-		return fmt.Errorf("%s: expected map, got %s", q, n.Type())
+		return fmt.Errorf("%s: expected object, got %s", q, n.Type())
 	}
 	if len(r.Keys) == 0 && len(r.KeyedRules) == 0 {
 		return nil

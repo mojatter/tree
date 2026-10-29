@@ -259,7 +259,10 @@ resulting rule with `Required`.
 | `not` | `rule: spec` |
 | `every` | `rules: {query: spec, ...}` |
 
-Plus the universal meta fields `type` and `required`. Unknown
+Plus the universal meta fields `type` and `required`. The `type`
+names are the Go rule types in lower case (`map`, `bool`); error
+messages name the data by its JSON type (`expected object, got
+boolean`), as `tree.Type.String` and `type()` do. Unknown
 fields on a spec are rejected. Field types are checked strictly —
 for example, `min: "0"` is an error, not coerced to `0`.
 

@@ -130,7 +130,7 @@ func TestValidate(t *testing.T) {
 				".a": String{},
 				".b": Int{},
 			},
-			wantErrs: []string{".a: expected string, got number", ".b: expected number, got bool"},
+			wantErrs: []string{".a: expected string, got number", ".b: expected number, got boolean"},
 		},
 		{
 			caseName: "nil map value under [] is null",

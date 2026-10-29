@@ -71,11 +71,11 @@ func TestTypeString(t *testing.T) {
 		want     string
 	}{
 		{caseName: "array", typ: TypeArray, want: "array"},
-		{caseName: "map", typ: TypeMap, want: "map"},
+		{caseName: "map", typ: TypeMap, want: "object"},
 		{caseName: "value bitmask", typ: TypeValue, want: "value"},
-		{caseName: "nil", typ: TypeNilValue, want: "nil"},
+		{caseName: "nil", typ: TypeNilValue, want: "null"},
 		{caseName: "string", typ: TypeStringValue, want: "string"},
-		{caseName: "bool", typ: TypeBoolValue, want: "bool"},
+		{caseName: "bool", typ: TypeBoolValue, want: "boolean"},
 		{caseName: "number", typ: TypeNumberValue, want: "number"},
 		{caseName: "zero unknown", typ: Type(0), want: "unknown"},
 		{caseName: "unknown bit pattern", typ: Type(0b1111), want: "unknown"},
