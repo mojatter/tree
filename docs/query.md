@@ -189,7 +189,7 @@ On `null`, `[]`, a select and a slice edit nothing. A slice edits each element i
 
 ### Multiple matches
 
-An edit through `..key`, `[]`, a select or a slice gives each match its own copy of the RHS, so editing one match later leaves the others as they are. A `..key` edit also edits inner matches before outer ones, so it never edits inside the RHS, i.e. a value it has just assigned: `..b = {"b": 1}` on `{"b": {"b": 2}}` gives `{"b": {"b": 1}}`. If an inner match does not fit the rest of the path, or `+=` finds a value that is not an array or `null`, the edit stops with an error, as in jq: `..b.c = 1` on `{"b": {"c": {"b": []}}}` fails with `cannot index array with c`, and `..a += 1` on `{"a": 1, "b": {"a": []}}` sets `b.a` to `[1]` and then fails with `cannot append to "a"`. `..key` with a numeric `key` edits arrays too, inner arrays first: `..0 = 9` on `{"a": [[1], [2]]}` gives `{"a": [9, [9]]}`. Edits are not transactional: when a match fails, the matches edited before it stay edited, except that `^?` with a trailing `.` deletes from a container only after its selector has accepted or rejected every element, so a selector that fails there deletes nothing from that container (see [Edit errors](#edit-errors)).
+An edit through `..key`, `[]`, a select or a slice gives each match its own copy of the RHS, so editing one match later leaves the others as they are. A `..key` edit also edits inner matches before outer ones, so it never edits inside the RHS, i.e. a value it has just assigned: `..b = {"b": 1}` on `{"b": {"b": 2}}` gives `{"b": {"b": 1}}`. If an inner match does not fit the rest of the path, or `+=` finds a value that is not an array or `null`, the edit stops with an error, as in jq: `..b.c = 1` on `{"b": {"c": {"b": []}}}` fails with `cannot index array with "c"`, and `..a += 1` on `{"a": 1, "b": {"a": []}}` sets `b.a` to `[1]` and then fails with `cannot append to number`. `..key` with a numeric `key` edits arrays too, inner arrays first: `..0 = 9` on `{"a": [[1], [2]]}` gives `{"a": [9, [9]]}`. Edits are not transactional: when a match fails, the matches edited before it stay edited, except that `^?` with a trailing `.` deletes from a container only after its selector has accepted or rejected every element, so a selector that fails there deletes nothing from that container (see [Edit errors](#edit-errors)).
 
 ### Null intermediates
 
@@ -208,21 +208,18 @@ An edit fails for a syntax error, an unsupported step (see [Paths](#paths)), mor
 
 | Condition | Example | Message |
 | - | - | - |
-| A key or index on a scalar | `.a.b = 1` on `{"a": 1}` | `cannot index array with "b"` |
-| A key that is not a non-negative integer on an array | `.a.b = 1` on `{"a": []}` | `cannot index array with b` |
-| A negative index before the start of an array | `.a[-5] = 1` on `{"a": []}` | `cannot index array with -5`; `+=` and `^?` say `cannot append to array with -5` and `cannot delete array with -5` |
-| `+=` on a value that is not an array or `null` | `.a += 1` on `{"a": 1}` | `cannot append to "a"` |
-| `^?` on a scalar | `.a.b ^?` on `{"a": 1}` | `cannot delete "b"` |
-| `first()` or `last()` on an object | `.a.first() = 1` on `{"a": {}}` | `cannot edit first() of a map` |
-| `[]` or a select on a scalar | `.a[]. = 1` on `{"a": 1}` | `cannot index array with []` |
-| A slice on a scalar | `.a[1:]. = 1` on `{"a": 1}` | `cannot index array with range [1:]` |
+| A key, an index, `first()`, `last()` or a slice on a scalar | `.a.b = 1` or `.a.b ^?`, `.a[0] = 1`, `.a.first() = 1`, `.a[1:]. = 1` on `{"a": 1}` | `cannot index number with "b"`, `cannot index number with 0`, `cannot index number with first()`, `cannot index number with [1:]` |
+| A key that is not a non-negative integer on an array | `.a.b = 1` on `{"a": []}` | `cannot index array with "b"` |
+| A negative index before the start of an array, `last()` on an empty array included | `.a[-5] = 1` or `.a.last() = 1` on `{"a": []}` | `cannot index array with -5`, `cannot index array with -1` |
+| `first()`, `last()` or a slice on an object | `.a.first() = 1`, `.a[1:]. = 1` on `{"a": {}}` | `cannot index object with first()`, `cannot index object with [1:]` |
+| `[]` or a select on a scalar | `.a[]. = 1` on `{"a": 1}` | `cannot iterate over number` |
+| `+=` on a value that is not an array or `null`, however the edit reaches it | `.a += 1` on `{"a": 1}`, `. += 1` on `1`, `.a[]. += 1` on `{"a": [1]}` | `cannot append to number` |
 | An index of `1<<24` or more | `.a[16777216] = 1` | `array index 16777216 exceeds maximum 16777215` |
-| `+=` on a root, or on an element a trailing `.` names, that is not an array or `null` | `. += 1` on `1`, `.a[]. += 1` on `{"a": [1]}` | `cannot append to .` |
 | `^?` on the root itself | `. ^?` | `cannot delete .` |
 
-An edit whose steps are all keys, indexes, `first()` and `last()` leaves the document as it was when it fails, a `null` root included: `.a[16777216] = 1` on `{}` leaves `{}` and on `null` leaves `null`. An edit with several matches keeps the matches edited before the failure (see [Multiple matches](#multiple-matches)); `^?` with a trailing `.` runs the selector on every element or value of a container before it deletes any of them, so a selector that fails deletes nothing from that container, while the containers it deleted from before, through `..key` or an earlier `[]`, stay edited: `..a[.t[] == 1]. ^?` on `{"x": {"a": [{"t": [1]}]}, "y": {"a": [{"t": [1, 2]}]}}` empties `x.a` and then fails on `y.a`. A caller that needs the document untouched after any failure edits a deep copy, `c := tree.CloneDeep(n)` (`Clone` copies only the top level); tq `-U` writes a file only when every edit on it succeeds.
+Each message names the receiver's type as `type()` does, whatever the operator and whether an array is an `Array`, a `*Array` or inside an `Any`: `.a.b += 1` and `.a.b ^?` on `{"a": []}` fail like `.a.b = 1`. A key, a method or a slice is shown as the query prints it, a key always quoted and an index as a number (`.a[ 1 : ]. = 1` says `[1:]`), except that `last()` on an empty array fails as the index `-1` it resolves to. A custom `EditorNode` reports its own `Set` and `Delete` errors.
 
-Messages that say "array" for another receiver, and whether they quote the key, are tracked in [#98](https://github.com/mojatter/tree/issues/98).
+An edit whose steps are all keys, indexes, `first()` and `last()` leaves the document as it was when it fails, a `null` root included: `.a[16777216] = 1` on `{}` leaves `{}` and on `null` leaves `null`. An edit with several matches keeps the matches edited before the failure (see [Multiple matches](#multiple-matches)); `^?` with a trailing `.` runs the selector on every element or value of a container before it deletes any of them, so a selector that fails deletes nothing from that container, while the containers it deleted from before, through `..key` or an earlier `[]`, stay edited: `..a[.t[] == 1]. ^?` on `{"x": {"a": [{"t": [1]}]}, "y": {"a": [{"t": [1, 2]}]}}` empties `x.a` and then fails on `y.a`. A caller that needs the document untouched after any failure edits a deep copy, `c := tree.CloneDeep(n)` (`Clone` copies only the top level); tq `-U` writes a file only when every edit on it succeeds.
 
 ## Deviations
 

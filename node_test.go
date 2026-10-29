@@ -476,7 +476,7 @@ func TestEditorNodeAppend(t *testing.T) {
 			caseName: "Map rejected",
 			n:        Map{},
 			values:   []Node{StringValue("2")},
-			errstr:   "cannot append to map",
+			errstr:   "cannot append to object",
 		},
 	}
 	for _, tc := range testCases {
@@ -558,7 +558,12 @@ func TestEditorNodeSet(t *testing.T) {
 			caseName: "Map bool key rejected",
 			n:        Map{},
 			entries:  map[any]Node{true: StringValue("value")},
-			errstr:   "cannot index array with true",
+			errstr:   "cannot index object with true",
+		}, {
+			caseName: "nil Map rejected",
+			n:        Map(nil),
+			entries:  map[any]Node{"key": StringValue("value")},
+			errstr:   `cannot set "key" in a nil map`,
 		},
 	}
 	for _, tc := range testCases {
@@ -626,7 +631,7 @@ func TestEditorNodeDelete(t *testing.T) {
 			caseName: "Map bool key rejected",
 			n:        Map{},
 			keys:     []any{true},
-			errstr:   "cannot index array with true",
+			errstr:   "cannot index object with true",
 		},
 	}
 	for _, tc := range testCases {

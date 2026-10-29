@@ -96,6 +96,32 @@ func orNil(n Node) Node {
 	return n
 }
 
+// errIndex reports that step cannot index n, with a key quoted, an index as a number and a query as written.
+func errIndex(n Node, step any) error {
+	return fmt.Errorf("cannot index %s with %s", orNil(n).Type(), formatStep(step))
+}
+
+// errAppend reports that n, which is not an array or null, cannot be appended to.
+func errAppend(n Node) error {
+	return fmt.Errorf("cannot append to %s", orNil(n).Type())
+}
+
+// errIterate reports that [] or a select cannot iterate over n, which is not a container or null.
+func errIterate(n Node) error {
+	return fmt.Errorf("cannot iterate over %s", orNil(n).Type())
+}
+
+// formatStep renders a key quoted and a query as the query prints them, and anything else with %v.
+func formatStep(step any) string {
+	switch s := step.(type) {
+	case string:
+		return quoteString(s)
+	case Query:
+		return s.String()
+	}
+	return fmt.Sprint(step)
+}
+
 // unwrapAny returns the node an Any or *Any wraps, so an EditorNode inside is edited in place, with a Go nil as Nil.
 func unwrapAny(n Node) Node {
 	for {

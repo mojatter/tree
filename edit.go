@@ -6,7 +6,6 @@ import (
 	"io"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 
 	"go.yaml.in/yaml/v3"
@@ -63,14 +62,19 @@ type indexQuery interface {
 	editIndex() ArrayQuery
 }
 
-// editStep returns the step an edit applies for q on n: the index of an indexQuery, rejecting a map, which [0] would edit by key "0", and q itself otherwise.
+// editStep returns q, or an indexQuery's index, rejecting a map (which [0] would edit by key "0") or a non-EditorNode scalar.
 func editStep(n Node, q Query) (Query, error) {
 	iq, ok := q.(indexQuery)
 	if !ok {
 		return q, nil
 	}
-	if !isNullLike(n) && n.Type().IsMap() {
-		return nil, fmt.Errorf("cannot edit %s of a map", q)
+	if !isNullLike(n) {
+		if n.Type().IsMap() {
+			return nil, errIndex(n, q)
+		}
+		if _, ok := n.(EditorNode); !ok && !n.Type().IsArray() {
+			return nil, errIndex(n, q)
+		}
 	}
 	return iq.editIndex(), nil
 }
@@ -346,7 +350,7 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 		index := int(tq)
 		if a := n.Array(); a != nil {
 			if index = tq.resolveIndex(len(a)); index < 0 {
-				return fmt.Errorf("cannot index array with %d", int(tq))
+				return errIndex(n, int(tq))
 			}
 		}
 		return resolveArrayStep(pn, n, index, fq, step, op, v, as)
@@ -414,11 +418,12 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 	}
 
 	if a := n.Array(); a != nil {
-		i, err := strconv.Atoi(key)
-		if err != nil || i < 0 {
-			return fmt.Errorf("cannot index array with %v", key)
+		i, _ := a.toIndex(key)
+		if i < 0 {
+			return errIndex(n, key)
 		}
 		if i >= len(a) {
+			var err error
 			if a, err = growArray(a, i); err != nil {
 				return err
 			}
@@ -443,7 +448,7 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 	if n.IsNil() {
 		return nil // a null root the edit creates nothing for stays as it is
 	}
-	return fmt.Errorf("cannot index array with %q", key)
+	return errIndex(n, key)
 }
 
 // resolveArrayStep handles an ArrayQuery intermediate step with write-back.
@@ -491,7 +496,7 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 	if n.IsNil() {
 		return nil // a null root the edit creates nothing for stays as it is
 	}
-	return fmt.Errorf("cannot index array with %d", index)
+	return errIndex(n, index) // not an array, so index is the step as written
 }
 
 // resolveSelectStep handles a SelectQuery intermediate step with write-back.
@@ -508,7 +513,7 @@ func resolveSelectStep(pn *Node, n Node, sq SelectQuery, fq FilterQuery, step in
 		return nil // a null the edit creates nothing for, or an array with no elements, stays as it is
 	}
 	if !n.Type().IsMap() {
-		return fmt.Errorf("cannot index array with %s", sq)
+		return errIterate(n)
 	}
 	en, ok := n.(EditorNode)
 	if !ok {
@@ -573,7 +578,7 @@ func resolveRangeStep(pn *Node, n Node, rq ArrayRangeQuery, fq FilterQuery, step
 		if isNullLike(n) || n.Type().IsArray() {
 			return nil // a null the edit creates nothing for, or an array with no elements, stays as it is
 		}
-		return fmt.Errorf("cannot index array with range %s", rq)
+		return errIndex(n, rq)
 	}
 	from := resolveRangeBound(rq.From, len(a), 0)
 	to := resolveRangeBound(rq.To, len(a), len(a))
@@ -665,15 +670,16 @@ func compact(a Array, del []int) Array {
 	return append(kept, a[next:]...)
 }
 
-// isNullLike reports whether n is null or a nil Map or Array, which an edit replaces like null.
+// isNullLike reports whether n is null or a nil Map or Array, inside an Any or not, which an edit replaces like null.
 func isNullLike(n Node) bool {
-	switch tn := n.(type) {
+	u := unwrapAny(n)
+	switch tn := u.(type) {
 	case Map:
 		return tn == nil
 	case Array:
 		return tn == nil
 	}
-	return isNull(n)
+	return u.Type().IsNilValue()
 }
 
 // emptyIntermediate returns an empty node for the next step of rest, or nil when a delete or a later step could not create its container.
