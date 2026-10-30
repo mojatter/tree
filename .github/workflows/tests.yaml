@@ -12,8 +12,14 @@ on:
   workflow_call:
 
 jobs:
-  tests:
+  test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - go-version-file: go.mod
+          - go-version: stable
     steps:
       -
         name: Checkout
@@ -22,18 +28,27 @@ jobs:
         name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          go-version: ${{ matrix.go-version }}
+          go-version-file: ${{ matrix.go-version-file }}
       -
         name: Run go test
-        run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
-      -
-        name: Upload coverage
-        uses: actions/upload-artifact@v7
-        with:
-          name: coverage
-          path: coverage.out
+        run: go test -race ./...
       -
         name: Run golangci-lint
+        if: matrix.go-version-file == 'go.mod'
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.11.4
+
+  # Aggregates the matrix under the name "tests", the required check on main.
+  tests:
+    runs-on: ubuntu-latest
+    needs: test
+    if: always()
+    steps:
+      - name: Check matrix results
+        run: |
+          if [ "${{ needs.test.result }}" != "success" ]; then
+            echo "matrix job failed: ${{ needs.test.result }}"
+            exit 1
+          fi

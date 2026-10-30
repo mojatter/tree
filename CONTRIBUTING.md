@@ -82,10 +82,10 @@ make bench BENCHTIME=10s BENCHCOUNT=3
 
 These run automatically in CI:
 
-- `tests` workflow — `go test -race -coverprofile=...` on Ubuntu plus
-  `golangci-lint`.
-- `release` workflow — runs the same `tests` job on tag pushes, then
-  `goreleaser`.
+- `tests` workflow — `go test -race` on Ubuntu on the `toolchain` version
+  in `go.mod` and on `stable`, plus `golangci-lint` on the `go.mod` leg.
+- `release` workflow — runs the same `tests` workflow (both Go legs) on
+  tag pushes, then `goreleaser`; a failure on `stable` blocks the release.
 - `govulncheck` workflow — weekly schedule plus PR runs that touch
   `go.mod` / `go.sum`.
 
