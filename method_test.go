@@ -324,6 +324,16 @@ func TestMethodQuery(t *testing.T) {
 			n:        Array{ToValue(2), nil, Any{}, ToValue(1)},
 			want:     []Node{Array{Nil, Nil, ToValue(1), ToValue(2)}},
 		}, {
+			caseName: "sort zero Any receiver",
+			q:        &SortQuery{},
+			n:        Any{},
+			want:     []Node{Nil},
+		}, {
+			caseName: "rsort zero Any receiver",
+			q:        &RSortQuery{},
+			n:        Any{},
+			want:     []Node{Nil},
+		}, {
 			caseName: "rsort Go nil elements",
 			q:        &RSortQuery{},
 			n:        Array{ToValue(2), nil, Any{}, ToValue(1)},
