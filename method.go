@@ -107,7 +107,7 @@ func (q *KeysQuery) String() string {
 }
 
 // ValuesQuery returns the values of arrays or maps as an array.
-// For arrays, returns the array itself. For maps, returns values in key order.
+// For arrays, returns the array itself, or a copy with Nil for each Go nil element. For maps, returns values in key order.
 type ValuesQuery struct{}
 
 // NewValuesQuery creates a new ValuesQuery instance.
@@ -117,20 +117,14 @@ func NewValuesQuery(args ...string) (Query, error) {
 }
 
 // Exec returns the values of the node as an array.
-// For arrays, returns the array itself. For maps, returns values in key order.
+// For arrays, returns the array itself, or a copy with Nil for each Go nil element. For maps, returns values in key order.
 // Returns nil for other node types.
 func (q *ValuesQuery) Exec(n Node) ([]Node, error) {
 	switch n.Type() {
 	case TypeArray:
-		return []Node{n.Array()}, nil
+		return []Node{Array(orNilAll(n.Array()))}, nil
 	case TypeMap:
-		m := n.Map()
-		keys := m.Keys()
-		values := make(Array, len(keys))
-		for i, key := range keys {
-			values[i] = m[key]
-		}
-		return []Node{values}, nil
+		return []Node{Array(n.Map().Values())}, nil
 	}
 	return nil, nil
 }
@@ -384,9 +378,10 @@ func sortNodes(a Array, q Query, desc bool) (Array, error) {
 	type item struct{ node, key Node }
 	items := make([]item, len(a))
 	for i, n := range a {
+		n = orNil(n)
 		key := n
 		if q != nil {
-			rs, err := q.Exec(orNil(n))
+			rs, err := q.Exec(n)
 			if err != nil {
 				return nil, err
 			}
@@ -435,10 +430,10 @@ func NewSortQuery(args ...string) (Query, error) {
 }
 
 // Exec sorts the elements of the node if it's an array.
-// For non-array types, returns the node as is in a slice.
+// For non-array types, returns the node as is in a slice, a zero Any as Nil.
 func (q *SortQuery) Exec(n Node) ([]Node, error) {
 	if n.Type() != TypeArray {
-		return []Node{n}, nil
+		return []Node{orNil(n)}, nil
 	}
 	sorted, err := sortNodes(n.Array(), q.Query, false)
 	if err != nil {
@@ -478,10 +473,10 @@ func NewRSortQuery(args ...string) (Query, error) {
 }
 
 // Exec sorts the elements of the node in reverse order if it's an array.
-// For non-array types, returns the node as is in a slice.
+// For non-array types, returns the node as is in a slice, a zero Any as Nil.
 func (q *RSortQuery) Exec(n Node) ([]Node, error) {
 	if n.Type() != TypeArray {
-		return []Node{n}, nil
+		return []Node{orNil(n)}, nil
 	}
 	sorted, err := sortNodes(n.Array(), q.Query, true)
 	if err != nil {
