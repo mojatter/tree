@@ -2,6 +2,7 @@ package tree
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -161,6 +162,78 @@ func TestWalk(t *testing.T) {
 	}
 	if len(expected) != i {
 		t.Errorf("fn is called %d times; want %d", i, len(expected))
+	}
+}
+
+// rawEachNode wraps a Map whose Each passes a child as stored, without turning a Go nil node into Nil.
+type rawEachNode struct{ Node }
+
+func (n rawEachNode) Each(cb func(key any, v Node) error) error {
+	m := n.Node.(Map)
+	for _, k := range m.Keys() {
+		if err := cb(k, m[k]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func TestWalkGoNil(t *testing.T) {
+	type visit struct {
+		keys []any
+		n    Node
+	}
+	testCases := []struct {
+		caseName string
+		root     Node
+		want     []visit
+	}{
+		{
+			caseName: "Go nil children are visited as Nil",
+			root:     Map{"a": nil, "b": Array{nil, Any{}}},
+			want: []visit{
+				{[]any{}, Map{"a": nil, "b": Array{nil, Any{}}}},
+				{[]any{"a"}, Nil},
+				{[]any{"b"}, Array{nil, Any{}}},
+				{[]any{"b", 0}, Nil},
+				{[]any{"b", 1}, Nil},
+			},
+		}, {
+			caseName: "custom Each passing Go nil children visits them as Nil",
+			root:     rawEachNode{Map{"a": nil, "b": (*Map)(nil)}},
+			want: []visit{
+				{[]any{}, rawEachNode{Map{"a": nil, "b": (*Map)(nil)}}},
+				{[]any{"a"}, Nil},
+				{[]any{"b"}, Nil},
+			},
+		}, {
+			caseName: "Go nil root is visited as Nil",
+			root:     nil,
+			want:     []visit{{[]any{}, Nil}},
+		}, {
+			caseName: "zero Any root is visited as Nil",
+			root:     Any{},
+			want:     []visit{{[]any{}, Nil}},
+		}, {
+			caseName: "nil *Map root is visited as Nil",
+			root:     (*Map)(nil),
+			want:     []visit{{[]any{}, Nil}},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			var got []visit
+			err := Walk(tc.root, func(n Node, keys []any) error {
+				got = append(got, visit{slices.Clone(keys), n})
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %#v; want %#v", got, tc.want)
+			}
+		})
 	}
 }
 

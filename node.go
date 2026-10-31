@@ -102,6 +102,7 @@ type Node interface {
 	Get(keys ...any) Node
 	// Each calls the callback function for each Array|Map values.
 	// If the node type is not Array|Map then the callback called once with nil key and self as value.
+	// A Go nil value is passed as Nil.
 	Each(cb func(key any, v Node) error) error
 	// Find finds a node using the query expression.
 	Find(expr string) ([]Node, error)
@@ -244,10 +245,10 @@ func (n Array) Get(keys ...any) Node {
 	return Nil
 }
 
-// Each calls the callback function for each element of the Array.
+// Each calls the callback function for each element of the Array, passing a Go nil element as Nil.
 func (n Array) Each(cb func(key any, n Node) error) error {
 	for i, v := range n {
-		if err := cb(i, v); err != nil {
+		if err := cb(i, orNil(v)); err != nil {
 			return err
 		}
 	}
@@ -435,10 +436,10 @@ func (n Map) Delete(key any) error {
 	return errIndex(n, key)
 }
 
-// Each calls the callback function for each value of the Map, in sorted key order.
+// Each calls the callback function for each value of the Map, in sorted key order, passing a Go nil value as Nil.
 func (n Map) Each(cb func(key any, n Node) error) error {
 	for _, k := range n.Keys() {
-		if err := cb(k, n[k]); err != nil {
+		if err := cb(k, orNil(n[k])); err != nil {
 			return err
 		}
 	}

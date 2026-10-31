@@ -413,6 +413,14 @@ func TestNodeEach(t *testing.T) {
 			n:        Any{Map{"a": NumberValue(0), "b": NumberValue(1)}},
 			want:     map[any]Node{"a": NumberValue(0), "b": NumberValue(1)},
 		}, {
+			caseName: "Array with Go nil elements",
+			n:        Array{nil, Any{}, (*Map)(nil)},
+			want:     map[any]Node{0: Nil, 1: Nil, 2: Nil},
+		}, {
+			caseName: "Map with Go nil values",
+			n:        Map{"a": nil, "b": Any{}},
+			want:     map[any]Node{"a": Nil, "b": Nil},
+		}, {
 			caseName: "zero Any",
 			n:        Any{},
 			want:     map[any]Node{nil: Nil},

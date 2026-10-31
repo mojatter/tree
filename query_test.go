@@ -286,6 +286,11 @@ func TestQuery(t *testing.T) {
 			q:        WalkQuery("a"),
 			n:        rawGetNode{Map{"a": (*Array)(nil)}},
 			want:     []Node{Nil},
+		}, {
+			caseName: "walk: Go nil children are visited and do not match",
+			q:        WalkQuery("k"),
+			n:        Map{"a": nil, "b": Map{"k": ToValue(1)}, "c": Array{nil, Any{}}},
+			want:     []Node{ToValue(1)},
 		},
 	}
 	for _, tc := range testCases {

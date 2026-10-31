@@ -406,9 +406,6 @@ func (q WalkQuery) Exec(root Node) ([]Node, error) {
 	var r []Node
 	// NOTE: Walk returns no error.
 	_ = Walk(root, func(n Node, keys []any) error {
-		if n == nil {
-			return nil
-		}
 		if n.Has(key) {
 			r = append(r, orNil(n.Get(key)))
 		}

@@ -259,16 +259,14 @@ type WalkFunc func(n Node, keys []any) error
 
 // Walk walks the node tree rooted at root, calling fn for each node or
 // that children in the tree, including root.
+// A Go nil root or child is visited as Nil.
 func Walk(n Node, fn WalkFunc) error {
-	return walk(n, []any{}, fn)
+	return walk(orNil(n), []any{}, fn)
 }
 
 // walk is a recursive helper function that traverses the node tree.
 // It maintains the path of keys from root to current node.
 func walk(n Node, lastKeys []any, fn WalkFunc) error {
-	if isGoNil(n) {
-		return nil
-	}
 	if err := fn(n, lastKeys); err != nil {
 		if err == SkipWalk {
 			return nil
@@ -285,7 +283,7 @@ func walk(n Node, lastKeys []any, fn WalkFunc) error {
 			return nil
 		}
 		keys[last] = key
-		return walk(v, keys, fn)
+		return walk(orNil(v), keys, fn)
 	})
 }
 
