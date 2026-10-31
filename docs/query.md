@@ -95,7 +95,7 @@ A `null` element of an array or value of an object is yielded as `null`.
 | - | - | - | - | - |
 | `count()` | `0` | `0` | the length | the number of keys |
 | `keys()` | nothing | nothing | `[0, 1, ...]` | the keys, sorted |
-| `values()` | nothing | nothing | the array itself, not a copy | a new array of the values, in sorted key order |
+| `values()` | nothing | nothing | the array itself | a new array of the values, in sorted key order |
 | `empty()` | `true` | `true` for `""`, else `false` | `true` when empty | `true` when empty |
 | `type()` | `"null"` | `"string"`, `"number"` or `"boolean"` | `"array"` | `"object"` |
 | `has(k)` | `false` | `false` | `true` when `k` is a non-negative index in range | `true` when the key exists, even with a `null` value |
@@ -103,6 +103,8 @@ A `null` element of an array or value of an object is yielded as `null`.
 | `first()`, `last()` | `null` | `null` | see [Receivers](#receivers) | `null` |
 | `sort([expr])` | the node as is | the node as is | a sorted copy | the node as is |
 | `rsort([expr])` | the node as is | the node as is | a copy sorted in descending order | the node as is |
+
+`values()`, `sort()` and `rsort()` yield an array whose own elements hold no Go `nil` node, each read as `null`: `values()` copies an array only when it holds a Go `nil` element, and `sort()` and `rsort()` sort a copy anyway. Nested arrays and objects are yielded as they are.
 
 `keys()` and `values()` yield one array, not one result per key, so `.a.keys()[]` yields each key. Array keys are numbers: `.a.keys()[. == 0]` matches and `.a.keys()[. == "0"]` does not. `first()` and `last()` are the single-valued steps of [Steps](#steps), listed here because they are written as methods.
 

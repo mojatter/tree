@@ -115,7 +115,7 @@ type EditorNode interface {
 	Delete(key any) error
 }
 
-// Any wraps a Node and delegates every Node method to it.
+// Any wraps a Node and delegates every Node method to it, reading the Node it wraps as Nil when it is a Go nil or nil pointer.
 type Any struct {
 	Node
 }
@@ -124,42 +124,42 @@ var _ Node = (*Any)(nil)
 
 // IsNil delegates to the wrapped Node.
 func (n Any) IsNil() bool {
-	return n.Node.IsNil()
+	return orNil(n.Node).IsNil()
 }
 
 // Type returns the type of the wrapped Node.
 func (n Any) Type() Type {
-	return n.Node.Type()
+	return orNil(n.Node).Type()
 }
 
 // Array returns the wrapped Node as an Array.
 func (n Any) Array() Array {
-	return n.Node.Array()
+	return orNil(n.Node).Array()
 }
 
 // Map returns the wrapped Node as a Map.
 func (n Any) Map() Map {
-	return n.Node.Map()
+	return orNil(n.Node).Map()
 }
 
 // Value returns the wrapped Node as a Value.
 func (n Any) Value() Value {
-	return n.Node.Value()
+	return orNil(n.Node).Value()
 }
 
 // Has delegates to the wrapped Node.
 func (n Any) Has(keys ...any) bool {
-	return n.Node.Has(keys...)
+	return orNil(n.Node).Has(keys...)
 }
 
 // Get returns the child node of the wrapped Node that matches the specified keys.
 func (n Any) Get(keys ...any) Node {
-	return n.Node.Get(keys...)
+	return orNil(n.Node).Get(keys...)
 }
 
 // Each delegates to the wrapped Node.
 func (n Any) Each(cb func(key any, n Node) error) error {
-	return n.Node.Each(cb)
+	return orNil(n.Node).Each(cb)
 }
 
 // Find finds nodes in the wrapped Node using the query expression.

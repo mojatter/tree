@@ -50,6 +50,16 @@ func TestMethodQuery(t *testing.T) {
 			n:        ToArrayValues(1, 2, 3),
 			want:     []Node{ToArrayValues(1, 2, 3)},
 		}, {
+			caseName: "values map with Go nil values",
+			q:        &ValuesQuery{},
+			n:        Map{"a": nil, "b": Any{}, "c": (*Map)(nil), "d": Any{StringValue("1")}},
+			want:     []Node{Array{Nil, Nil, Nil, Any{StringValue("1")}}},
+		}, {
+			caseName: "values array with Go nil elements",
+			q:        &ValuesQuery{},
+			n:        Array{nil, ToValue(1), Any{}},
+			want:     []Node{Array{Nil, ToValue(1), Nil}},
+		}, {
 			caseName: "empty array true",
 			q:        &EmptyQuery{},
 			n:        Array{},
@@ -236,7 +246,7 @@ func TestMethodQuery(t *testing.T) {
 			caseName: "sort by field on nil element sorts as null",
 			q:        &SortQuery{Expr: ".age", Query: MapQuery("age")},
 			n:        Array{Map{"age": NumberValue(1)}, nil},
-			want:     []Node{Array{nil, Map{"age": NumberValue(1)}}},
+			want:     []Node{Array{Nil, Map{"age": NumberValue(1)}}},
 		}, {
 			caseName: "first nil element is null",
 			q:        &FirstQuery{},
@@ -308,6 +318,26 @@ func TestMethodQuery(t *testing.T) {
 			q:        &SortQuery{},
 			n:        StringValue("test"),
 			want:     []Node{StringValue("test")},
+		}, {
+			caseName: "sort Go nil elements",
+			q:        &SortQuery{},
+			n:        Array{ToValue(2), nil, Any{}, ToValue(1)},
+			want:     []Node{Array{Nil, Nil, ToValue(1), ToValue(2)}},
+		}, {
+			caseName: "sort zero Any receiver",
+			q:        &SortQuery{},
+			n:        Any{},
+			want:     []Node{Nil},
+		}, {
+			caseName: "rsort zero Any receiver",
+			q:        &RSortQuery{},
+			n:        Any{},
+			want:     []Node{Nil},
+		}, {
+			caseName: "rsort Go nil elements",
+			q:        &RSortQuery{},
+			n:        Array{ToValue(2), nil, Any{}, ToValue(1)},
+			want:     []Node{Array{ToValue(2), ToValue(1), Nil, Nil}},
 		}, {
 			caseName: "rsort array of numbers",
 			q:        &RSortQuery{},
@@ -411,7 +441,7 @@ func TestMethodQuery(t *testing.T) {
 			caseName: "sort nil pointer element as null",
 			q:        &SortQuery{},
 			n:        Array{ToValue(1), (*Map)(nil)},
-			want:     []Node{Array{(*Map)(nil), ToValue(1)}},
+			want:     []Node{Array{Nil, ToValue(1)}},
 		},
 	}
 	for _, tc := range testCases {

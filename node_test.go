@@ -171,6 +171,33 @@ func TestNode(t *testing.T) {
 			v:        NumberValue(1),
 			getValue: Nil,
 		}, {
+			caseName: "zero Any",
+			n:        Any{},
+			isNil:    true,
+			t:        TypeNilValue,
+			m:        Map(nil),
+			a:        Array(nil),
+			v:        Nil,
+			getValue: Nil,
+		}, {
+			caseName: "Any wrapping zero Any",
+			n:        Any{Any{}},
+			isNil:    true,
+			t:        TypeNilValue,
+			m:        Map(nil),
+			a:        Array(nil),
+			v:        Nil,
+			getValue: Nil,
+		}, {
+			caseName: "Any wrapping (*Map)(nil)",
+			n:        Any{(*Map)(nil)},
+			isNil:    true,
+			t:        TypeNilValue,
+			m:        Map(nil),
+			a:        Array(nil),
+			v:        Nil,
+			getValue: Nil,
+		}, {
 			caseName: "Any wrapping Map(nil)",
 			n:        Any{Map(nil)},
 			isNil:    true,
@@ -385,6 +412,14 @@ func TestNodeEach(t *testing.T) {
 			caseName: "Any wrapping Map",
 			n:        Any{Map{"a": NumberValue(0), "b": NumberValue(1)}},
 			want:     map[any]Node{"a": NumberValue(0), "b": NumberValue(1)},
+		}, {
+			caseName: "zero Any",
+			n:        Any{},
+			want:     map[any]Node{nil: Nil},
+		}, {
+			caseName: "Any wrapping (*Map)(nil)",
+			n:        Any{(*Map)(nil)},
+			want:     map[any]Node{nil: Nil},
 		},
 	}
 	for _, tc := range testCases {
