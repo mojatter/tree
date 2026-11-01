@@ -407,7 +407,7 @@ func (n Map) Append(v Node) error {
 	return errAppend(n)
 }
 
-// Set sets v to n[key].
+// Set sets v to n[key]; a nil Map fails, even when called through a *Map, while Edit allocates the Map a *Map points to.
 func (n Map) Set(key any, v Node) error {
 	if n == nil {
 		return fmt.Errorf("cannot set %s in a nil map", formatStep(key))

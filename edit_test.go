@@ -47,6 +47,9 @@ func (n freshArrayNode) Get(keys ...any) Node                      { return n.Ar
 func (n freshArrayNode) Each(cb func(key any, n Node) error) error { return n.Array().Each(cb) }
 func (n freshArrayNode) Find(expr string) ([]Node, error)          { return Find(n, expr) }
 
+// plainNode is a custom node that is not an EditorNode.
+type plainNode struct{ Node }
+
 // leafEditorNode is a custom EditorNode holding a scalar or null, which rejects every edit.
 type leafEditorNode struct{ Node }
 
@@ -1821,9 +1824,10 @@ func TestEdit(t *testing.T) {
 			expr:     `.x.last().y = 1`,
 			errstr:   `cannot index object with last()`,
 		}, {
-			caseName: "intermediate map step leaves editor node wrapping nil map",
+			caseName: "intermediate map step on editor node wrapping nil map reports its own set error",
 			n:        Map{"x": valueEditorNode{Map(nil)}},
 			expr:     `.x.y.c = 1`,
+			errstr:   `cannot set "y" in a nil map`,
 			want:     Map{"x": valueEditorNode{Map(nil)}},
 		}, {
 			caseName: "last map step on editor node wrapping nil map reports its own set error",
@@ -1835,6 +1839,17 @@ func TestEdit(t *testing.T) {
 			n:        Map{"x": valueEditorNode{Map(nil)}},
 			expr:     `.x[0] = 1`,
 			errstr:   `cannot set 0 in a nil map`,
+		}, {
+			caseName: "numeric map step on editor node wrapping a pointer to a nil array grows it in place",
+			n:        Map{"x": valueEditorNode{new(Array)}},
+			expr:     `.x.0.c = 1`,
+			want:     Map{"x": valueEditorNode{&Array{Map{"c": NumberValue(1)}}}},
+		}, {
+			caseName: "intermediate map step on editor node wrapping a pointer to a nil array rejects a non-numeric key",
+			n:        Map{"x": valueEditorNode{new(Array)}},
+			expr:     `.x.y.c = 1`,
+			errstr:   `cannot index array with "y"`,
+			want:     Map{"x": valueEditorNode{new(Array)}},
 		}, {
 			caseName: "intermediate map step replaces null value",
 			n:        Map{"y": Nil},
@@ -1856,10 +1871,93 @@ func TestEdit(t *testing.T) {
 			expr:     `.x.foo.c = 1`,
 			errstr:   `cannot index array with "foo"`,
 		}, {
+			caseName: "intermediate map step rejects non-numeric key on a pointer to a nil array",
+			n:        Map{"x": new(Array)},
+			expr:     `.x.y.c = 1`,
+			errstr:   `cannot index array with "y"`,
+		}, {
 			caseName: "intermediate map step keeps nil pointer array",
 			n:        Map{"x": new(Array)},
 			expr:     `.x[0].c = 1`,
 			want:     Map{"x": &Array{Map{"c": NumberValue(1)}}},
+		}, {
+			caseName: "numeric map step grows a pointer to a nil array in place",
+			n:        Map{"x": new(Array)},
+			expr:     `.x.0.c = 1`,
+			want:     Map{"x": &Array{Map{"c": NumberValue(1)}}},
+		}, {
+			caseName: "set through a pointer to a nil map",
+			n:        Map{"a": new(Map)},
+			expr:     `.a.x = 1`,
+			want:     Map{"a": &Map{"x": NumberValue(1)}},
+		}, {
+			caseName: "append through a pointer to a nil map",
+			n:        Map{"a": new(Map)},
+			expr:     `.a.x += 1`,
+			want:     Map{"a": &Map{"x": Array{NumberValue(1)}}},
+		}, {
+			caseName: "intermediate map step through a pointer to a nil map",
+			n:        Map{"a": new(Map)},
+			expr:     `.a.x.y = 1`,
+			want:     Map{"a": &Map{"x": Map{"y": NumberValue(1)}}},
+		}, {
+			caseName: "index step through a pointer to a nil map sets the key",
+			n:        Map{"a": new(Map)},
+			expr:     `.a[0].y = 1`,
+			want:     Map{"a": &Map{"0": Map{"y": NumberValue(1)}}},
+		}, {
+			caseName: "set through a pointer to a nil map in Any",
+			n:        Map{"a": Any{Node: new(Map)}},
+			expr:     `.a.x = 1`,
+			want:     Map{"a": Any{Node: &Map{"x": NumberValue(1)}}},
+		}, {
+			caseName: "set on a pointer to a nil map root",
+			n:        new(Map),
+			expr:     `.x = 1`,
+			want:     &Map{"x": NumberValue(1)},
+		}, {
+			caseName: "index step under a pointer array writes through a pointer to a nil map",
+			n:        &Array{new(Map)},
+			expr:     `.[0].x = 1`,
+			want:     &Array{&Map{"x": NumberValue(1)}},
+		}, {
+			caseName: "index step under a pointer array writes through a pointer to a nil array",
+			n:        &Array{new(Array)},
+			expr:     `.[0][0] = 1`,
+			want:     &Array{&Array{NumberValue(1)}},
+		}, {
+			caseName: "index step under a pointer array replaces a nil pointer map",
+			n:        &Array{(*Map)(nil)},
+			expr:     `.[0].x = 1`,
+			want:     &Array{Map{"x": NumberValue(1)}},
+		}, {
+			caseName: "index step under a pointer array on editor node wrapping nil map reports its own set error",
+			n:        &Array{valueEditorNode{Map(nil)}},
+			expr:     `.[0].y = 1`,
+			errstr:   `cannot set "y" in a nil map`,
+		}, {
+			caseName: "index step under a pointer array fails on a custom node wrapping a nil map",
+			n:        &Array{plainNode{Map(nil)}},
+			expr:     `.[0].x = 1`,
+			errstr:   `cannot index object with "x"`,
+			want:     &Array{plainNode{Map(nil)}},
+		}, {
+			caseName: "index step under a pointer array fails on a custom node wrapping a nil array",
+			n:        &Array{plainNode{Array(nil)}},
+			expr:     `.[0][0] = 1`,
+			errstr:   `cannot index array with 0`,
+			want:     &Array{plainNode{Array(nil)}},
+		}, {
+			caseName: "index step under an array fails on a custom node wrapping a nil map",
+			n:        Array{plainNode{Map(nil)}},
+			expr:     `.[0].x = 1`,
+			errstr:   `cannot index object with "x"`,
+			want:     Array{plainNode{Map(nil)}},
+		}, {
+			caseName: "delete through a pointer to a nil map is a no-op",
+			n:        Map{"a": new(Map)},
+			expr:     `.a.x ^?`,
+			want:     Map{"a": new(Map)},
 		}, {
 			caseName: "delete through null intermediate is a no-op",
 			n:        Map{"x": Map{"y": Nil}},
@@ -2960,6 +3058,70 @@ func TestEditSetParity(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+// TestEditWritesThroughNilMapPointer pins that an edit through new(Map) keeps the original pointer and fills the Map it points to.
+func TestEditWritesThroughNilMapPointer(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		doc      func(m *Map) Node
+		expr     string
+		ptr      func(n Node) Node
+		want     Map
+	}{
+		{
+			caseName: "key",
+			doc:      func(m *Map) Node { return Map{"a": m} },
+			expr:     `.a.x = 1`,
+			ptr:      func(n Node) Node { return n.(Map)["a"] },
+			want:     Map{"x": NumberValue(1)},
+		}, {
+			caseName: "append",
+			doc:      func(m *Map) Node { return Map{"a": m} },
+			expr:     `.a.x += 1`,
+			ptr:      func(n Node) Node { return n.(Map)["a"] },
+			want:     Map{"x": Array{NumberValue(1)}},
+		}, {
+			caseName: "intermediate key",
+			doc:      func(m *Map) Node { return Map{"a": m} },
+			expr:     `.a.x.y = 1`,
+			ptr:      func(n Node) Node { return n.(Map)["a"] },
+			want:     Map{"x": Map{"y": NumberValue(1)}},
+		}, {
+			caseName: "intermediate index",
+			doc:      func(m *Map) Node { return Map{"a": m} },
+			expr:     `.a[0].y = 1`,
+			ptr:      func(n Node) Node { return n.(Map)["a"] },
+			want:     Map{"0": Map{"y": NumberValue(1)}},
+		}, {
+			caseName: "under a pointer array",
+			doc:      func(m *Map) Node { return &Array{m} },
+			expr:     `.[0].x = 1`,
+			ptr:      func(n Node) Node { return (*n.(*Array))[0] },
+			want:     Map{"x": NumberValue(1)},
+		}, {
+			caseName: "root",
+			doc:      func(m *Map) Node { return m },
+			expr:     `.x = 1`,
+			ptr:      func(n Node) Node { return n },
+			want:     Map{"x": NumberValue(1)},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			m := new(Map)
+			n := tc.doc(m)
+			if err := Edit(&n, tc.expr); err != nil {
+				t.Fatal(err)
+			}
+			if p, ok := tc.ptr(n).(*Map); !ok || p != m {
+				t.Errorf("got %#v; want the original *Map", tc.ptr(n))
+			}
+			if !reflect.DeepEqual(*m, tc.want) {
+				t.Errorf("got %#v; want %#v", *m, tc.want)
+			}
+		})
 	}
 }
 

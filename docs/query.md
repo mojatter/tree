@@ -202,7 +202,7 @@ A `null` reached by a step, including a Go `nil` value such as a hole left by gr
 
 A `null` root is replaced the same way: `.a.b = 1` on `null` gives `{"a": {"b": 1}}`, `. += 1` on `null` gives `[1]`, and `.[-1] = 1` on `null` changes nothing.
 
-An array whose `Array()` is nil, such as a pointer to a nil `Array`, edits as an empty array: `[]`, a select and a slice change nothing, and `+=` gives `[v]`.
+An array whose `Array()` is nil, such as a pointer to a nil `Array`, edits as an empty array: `[]`, a select and a slice change nothing, and `+=` gives `[v]`. A pointer to a nil `Map` edits as an empty object through the pointer: `.a.x = 1` on `{"a": new(tree.Map)}` sets `x` in the `Map` it points to.
 
 ### Edit errors
 

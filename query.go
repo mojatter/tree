@@ -59,6 +59,14 @@ func appendTo(n, v Node) (Node, bool) {
 	return nil, false
 }
 
+// setThrough sets key in en, first making a *Map holding a nil Map writable through the pointer, as (*Array).Set grows a nil Array.
+func setThrough(en EditorNode, key any, v Node) error {
+	if m, ok := en.(*Map); ok && *m == nil {
+		*m = Map{}
+	}
+	return en.Set(key, v)
+}
+
 func (q NopQuery) Delete(pn *Node) error {
 	return fmt.Errorf("cannot delete %s", ".")
 }
@@ -96,7 +104,7 @@ func (q MapQuery) Set(pn *Node, v Node) error {
 	n := unwrapAny(*pn)
 	key := string(q)
 	if en, ok := n.(EditorNode); ok {
-		return en.Set(key, v)
+		return setThrough(en, key, v)
 	}
 	if a := n.Array(); a != nil {
 		if err := a.Set(key, v); err != nil {
@@ -115,7 +123,7 @@ func (q MapQuery) Append(pn *Node, v Node) error {
 	if en, ok := n.(EditorNode); ok {
 		c := n.Get(key)
 		if r, ok := appendTo(c, v); ok {
-			return en.Set(key, r) // a *Array rejects a key that is not an index, as Set does
+			return setThrough(en, key, r) // a *Array rejects a key that is not an index, as Set does
 		}
 		return errAppend(c)
 	}
@@ -214,7 +222,7 @@ func (q ArrayQuery) Set(pn *Node, v Node) error {
 		}
 	}
 	if en, ok := n.(EditorNode); ok {
-		return en.Set(index, v)
+		return setThrough(en, index, v)
 	}
 	if a := n.Array(); a != nil {
 		if err := a.Set(index, v); err != nil {
@@ -238,7 +246,7 @@ func (q ArrayQuery) Append(pn *Node, v Node) error {
 	if en, ok := n.(EditorNode); ok {
 		c := n.Get(index)
 		if r, ok := appendTo(c, v); ok {
-			return en.Set(index, r)
+			return setThrough(en, index, r)
 		}
 		return errAppend(c)
 	}

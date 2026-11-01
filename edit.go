@@ -384,7 +384,7 @@ func resolveAndEdit(pn *Node, fq FilterQuery, step int, op string, v Node, as as
 
 // resolveMapStep handles a MapQuery intermediate step with write-back.
 func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op string, v Node, as assigned) error {
-	if en, ok := n.(EditorNode); ok && !n.IsNil() {
+	if en, ok := n.(EditorNode); ok && !isNullLike(n) {
 		child := en.Get(key)
 		if isNullLike(child) {
 			child = emptyIntermediate(op, fq[step+1:])
@@ -397,7 +397,7 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 			return err
 		}
 
-		return en.Set(key, child)
+		return setThrough(en, key, child)
 	}
 
 	if m := n.Map(); m != nil {
@@ -455,7 +455,7 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op string, v Node, as assigned) error {
 	if en, ok := n.(EditorNode); ok && !isNullLike(n) {
 		child := n.Get(index)
-		if isNull(child) || child.IsNil() { // a typed-nil child is replaced here too, as before
+		if isNullLike(child) {
 			child = emptyIntermediate(op, fq[step+1:])
 			if child == nil {
 				return nil
@@ -466,7 +466,7 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 			return err
 		}
 
-		return en.Set(index, child)
+		return setThrough(en, index, child)
 	}
 
 	if a := n.Array(); a != nil {
