@@ -22,6 +22,11 @@ linters:
         linters:
           - errcheck
           - gosec
+      # staticcheck flags SA5011 after an `if x == nil { t.Fatal() }` check, depending on the lint cache (golangci/golangci-lint#5979).
+      - path: _test\.go
+        linters:
+          - staticcheck
+        text: SA5011
 
 formatters:
   enable:
