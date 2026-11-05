@@ -71,6 +71,17 @@ func TestNodeMarshalJSON(t *testing.T) {
 		{caseName: "nil pointer Any", n: (*Any)(nil), want: `null`},
 		{caseName: "Map with Any values", n: Map{"a": Any{Node: StringValue("x")}, "b": Any{}}, want: `{"a":"x","b":null}`},
 		{caseName: "Any wrapping String with HTML", n: Any{Node: StringValue("<x>")}, want: `"\u003cx\u003e"`},
+		{caseName: "nil Map", n: Map(nil), want: `{}`},
+		{caseName: "nil Array", n: Array(nil), want: `[]`},
+		{caseName: "pointer to nil Map", n: new(Map), want: `{}`},
+		{caseName: "pointer to nil Array", n: new(Array), want: `[]`},
+		{caseName: "nil Map pointer", n: (*Map)(nil), want: `null`},
+		{caseName: "nil containers inside", n: Map{"a": Map(nil), "b": Array{Array(nil), new(Map)}, "c": Any{Node: Map(nil)}}, want: `{"a":{},"b":[[],{}],"c":{}}`},
+		{caseName: "Go nil children", n: Map{"a": nil, "b": (*Array)(nil), "c": Array{nil, Any{}, Nil}}, want: `{"a":null,"b":null,"c":[null,null,null]}`},
+		{caseName: "keys sorted and escaped", n: Map{"b": NumberValue(1), "a\"<": NumberValue(2.5)}, want: `{"a\"\u003c":2.5,"b":1}`},
+		{caseName: "nested String with HTML", n: Array{Map{"a": StringValue("<x>")}}, want: `[{"a":"\u003cx\u003e"}]`},
+		{caseName: "pointers and Any inside", n: Map{"a": &Map{"b": &Array{NumberValue(1)}}, "c": &Any{Node: Array(nil)}, "d": Any{Node: &Map{}}}, want: `{"a":{"b":[1]},"c":[],"d":{}}`},
+		{caseName: "nil pointer Any inside", n: Array{(*Any)(nil), &Any{}, &Any{Node: (*Map)(nil)}}, want: `[null,null,null]`},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
@@ -89,11 +100,100 @@ func TestNodeMarshalJSONEscapeHTML(t *testing.T) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
-	if err := enc.Encode(Map{"a": StringValue("<x>"), "b": Any{Node: StringValue("<x>")}}); err != nil {
+	if err := enc.Encode(Map{"a": StringValue("<x>"), "b": Any{Node: StringValue("<x>")}, "c": Array{Map{"<k>": StringValue("<x>")}}, "d": &Map{"e": StringValue("<x>")}}); err != nil {
 		t.Fatal(err)
 	}
-	if want := `{"a":"<x>","b":"<x>"}` + "\n"; buf.String() != want {
+	if want := `{"a":"<x>","b":"<x>","c":[{"<k>":"<x>"}],"d":{"e":"<x>"}}` + "\n"; buf.String() != want {
 		t.Errorf("got %s; want %s", buf.String(), want)
+	}
+}
+
+func TestNodeMarshalJSONEmbedded(t *testing.T) {
+	// The promoted MarshalJSON encodes the struct as its Map, as the promoted UnmarshalJSON decodes it.
+	got, err := json.Marshal(struct {
+		Map
+		X int
+	}{Map: Map{"a": NumberValue(1)}, X: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"a":1}`; string(got) != want {
+		t.Errorf("got %s; want %s", got, want)
+	}
+}
+
+func TestNodeMarshalJSONDepth(t *testing.T) {
+	nest := func(n int) Node {
+		var a Node = Array{}
+		for i := 1; i < n; i++ {
+			a = Array{a}
+		}
+		return a
+	}
+	cycle := Map{}
+	cycle["self"] = cycle
+	arrayCycle := Array{nil}
+	arrayCycle[0] = arrayCycle
+	ptrCycle := Map{}
+	ptrCycle["self"] = &ptrCycle
+	anyCycle := Map{}
+	anyCycle["self"] = Any{Node: anyCycle}
+	ptrAnyCycle := Map{}
+	ptrAnyCycle["self"] = &Any{Node: ptrAnyCycle}
+	testCases := []struct {
+		caseName string
+		n        Node
+		wantErr  bool
+	}{
+		{caseName: "nesting at the limit", n: nest(10000)},
+		{caseName: "nesting past the limit", n: nest(10001), wantErr: true},
+		{caseName: "cycle", n: cycle, wantErr: true},
+		{caseName: "cycle through Array", n: arrayCycle, wantErr: true},
+		{caseName: "cycle through *Map", n: ptrCycle, wantErr: true},
+		{caseName: "cycle through Any", n: anyCycle, wantErr: true},
+		{caseName: "cycle through *Any", n: ptrAnyCycle, wantErr: true},
+		{caseName: "cycle under a top-level Any", n: Any{Node: cycle}, wantErr: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			_, err := json.Marshal(tc.n)
+			if !tc.wantErr {
+				if err != nil {
+					t.Fatal(err)
+				}
+				return
+			}
+			if !errors.Is(err, errMaxDepth) {
+				t.Errorf("got %v; want %v", err, errMaxDepth)
+			}
+		})
+	}
+}
+
+func TestNodeMarshalJSONError(t *testing.T) {
+	nan := NumberValue(math.NaN())
+	testCases := []struct {
+		caseName string
+		n        Node
+	}{
+		{caseName: "Map", n: Map{"a": nan}},
+		{caseName: "Any wrapping Map", n: Any{Node: Map{"a": nan}}},
+		{caseName: "Array holding Any", n: Array{Any{Node: nan}}},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			_, err := json.Marshal(tc.n)
+			var me *json.MarshalerError
+			if !errors.As(err, &me) {
+				t.Fatalf("got %v; want a *json.MarshalerError", err)
+			}
+			if errors.As(me.Err, new(*json.MarshalerError)) {
+				t.Errorf("got %v; want one *json.MarshalerError", err)
+			}
+			if !errors.As(err, new(*json.UnsupportedValueError)) {
+				t.Errorf("got %v; want a *json.UnsupportedValueError", err)
+			}
+		})
 	}
 }
 
@@ -766,6 +866,38 @@ func FuzzUnmarshalJSON(f *testing.F) {
 			t.Errorf("accepted invalid JSON %q", data) // the reverse does not hold: 1e400 is valid but overflows float64
 		}
 	})
+}
+
+func TestUnmarshalViaJSONNilContainer(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		n        Node
+		v        any
+		want     any
+		wantErr  bool
+	}{
+		{caseName: "nil Map into a map", n: Map(nil), v: new(map[string]any), want: map[string]any{}},
+		{caseName: "nil Map into a nil map pointer", n: Map(nil), v: new(*map[string]any), want: &map[string]any{}},
+		{caseName: "nil Array into a slice", n: Array(nil), v: new([]any), want: []any{}},
+		{caseName: "nil Map into a slice", n: Map(nil), v: new([]any), wantErr: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			err := UnmarshalViaJSON(tc.n, tc.v)
+			if tc.wantErr {
+				if !errors.As(err, new(*json.UnmarshalTypeError)) {
+					t.Errorf("got %v; want a *json.UnmarshalTypeError", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := reflect.ValueOf(tc.v).Elem().Interface(); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %#v; want %#v", got, tc.want)
+			}
+		})
+	}
 }
 
 func TestJSONElemUnknownToken(t *testing.T) {
