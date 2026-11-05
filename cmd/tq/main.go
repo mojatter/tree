@@ -549,9 +549,6 @@ func (r *runner) evaluateNode(node tree.Node) error {
 }
 
 func (r *runner) output(node tree.Node) error {
-	if node == nil {
-		node = tree.Nil // a hole left by growing an array
-	}
 	t := node.Type()
 	if r.isRaw && t.IsValue() {
 		s := node.Value().String()
