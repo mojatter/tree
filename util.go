@@ -251,14 +251,13 @@ func ToAny(n Node) any {
 // "Err" prefix recommended by ST1012.
 var SkipWalk = errors.New("skip") //nolint:staticcheck // ST1012: sentinel value, see godoc
 
-// WalkFunc is the type of the function called by Walk to visit each nodes.
+// WalkFunc is the type of the function called by Walk to visit each node.
 //
-// The keys argument contains that parent keys and the node key that
-// type is int (array index) or string (map key).
+// The keys argument is the path from Walk's root to n: int for array indexes, string for map keys.
+// Each call gets its own keys slice; fn may keep it but must not modify it, as descendants' keys are copied from it.
 type WalkFunc func(n Node, keys []any) error
 
-// Walk walks the node tree rooted at root, calling fn for each node or
-// that children in the tree, including root.
+// Walk walks the tree rooted at n, calling fn for n and every node under it.
 // A Go nil root or child is visited as Nil.
 func Walk(n Node, fn WalkFunc) error {
 	return walk(orNil(n), []any{}, fn)
@@ -274,15 +273,13 @@ func walk(n Node, lastKeys []any, fn WalkFunc) error {
 		return err
 	}
 
-	last := len(lastKeys)
-	keys := make([]any, last+1)
-	copy(keys, lastKeys)
-
 	return n.Each(func(key any, v Node) error {
 		if key == nil {
 			return nil
 		}
-		keys[last] = key
+		keys := make([]any, len(lastKeys)+1)
+		copy(keys, lastKeys)
+		keys[len(lastKeys)] = key
 		return walk(orNil(v), keys, fn)
 	})
 }

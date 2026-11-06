@@ -2,7 +2,6 @@ package tree
 
 import (
 	"reflect"
-	"slices"
 	"testing"
 )
 
@@ -224,7 +223,46 @@ func TestWalkGoNil(t *testing.T) {
 		t.Run(tc.caseName, func(t *testing.T) {
 			var got []visit
 			err := Walk(tc.root, func(n Node, keys []any) error {
-				got = append(got, visit{slices.Clone(keys), n})
+				got = append(got, visit{keys, n})
+				return nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %#v; want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestWalkKeys(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		root     Node
+		record   func(keys []any) []any
+		want     [][]any
+	}{
+		{
+			caseName: "retained keys are not overwritten by the next sibling or by walk",
+			root:     Map{"a": Map{"b": Map{"c": Map{"d1": nil, "d2": nil}}}},
+			record:   func(keys []any) []any { return keys },
+			want:     [][]any{{}, {"a"}, {"a", "b"}, {"a", "b", "c"}, {"a", "b", "c", "d1"}, {"a", "b", "c", "d2"}},
+		}, {
+			caseName: "keys appended to in fn are not overwritten",
+			root:     Map{"a": Map{"b": Map{"c": Map{"d1": nil, "d2": nil}}}},
+			record:   func(keys []any) []any { return append(keys, "x") },
+			want: [][]any{
+				{"x"}, {"a", "x"}, {"a", "b", "x"}, {"a", "b", "c", "x"},
+				{"a", "b", "c", "d1", "x"}, {"a", "b", "c", "d2", "x"},
+			},
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			var got [][]any
+			err := Walk(tc.root, func(_ Node, keys []any) error {
+				got = append(got, tc.record(keys))
 				return nil
 			})
 			if err != nil {
