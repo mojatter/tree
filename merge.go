@@ -9,6 +9,7 @@ const (
 	// - {"a": 1, "b": 2} and {"a": 3, "c": 4} merges to {"a": 1, "b": 2, "c": 4}
 	// - [1, 2] and [3, 4, 5] merges to [1, 2, 5]
 	// - "a" and "b" merges to "a"
+	// - {"a": null} and {"a": 1} merges to {"a": 1}, and [null] and [1] to [1]
 	MergeOptionDefault MergeOption = 0
 	// MergeOptionOverrideMap overrides duplicate map keys.
 	// For examples:
@@ -117,6 +118,7 @@ func (o MergeOption) isSlurp() bool {
 //
 // A null a, including a Go nil or nil pointer node, is treated as missing
 // and Merge returns b (Nil if b is null too). A null b is merged as a value.
+// A null child of a paired with one of b by key, or by index unless arrays append, is missing too.
 func Merge(a, b Node, opts MergeOption) Node {
 	a, b = orNil(a), orNil(b)
 	if isNull(a) {
@@ -184,6 +186,11 @@ func mergeArray(a, b Array, opts MergeOption) Array {
 	if opts.isReplaceArray() {
 		return b
 	}
+	for i, v := range b[:min(len(a), len(b))] {
+		if isNull(a[i]) {
+			a[i] = Merge(a[i], v, opts)
+		}
+	}
 	if len(a) < len(b) {
 		return append(a, b[len(a):]...)
 	}
@@ -210,8 +217,10 @@ func mergeMap(a, b Map, opts MergeOption) Map {
 		return b
 	}
 	for k, v := range b {
-		if _, exists := a[k]; !exists {
+		if vv, exists := a[k]; !exists {
 			a[k] = v
+		} else if isNull(vv) {
+			a[k] = Merge(vv, v, opts)
 		}
 	}
 	return a

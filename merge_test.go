@@ -441,10 +441,69 @@ func TestMerge(t *testing.T) {
 			opts:     MergeOptionOverrideMap,
 			want:     Map{"a": Map{"x": ToValue(1)}},
 		}, {
-			caseName: "Default keeps nested Nil a (#189)",
-			a:        Map{"a": Nil},
+			caseName: "Default keeps nested nil Map a",
+			a:        Map{"a": Map(nil)},
+			b:        Map{"a": Map{"x": ToValue(1)}},
+			want:     Map{"a": Map(nil)},
+		}, {
+			caseName: "Default takes b over nested Nil a (#189)",
+			a:        Map{"a": Nil, "b": Nil},
 			b:        Map{"a": ToValue(1)},
+			want:     Map{"a": ToValue(1), "b": Nil},
+		}, {
+			caseName: "Default takes b over nested nil a",
+			a:        Map{"a": nil, "b": (*Map)(nil)},
+			b:        Map{"a": ToValue(1), "b": Map{"x": ToValue(2)}},
+			want:     Map{"a": ToValue(1), "b": Map{"x": ToValue(2)}},
+		}, {
+			caseName: "Default nested null a and b gives Nil",
+			a:        Map{"a": nil},
+			b:        Map{"a": (*Map)(nil)},
 			want:     Map{"a": Nil},
+		}, {
+			caseName: "Default takes b over null array elements",
+			a:        Array{Nil, ToValue(2), nil},
+			b:        ToArrayValues(1, 3, 4, 5),
+			want:     ToArrayValues(1, 2, 4, 5),
+		}, {
+			caseName: "Default null array elements meet null b",
+			a:        Array{nil, Nil},
+			b:        Array{(*Map)(nil), nil},
+			want:     Array{Nil, Nil},
+		}, {
+			caseName: "Default keeps null below a non-null child",
+			a:        Map{"x": Map{"a": Nil}},
+			b:        Map{"x": Map{"a": ToValue(1)}},
+			want:     Map{"x": Map{"a": Nil}},
+		}, {
+			caseName: "Slurp Array keeps null element",
+			a:        Array{Nil},
+			b:        ToArrayValues(1),
+			opts:     MergeOptionSlurp,
+			want:     Array{Nil, ToValue(1)},
+		}, {
+			caseName: "Default keeps null array element past b",
+			a:        Array{ToValue(1), Nil},
+			b:        ToArrayValues(3),
+			want:     Array{ToValue(1), Nil},
+		}, {
+			caseName: "Append keeps null array element",
+			a:        Array{Nil},
+			b:        ToArrayValues(1),
+			opts:     MergeOptionAppend,
+			want:     Array{Nil, ToValue(1)},
+		}, {
+			caseName: "OverrideMap fills null array element",
+			a:        Map{"a": Array{Nil}},
+			b:        Map{"a": ToArrayValues(1)},
+			opts:     MergeOptionOverrideMap,
+			want:     Map{"a": ToArrayValues(1)},
+		}, {
+			caseName: "ReplaceArray fills null map child",
+			a:        Map{"a": Nil, "b": ToValue(1)},
+			b:        Map{"a": ToValue(2), "b": ToValue(3)},
+			opts:     MergeOptionReplaceArray,
+			want:     Map{"a": ToValue(2), "b": ToValue(1)},
 		}, {
 			caseName: "nested Override sets null b",
 			a:        Map{"a": ToValue(1)},
