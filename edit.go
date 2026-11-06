@@ -445,8 +445,8 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 		return nil
 	}
 
-	if n.IsNil() {
-		return nil // a null root the edit creates nothing for stays as it is
+	if isNullLike(n) {
+		return nil // a null-like root the edit creates nothing for stays as it is
 	}
 	return errIndex(n, key)
 }
@@ -493,10 +493,10 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 		return nil
 	}
 
-	if n.IsNil() {
-		return nil // a null root the edit creates nothing for stays as it is
+	if isNullLike(n) {
+		return nil // a null-like root the edit creates nothing for stays as it is
 	}
-	return errIndex(n, index) // not an array, so index is the step as written
+	return errIndex(n, index) // no array to index, so index is the step as written
 }
 
 // resolveSelectStep handles a SelectQuery intermediate step with write-back.
