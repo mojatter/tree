@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -177,14 +178,17 @@ func (n rawEachNode) Each(cb func(key any, v Node) error) error {
 	return nil
 }
 
-func TestWalkGoNil(t *testing.T) {
+func TestWalkVisits(t *testing.T) {
 	type visit struct {
 		keys []any
 		n    Node
 	}
+	custom := bareValueNode{Map{"a": ToValue(1)}}
+	errStop := errors.New("stop")
 	testCases := []struct {
 		caseName string
 		root     Node
+		stopAt   Node
 		want     []visit
 	}{
 		{
@@ -217,6 +221,56 @@ func TestWalkGoNil(t *testing.T) {
 			caseName: "nil *Map root is visited as Nil",
 			root:     (*Map)(nil),
 			want:     []visit{{[]any{}, Nil}},
+		}, {
+			caseName: "value-typed custom node is descended through Each",
+			root:     custom,
+			want:     []visit{{[]any{}, custom}, {[]any{"a"}, ToValue(1)}},
+		}, {
+			caseName: "Any wrapping a custom node is descended through Each",
+			root:     Any{custom},
+			want:     []visit{{[]any{}, Any{custom}}, {[]any{"a"}, ToValue(1)}},
+		}, {
+			caseName: "custom scalar node is visited once",
+			root:     bareValueNode{StringValue("x")},
+			want:     []visit{{[]any{}, bareValueNode{StringValue("x")}}},
+		}, {
+			caseName: "scalar is visited once",
+			root:     StringValue("x"),
+			want:     []visit{{[]any{}, StringValue("x")}},
+		}, {
+			caseName: "Any wrapping a Map is descended",
+			root:     Any{Map{"a": ToValue(1)}},
+			want:     []visit{{[]any{}, Any{Map{"a": ToValue(1)}}}, {[]any{"a"}, ToValue(1)}},
+		}, {
+			caseName: "Any wrapping an Array is descended",
+			root:     Any{Array{ToValue(1)}},
+			want:     []visit{{[]any{}, Any{Array{ToValue(1)}}}, {[]any{0}, ToValue(1)}},
+		}, {
+			caseName: "non-nil *Map is descended through Each",
+			root:     &Map{"a": ToValue(1)},
+			want:     []visit{{[]any{}, &Map{"a": ToValue(1)}}, {[]any{"a"}, ToValue(1)}},
+		}, {
+			caseName: "non-nil *Array is descended through Each",
+			root:     &Array{ToValue(1), nil},
+			want:     []visit{{[]any{}, &Array{ToValue(1), nil}}, {[]any{0}, ToValue(1)}, {[]any{1}, Nil}},
+		}, {
+			caseName: "an error from fn in an Array stops the walk",
+			root:     Array{ToValue(1), ToValue(2), ToValue(3)},
+			stopAt:   ToValue(2),
+			want: []visit{
+				{[]any{}, Array{ToValue(1), ToValue(2), ToValue(3)}},
+				{[]any{0}, ToValue(1)},
+				{[]any{1}, ToValue(2)},
+			},
+		}, {
+			caseName: "an error from fn in a Map stops the walk",
+			root:     Map{"a": ToValue(1), "b": ToValue(2), "c": ToValue(3)},
+			stopAt:   ToValue(2),
+			want: []visit{
+				{[]any{}, Map{"a": ToValue(1), "b": ToValue(2), "c": ToValue(3)}},
+				{[]any{"a"}, ToValue(1)},
+				{[]any{"b"}, ToValue(2)},
+			},
 		},
 	}
 	for _, tc := range testCases {
@@ -224,10 +278,17 @@ func TestWalkGoNil(t *testing.T) {
 			var got []visit
 			err := Walk(tc.root, func(n Node, keys []any) error {
 				got = append(got, visit{keys, n})
+				if tc.stopAt != nil && reflect.DeepEqual(n, tc.stopAt) {
+					return errStop
+				}
 				return nil
 			})
-			if err != nil {
-				t.Fatal(err)
+			var wantErr error
+			if tc.stopAt != nil {
+				wantErr = errStop
+			}
+			if !errors.Is(err, wantErr) {
+				t.Fatalf("got error %v; want %v", err, wantErr)
 			}
 			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("got %#v; want %#v", got, tc.want)
@@ -458,4 +519,50 @@ func TestIsGoNil(t *testing.T) {
 			}
 		})
 	}
+}
+
+func BenchmarkWalk(b *testing.B) {
+	store := mustBenchNode(b)
+	items := make(Array, 200)
+	for i := range items {
+		items[i] = Map{"id": ToValue(i), "name": ToValue("item"), "ok": ToValue(true)}
+	}
+	testCases := []struct {
+		caseName string
+		n        Node
+	}{
+		{caseName: "store", n: store},
+		{caseName: "array200", n: items},
+		{caseName: "storeAny", n: wrapAny(store)},
+		{caseName: "array200Any", n: wrapAny(items)},
+	}
+	for _, tc := range testCases {
+		b.Run(tc.caseName, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				if err := Walk(tc.n, func(Node, []any) error { return nil }); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// wrapAny returns n with every node in it wrapped in Any.
+func wrapAny(n Node) Node {
+	switch x := n.(type) {
+	case Array:
+		a := make(Array, len(x))
+		for i, v := range x {
+			a[i] = wrapAny(v)
+		}
+		return Any{a}
+	case Map:
+		m := make(Map, len(x))
+		for k, v := range x {
+			m[k] = wrapAny(v)
+		}
+		return Any{m}
+	}
+	return Any{n}
 }
