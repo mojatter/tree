@@ -254,7 +254,8 @@ var SkipWalk = errors.New("skip") //nolint:staticcheck // ST1012: sentinel value
 // WalkFunc is the type of the function called by Walk to visit each node.
 //
 // The keys argument is the path from Walk's root to n: int for array indexes, string for map keys.
-// Each call gets its own keys slice; fn may keep it but must not modify it, as descendants' keys are copied from it.
+// Each call gets its own keys slice; fn may keep or append to it, but must not modify its elements while Walk runs,
+// as descendants' keys are copied from it.
 type WalkFunc func(n Node, keys []any) error
 
 // Walk walks the tree rooted at n, calling fn for n and every node under it.
@@ -263,8 +264,7 @@ func Walk(n Node, fn WalkFunc) error {
 	return walk(orNil(n), []any{}, fn)
 }
 
-// walk is a recursive helper function that traverses the node tree.
-// It maintains the path of keys from root to current node.
+// walk calls fn for n with lastKeys, then walks each child with a fresh copy of lastKeys plus the child's key.
 func walk(n Node, lastKeys []any, fn WalkFunc) error {
 	if err := fn(n, lastKeys); err != nil {
 		if err == SkipWalk {
@@ -274,7 +274,7 @@ func walk(n Node, lastKeys []any, fn WalkFunc) error {
 	}
 
 	return n.Each(func(key any, v Node) error {
-		if key == nil {
+		if key == nil { // scalar Each yields itself with a nil key
 			return nil
 		}
 		keys := make([]any, len(lastKeys)+1)
