@@ -111,7 +111,7 @@ func (n *Array) UnmarshalJSON(data []byte) error {
 	}
 	base := (*n)[:0]
 	if base == nil {
-		base = Array{} // [] gives an empty Array, not a nil one that marshals as null
+		base = Array{} // [] gives an empty Array, not a nil one
 	}
 	a, err := jsonArray(dec, base, 1)
 	if err != nil {
@@ -125,19 +125,95 @@ func (n *Array) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalJSON implements json.Marshaler by encoding the wrapped node, or null when it is a Go nil node.
-// It does not escape HTML itself, so the caller's encoder decides.
-// Trees must be acyclic; a cycle through an Any overflows the stack.
+// It leaves HTML escaping to the caller's encoder and fails past 10,000 levels of nesting, so a cycle errors
+// when its nodes are Maps, Arrays or Any wrapping them, and overflows the stack otherwise.
 func (n Any) MarshalJSON() ([]byte, error) {
-	if isGoNil(n.Node) {
-		return []byte("null"), nil
-	}
+	return marshalJSONNode(n)
+}
+
+// MarshalJSON implements json.Marshaler like Any's, encoding a nil Map as {} as YAML does.
+// A struct embedding Map promotes it, so the struct marshals as the Map alone, as it already unmarshals.
+func (n Map) MarshalJSON() ([]byte, error) {
+	return marshalJSONNode(n)
+}
+
+// MarshalJSON implements json.Marshaler like Any's, encoding a nil Array as [] as YAML does.
+// A struct embedding Array marshals as the Array alone, as with Map.
+func (n Array) MarshalJSON() ([]byte, error) {
+	return marshalJSONNode(n)
+}
+
+// marshalJSONNode encodes n into one buffer, so nested Maps, Arrays and their wrappers are not re-encoded at each level.
+func marshalJSONNode(n Node) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
-	if err := enc.Encode(n.Node); err != nil {
+	if err := encodeJSONNode(&buf, enc, n, 1); err != nil {
 		return nil, err
 	}
-	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+	return buf.Bytes(), nil
+}
+
+// encodeJSONNode writes a Go nil node as null, Maps and Arrays at nesting depth itself, through Any and pointers, and anything else with enc.
+func encodeJSONNode(buf *bytes.Buffer, enc *json.Encoder, n Node, depth int) error {
+	if isGoNil(n) {
+		buf.WriteString("null")
+		return nil
+	}
+	switch tn := n.(type) {
+	case Any:
+		return encodeJSONNode(buf, enc, tn.Node, depth)
+	case *Any:
+		return encodeJSONNode(buf, enc, tn.Node, depth)
+	case *Map:
+		return encodeJSONNode(buf, enc, *tn, depth)
+	case *Array:
+		return encodeJSONNode(buf, enc, *tn, depth)
+	case Map:
+		if depth > maxJSONDepth {
+			return errMaxDepth
+		}
+		buf.WriteByte('{')
+		for i, k := range tn.Keys() {
+			if i > 0 {
+				buf.WriteByte(',')
+			}
+			if err := encodeJSONValue(buf, enc, k); err != nil {
+				return err
+			}
+			buf.WriteByte(':')
+			if err := encodeJSONNode(buf, enc, tn[k], depth+1); err != nil {
+				return err
+			}
+		}
+		buf.WriteByte('}')
+		return nil
+	case Array:
+		if depth > maxJSONDepth {
+			return errMaxDepth
+		}
+		buf.WriteByte('[')
+		for i, v := range tn {
+			if i > 0 {
+				buf.WriteByte(',')
+			}
+			if err := encodeJSONNode(buf, enc, v, depth+1); err != nil {
+				return err
+			}
+		}
+		buf.WriteByte(']')
+		return nil
+	}
+	return encodeJSONValue(buf, enc, n)
+}
+
+// encodeJSONValue writes v with enc, which writes to buf, dropping the newline Encode appends.
+func encodeJSONValue(buf *bytes.Buffer, enc *json.Encoder, v any) error {
+	if err := enc.Encode(v); err != nil {
+		return err
+	}
+	buf.Truncate(buf.Len() - 1)
+	return nil
 }
 
 // MarshalJSON is an implementation of json.Marshaler.
@@ -193,7 +269,7 @@ func jsonArray(dec *json.Decoder, a Array, depth int) (Array, error) {
 	}
 }
 
-// maxJSONDepth bounds the recursion per decoded value; json.Decoder.Token enforces no cap before json/v2.
+// maxJSONDepth bounds the recursion per decoded or encoded value; json.Decoder.Token enforces no cap before json/v2.
 const maxJSONDepth = 10000
 
 // errMaxDepth matches json/v2's depth error text, which Go 1.27 returns from Token first.
