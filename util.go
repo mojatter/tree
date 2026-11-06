@@ -273,15 +273,39 @@ func walk(n Node, lastKeys []any, fn WalkFunc) error {
 		return err
 	}
 
-	return n.Each(func(key any, v Node) error {
-		if key == nil { // scalar Each yields itself with a nil key
+	u := unwrapAny(n)
+	switch x := u.(type) {
+	case Array:
+		for i, v := range x {
+			if err := walk(orNil(v), childKeys(lastKeys, i), fn); err != nil {
+				return err
+			}
+		}
+		return nil
+	case Map:
+		for _, k := range x.Keys() {
+			if err := walk(orNil(x[k]), childKeys(lastKeys, k), fn); err != nil {
+				return err
+			}
+		}
+		return nil
+	case StringValue, NumberValue, BoolValue, NilValue:
+		return nil
+	}
+	return u.Each(func(key any, v Node) error {
+		if key == nil { // a custom node may yield itself with a nil key
 			return nil
 		}
-		keys := make([]any, len(lastKeys)+1)
-		copy(keys, lastKeys)
-		keys[len(lastKeys)] = key
-		return walk(orNil(v), keys, fn)
+		return walk(orNil(v), childKeys(lastKeys, key), fn)
 	})
+}
+
+// childKeys returns a new slice of lastKeys followed by key, with len == cap.
+func childKeys(lastKeys []any, key any) []any {
+	keys := make([]any, len(lastKeys)+1)
+	copy(keys, lastKeys)
+	keys[len(lastKeys)] = key
+	return keys
 }
 
 var regexpPool = sync.Pool{
