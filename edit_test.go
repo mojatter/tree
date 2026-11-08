@@ -50,6 +50,11 @@ func (n freshArrayNode) Find(expr string) ([]Node, error)          { return Find
 // plainNode is a custom node that is not an EditorNode.
 type plainNode struct{ Node }
 
+// nilScalarNode is a custom string node that reports IsNil.
+type nilScalarNode struct{ StringValue }
+
+func (nilScalarNode) IsNil() bool { return true }
+
 // leafEditorNode is a custom EditorNode holding a scalar or null, which rejects every edit.
 type leafEditorNode struct{ Node }
 
@@ -1953,6 +1958,155 @@ func TestEdit(t *testing.T) {
 			expr:     `.[0].x = 1`,
 			errstr:   `cannot index object with "x"`,
 			want:     Array{plainNode{Map(nil)}},
+		}, {
+			caseName: "intermediate map step fails on a custom node wrapping a nil map",
+			n:        Map{"a": plainNode{Map(nil)}},
+			expr:     `.a.x.y = 1`,
+			errstr:   `cannot index object with "x"`,
+			want:     Map{"a": plainNode{Map(nil)}},
+		}, {
+			caseName: "intermediate index step fails on a custom node wrapping a nil map",
+			n:        Map{"a": plainNode{Map(nil)}},
+			expr:     `.a[0].y = 1`,
+			errstr:   `cannot index object with 0`,
+			want:     Map{"a": plainNode{Map(nil)}},
+		}, {
+			caseName: "intermediate delete fails on a custom node wrapping a nil map",
+			n:        Map{"a": plainNode{Map(nil)}},
+			expr:     `.a.x.y ^?`,
+			errstr:   `cannot index object with "x"`,
+			want:     Map{"a": plainNode{Map(nil)}},
+		}, {
+			caseName: "intermediate append fails on a custom node wrapping a nil map",
+			n:        Map{"a": plainNode{Map(nil)}},
+			expr:     `.a.x.y += 1`,
+			errstr:   `cannot index object with "x"`,
+			want:     Map{"a": plainNode{Map(nil)}},
+		}, {
+			caseName: "intermediate map step fails on a custom node wrapping a nil array",
+			n:        Map{"a": plainNode{Array(nil)}},
+			expr:     `.a.x.y = 1`,
+			errstr:   `cannot index array with "x"`,
+			want:     Map{"a": plainNode{Array(nil)}},
+		}, {
+			caseName: "intermediate index step fails on a custom node wrapping a nil array",
+			n:        Map{"a": plainNode{Array(nil)}},
+			expr:     `.a[0].y = 1`,
+			errstr:   `cannot index array with 0`,
+			want:     Map{"a": plainNode{Array(nil)}},
+		}, {
+			caseName: "intermediate map step fails on a custom root wrapping a nil map",
+			n:        plainNode{Map(nil)},
+			expr:     `.x.y = 1`,
+			errstr:   `cannot index object with "x"`,
+			want:     plainNode{Map(nil)},
+		}, {
+			caseName: "intermediate index step fails on a custom root wrapping a nil array",
+			n:        plainNode{Array(nil)},
+			expr:     `.[0].y = 1`,
+			errstr:   `cannot index array with 0`,
+			want:     plainNode{Array(nil)},
+		}, {
+			caseName: "intermediate map step under a pointer array fails on a custom node wrapping a nil map",
+			n:        &Array{plainNode{Map(nil)}},
+			expr:     `.[0].x.y = 1`,
+			errstr:   `cannot index object with "x"`,
+			want:     &Array{plainNode{Map(nil)}},
+		}, {
+			caseName: "intermediate index step under a pointer array fails on a custom node wrapping a nil array",
+			n:        &Array{plainNode{Array(nil)}},
+			expr:     `.[0][0].y = 1`,
+			errstr:   `cannot index array with 0`,
+			want:     &Array{plainNode{Array(nil)}},
+		}, {
+			caseName: "iterate step fails on a custom node wrapping a nil map",
+			n:        Map{"a": Array{plainNode{Map(nil)}, Map{}}},
+			expr:     `.a[].x.y = 1`,
+			errstr:   `cannot index object with "x"`,
+			want:     Map{"a": Array{plainNode{Map(nil)}, Map{}}},
+		}, {
+			caseName: "iterate step stops at a custom node wrapping a nil map after an earlier match",
+			n:        Map{"a": Array{Map{}, plainNode{Map(nil)}}},
+			expr:     `.a[].x.y = 1`,
+			errstr:   `cannot index object with "x"`,
+			want:     Map{"a": Array{Map{"x": Map{"y": NumberValue(1)}}, plainNode{Map(nil)}}},
+		}, {
+			caseName: "walk step fails on a custom node wrapping a nil map",
+			n:        Map{"b": Map{"a": plainNode{Map(nil)}}},
+			expr:     `..a.x.y = 1`,
+			errstr:   `cannot index object with "x"`,
+			want:     Map{"b": Map{"a": plainNode{Map(nil)}}},
+		}, {
+			caseName: "walk step fails on a custom node wrapping a nil array",
+			n:        Map{"b": Map{"a": plainNode{Array(nil)}}},
+			expr:     `..a[0].y = 1`,
+			errstr:   `cannot index array with 0`,
+			want:     Map{"b": Map{"a": plainNode{Array(nil)}}},
+		}, {
+			caseName: "intermediate last() step fails on a custom node wrapping a nil array",
+			n:        Map{"a": plainNode{Array(nil)}},
+			expr:     `.a.last().y = 1`,
+			errstr:   `cannot index array with -1`,
+			want:     Map{"a": plainNode{Array(nil)}},
+		}, {
+			caseName: "intermediate delete fails on a custom node wrapping a nil array",
+			n:        Map{"a": plainNode{Array(nil)}},
+			expr:     `.a[0].y ^?`,
+			errstr:   `cannot index array with 0`,
+			want:     Map{"a": plainNode{Array(nil)}},
+		}, {
+			caseName: "intermediate append fails on a custom node wrapping a nil array",
+			n:        Map{"a": plainNode{Array(nil)}},
+			expr:     `.a[0].y += 1`,
+			errstr:   `cannot index array with 0`,
+			want:     Map{"a": plainNode{Array(nil)}},
+		}, {
+			caseName: "intermediate delete under a pointer array fails on a custom node wrapping a nil array",
+			n:        &Array{plainNode{Array(nil)}},
+			expr:     `.[0][0].y ^?`,
+			errstr:   `cannot index array with 0`,
+			want:     &Array{plainNode{Array(nil)}},
+		}, {
+			caseName: "intermediate append on a custom root wrapping a nil array fails",
+			n:        plainNode{Array(nil)},
+			expr:     `.[0].y += 1`,
+			errstr:   `cannot index array with 0`,
+			want:     plainNode{Array(nil)},
+		}, {
+			caseName: "walk step stops at a custom node wrapping a nil map after an earlier match",
+			n:        Map{"b": Map{"a": Map{}}, "c": Map{"a": plainNode{Map(nil)}}},
+			expr:     `..a.x.y = 1`,
+			errstr:   `cannot index object with "x"`,
+			want:     Map{"b": Map{"a": Map{"x": Map{"y": NumberValue(1)}}}, "c": Map{"a": plainNode{Map(nil)}}},
+		}, {
+			caseName: "intermediate delete on a custom root wrapping null is a no-op",
+			n:        plainNode{Nil},
+			expr:     `.x.y ^?`,
+			want:     plainNode{Nil},
+		}, {
+			caseName: "intermediate map step fails on an Any wrapping a custom node over a nil map",
+			n:        Map{"a": Any{plainNode{Map(nil)}}},
+			expr:     `.a.x.y = 1`,
+			errstr:   `cannot index object with "x"`,
+			want:     Map{"a": Any{plainNode{Map(nil)}}},
+		}, {
+			caseName: "intermediate map step fails on a custom node wrapping a pointer to a nil map",
+			n:        Map{"a": plainNode{new(Map)}},
+			expr:     `.a.x.y = 1`,
+			errstr:   `cannot index object with "x"`,
+			want:     Map{"a": plainNode{new(Map)}},
+		}, {
+			caseName: "intermediate delete fails on a custom node wrapping a pointer to a nil map",
+			n:        Map{"a": plainNode{new(Map)}},
+			expr:     `.a.x.y ^?`,
+			errstr:   `cannot index object with "x"`,
+			want:     Map{"a": plainNode{new(Map)}},
+		}, {
+			caseName: "intermediate map step fails on a custom scalar node reporting IsNil",
+			n:        Map{"a": nilScalarNode{}},
+			expr:     `.a.x.y = 1`,
+			errstr:   `cannot index string with "x"`,
+			want:     Map{"a": nilScalarNode{}},
 		}, {
 			caseName: "delete through a pointer to a nil map is a no-op",
 			n:        Map{"a": new(Map)},
