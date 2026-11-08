@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"text/template"
 
 	"github.com/mojatter/io2"
@@ -120,20 +122,16 @@ type runner struct {
 	isRaw        bool
 	isInplace    bool
 	isColor      bool
-	isInputJSON  bool
-	isInputYAML  bool
-	isOutputJSON bool
-	isOutputYAML bool
 	outputFile   string
 	tmplText     string
-	inputFormat  string
-	outputFormat string
+	inputFormat  format
+	outputFormat format
 	editExprs    []string
 
 	tmpl             *template.Template
 	stderr           io.Writer
 	out              io.WriteCloser
-	guessFormat      string
+	guessFormat      format
 	outputYAMLCalled int
 	slurpResults     tree.Array
 }
@@ -145,8 +143,36 @@ func newRunner() *runner {
 	}
 }
 
+// format is a flag value that accepts only json or yaml.
+type format string
+
+func (f *format) String() string { return string(*f) }
+func (f *format) Type() string   { return "string" }
+
+func (f *format) Set(s string) error {
+	if s != "json" && s != "yaml" {
+		return errors.New("must be json or yaml")
+	}
+	*f = format(s)
+	return nil
+}
+
+// setFormat returns a BoolFuncP callback that sets f to v when the flag is true, so the last format flag wins.
+func setFormat(f *format, v format) func(string) error {
+	return func(s string) error {
+		b, err := strconv.ParseBool(s)
+		if err != nil {
+			return err
+		}
+		if b {
+			*f = v
+		}
+		return nil
+	}
+}
+
 func (r *runner) initFlagSet(args []string) error {
-	s := pflag.NewFlagSet(args[0], pflag.ExitOnError)
+	s := pflag.NewFlagSet(args[0], pflag.ContinueOnError)
 	r.flagSet = s
 
 	s.SetOutput(r.stderr)
@@ -157,14 +183,14 @@ func (r *runner) initFlagSet(args []string) error {
 	s.BoolVarP(&r.isRaw, "raw", "r", false, "output raw strings")
 	s.BoolVarP(&r.isInplace, "inplace", "U", false, "update files, inplace")
 	s.BoolVarP(&r.isColor, "color", "c", false, "output with colors")
-	s.BoolVarP(&r.isInputJSON, "input-json", "j", false, "alias --input-format json")
-	s.BoolVarP(&r.isInputYAML, "input-yaml", "y", false, "alias --input-format yaml")
-	s.BoolVarP(&r.isOutputJSON, "output-json", "J", false, "alias --output-format json")
-	s.BoolVarP(&r.isOutputYAML, "output-yaml", "Y", false, "alias --output-format yaml")
+	s.BoolFuncP("input-json", "j", "alias --input-format json", setFormat(&r.inputFormat, "json"))
+	s.BoolFuncP("input-yaml", "y", "alias --input-format yaml", setFormat(&r.inputFormat, "yaml"))
+	s.BoolFuncP("output-json", "J", "alias --output-format json", setFormat(&r.outputFormat, "json"))
+	s.BoolFuncP("output-yaml", "Y", "alias --output-format yaml", setFormat(&r.outputFormat, "yaml"))
 	s.StringVarP(&r.outputFile, "output", "O", "", "output file")
 	s.StringVarP(&r.tmplText, "template", "t", "", "golang text/template string")
-	s.StringVarP(&r.inputFormat, "input-format", "i", "", "input format (json or yaml, default: json if the input starts with { or [, else json then yaml)")
-	s.StringVarP(&r.outputFormat, "output-format", "o", "", "output format (json or yaml, default: input format)")
+	s.VarP(&r.inputFormat, "input-format", "i", "input format (json or yaml, default: json if the input starts with { or [, else json then yaml)")
+	s.VarP(&r.outputFormat, "output-format", "o", "output format (json or yaml, default: input format)")
 	s.StringArrayVarP(&r.editExprs, "edit", "e", nil, "edit expression")
 	s.Usage = func() {
 		_, _ = fmt.Fprintf(r.stderr, "%s\n\nUsage:\n  %s\n\n", desc, usage)
@@ -379,20 +405,9 @@ func (f *inplaceFile) discard() {
 	_ = os.Remove(f.file.Name())
 }
 
-// fixedInputFormat returns "json" or "yaml" when the input format is given, otherwise "".
-func (r *runner) fixedInputFormat() string {
-	switch {
-	case r.inputFormat == "json" || r.isInputJSON:
-		return "json"
-	case r.inputFormat == "yaml" || r.isInputYAML:
-		return "yaml"
-	}
-	return ""
-}
-
 // needsRewind reports whether evaluate auto-detects the format and so rewinds the input.
 func (r *runner) needsRewind() bool {
-	return r.fixedInputFormat() == ""
+	return r.inputFormat == ""
 }
 
 var utf8BOM = [3]byte{0xEF, 0xBB, 0xBF}
@@ -422,7 +437,7 @@ func (r *runner) evaluate(in io.ReadSeekCloser) error {
 	if err != nil {
 		return err
 	}
-	switch r.fixedInputFormat() {
+	switch r.inputFormat {
 	case "json":
 		return r.evaluateJSON(reader)
 	case "yaml":
@@ -574,23 +589,14 @@ func (r *runner) output(node tree.Node) error {
 		}
 		return nil
 	}
-	if r.effectiveOutputFormat() == "yaml" {
+	f := r.outputFormat
+	if f == "" {
+		f = r.guessFormat
+	}
+	if f == "yaml" {
 		return r.outputYAML(node)
 	}
 	return r.outputJSON(node)
-}
-
-// effectiveOutputFormat resolves the output format: -o, then -J, then -Y, then the input format.
-func (r *runner) effectiveOutputFormat() string {
-	switch {
-	case r.outputFormat == "json" || r.outputFormat == "yaml":
-		return r.outputFormat
-	case r.isOutputJSON:
-		return "json"
-	case r.isOutputYAML:
-		return "yaml"
-	}
-	return r.guessFormat
 }
 
 func (r *runner) outputYAML(n tree.Node) error {

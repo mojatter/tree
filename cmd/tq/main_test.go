@@ -95,17 +95,73 @@ func TestRun(t *testing.T) {
 			args:     []string{"-Y", ".store.book[0]", "testdata/store.json"},
 			golden:   "testdata/book-0.yaml",
 		}, {
-			caseName: "-o wins over -Y",
+			caseName: "-Y after -o json wins",
 			args:     []string{"-o", "json", "-Y", ".store.book[0]", "testdata/store.yaml"},
-			golden:   "testdata/book-0.json",
-		}, {
-			caseName: "-J wins over -Y",
-			args:     []string{"-J", "-Y", ".store.book[0]", "testdata/store.yaml"},
-			golden:   "testdata/book-0.json",
-		}, {
-			caseName: "-o wins over -J",
-			args:     []string{"-o", "yaml", "-J", ".store.book[0]", "testdata/store.yaml"},
 			golden:   "testdata/book-0.yaml",
+		}, {
+			caseName: "-o json after -Y wins",
+			args:     []string{"-Y", "-o", "json", ".store.book[0]", "testdata/store.yaml"},
+			golden:   "testdata/book-0.json",
+		}, {
+			caseName: "-Y after -J wins",
+			args:     []string{"-J", "-Y", ".store.book[0]", "testdata/store.yaml"},
+			golden:   "testdata/book-0.yaml",
+		}, {
+			caseName: "-J after -o yaml wins",
+			args:     []string{"-o", "yaml", "-J", ".store.book[0]", "testdata/store.yaml"},
+			golden:   "testdata/book-0.json",
+		}, {
+			caseName: "-j after -i yaml wins",
+			args:     []string{"-i", "yaml", "-j", ".store.book[0]", "testdata/store.json"},
+			golden:   "testdata/book-0.json",
+		}, {
+			caseName: "-i yaml after -j wins",
+			args:     []string{"-j", "-i", "yaml", ".store.book[0]", "testdata/store.json"},
+			golden:   "testdata/book-0.yaml",
+		}, {
+			caseName: "-JY writes yaml",
+			args:     []string{"-JY", ".store.book[0]", "testdata/store.json"},
+			golden:   "testdata/book-0.yaml",
+		}, {
+			caseName: "-yj reads json",
+			args:     []string{"-yj", ".store.book[0]", "testdata/store.json"},
+			golden:   "testdata/book-0.json",
+		}, {
+			caseName: "unknown output format",
+			args:     []string{"-o", "toml", ".", "testdata/store.json"},
+			errstr:   `invalid argument "toml" for "-o, --output-format" flag: must be json or yaml`,
+		}, {
+			caseName: "output format is case sensitive",
+			args:     []string{"--output-format", "JSON", ".", "testdata/store.json"},
+			errstr:   `invalid argument "JSON" for "-o, --output-format" flag: must be json or yaml`,
+		}, {
+			caseName: "empty input format",
+			args:     []string{"-i", "", ".", "testdata/store.json"},
+			errstr:   `invalid argument "" for "-i, --input-format" flag: must be json or yaml`,
+		}, {
+			caseName: "unknown flag",
+			args:     []string{"--nope", ".", "testdata/store.json"},
+			errstr:   `unknown flag: --nope`,
+		}, {
+			caseName: "--output-yaml=false keeps json",
+			args:     []string{"--output-yaml=false", ".store.book[0]", "testdata/store.json"},
+			golden:   "testdata/book-0.json",
+		}, {
+			caseName: "-J=false after -Y keeps yaml",
+			args:     []string{"-Y", "-J=false", ".store.book[0]", "testdata/store.json"},
+			golden:   "testdata/book-0.yaml",
+		}, {
+			caseName: "-Y=false after -Y keeps yaml",
+			args:     []string{"-Y", "-Y=false", ".store.book[0]", "testdata/store.json"},
+			golden:   "testdata/book-0.yaml",
+		}, {
+			caseName: "--input-json=false keeps auto-detect",
+			args:     []string{"--input-json=false", ".store.book[0]", "testdata/store.yaml"},
+			golden:   "testdata/book-0.yaml",
+		}, {
+			caseName: "invalid alias value",
+			args:     []string{"-Y=nope", ".", "testdata/store.json"},
+			errstr:   `invalid argument "nope" for "-Y, --output-yaml" flag: strconv.ParseBool: parsing "nope": invalid syntax`,
 		}, {
 			caseName: "range[1:3] books",
 			args:     []string{".store.book[1:3]|", "testdata/store.json"},
