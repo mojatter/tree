@@ -222,6 +222,16 @@ func (r *runner) run(args []string) error {
 		r.flagSet.Usage()
 		return nil
 	}
+	if r.isInplace {
+		switch {
+		case r.isSlurp:
+			return errors.New("cannot combine -U with -s")
+		case r.outputFile != "":
+			return errors.New("cannot combine -U with -O")
+		case r.isColor:
+			return errors.New("cannot combine -U with -c")
+		}
+	}
 	if r.tmplText != "" {
 		tmpl, err := template.New("").Parse(r.tmplText)
 		if err != nil {
@@ -249,7 +259,7 @@ func (r *runner) run(args []string) error {
 		}
 		r.out = out
 	}
-	if r.isInplaceWrite() {
+	if r.isInplace {
 		if err := checkInplaceTargets(filenames); err != nil {
 			return err
 		}
@@ -279,11 +289,6 @@ func checkInplaceTargets(filenames []string) error {
 	return nil
 }
 
-// isInplaceWrite reports whether -U writes results back to the input files.
-func (r *runner) isInplaceWrite() bool {
-	return r.outputFile == "" && r.isInplace && !r.isSlurp
-}
-
 func (r *runner) evaluateInputFiles(f *inputFiles) error {
 	for {
 		in, err := f.nextReader()
@@ -304,7 +309,7 @@ func (r *runner) evaluateInputFile(in io.ReadSeekCloser, filename string) error 
 	defer func() { _ = in.Close() }()
 
 	var inplace *inplaceFile
-	if r.isInplaceWrite() && filename != filenameStdin {
+	if r.isInplace && filename != filenameStdin {
 		var err error
 		inplace, err = createInplaceFile(filename)
 		if err != nil {

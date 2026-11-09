@@ -478,10 +478,15 @@ func TestRun(t *testing.T) {
 			args:     []string{"-U", "-j", ".store.book[0]"},
 			errstr:   "cannot update {pipe} in place: not a regular file",
 		}, {
-			caseName: "non-seekable file with -U -s is slurped",
+			caseName: "non-seekable file with -s is slurped",
 			pipe:     "testdata/store.json",
-			args:     []string{"-U", "-s", ".store.book[]"},
+			args:     []string{"-s", ".store.book[]"},
 			golden:   "testdata/book-s",
+		}, {
+			caseName: "-U with -s on stdin is rejected",
+			stdin:    "testdata/store.json",
+			args:     []string{"-U", "-s", ".store.book[]"},
+			errstr:   "cannot combine -U with -s",
 		},
 	}
 	for _, tc := range testCases {
@@ -634,15 +639,10 @@ func TestRunOutputFile(t *testing.T) {
 	testCases := []struct {
 		caseName string
 		args     []string
-		pipe     string
 	}{
 		{
 			caseName: "regular file",
 			args:     []string{"tq", "-O", "{out}", ".store.book[0]", "testdata/store.json"},
-		}, {
-			caseName: "non-seekable file with -U",
-			args:     []string{"tq", "-U", "-O", "{out}", ".store.book[0]"},
-			pipe:     "testdata/store.json",
 		},
 	}
 	for _, tc := range testCases {
@@ -651,9 +651,6 @@ func TestRunOutputFile(t *testing.T) {
 			args := make([]string, len(tc.args))
 			for i, a := range tc.args {
 				args[i] = strings.ReplaceAll(a, "{out}", outPath)
-			}
-			if tc.pipe != "" {
-				args = append(args, pipePath(t, tc.pipe))
 			}
 
 			buf := new(bytes.Buffer)
@@ -730,7 +727,7 @@ func TestRunInplace(t *testing.T) {
 			src:      "testdata/broken-json-stream",
 			args:     []string{"-U", ".a"},
 			golden:   "testdata/broken-json-stream",
-			errstr:   "invalid character 'o' in literal false (expecting 'a')",
+			errstr:   "failed to evaluate {target}: invalid character 'o' in literal false (expecting 'a')",
 		}, {
 			caseName: "multi-document yaml in place keeps its documents",
 			src:      "testdata/multi-doc.yaml",
@@ -805,6 +802,24 @@ func TestRunInplace(t *testing.T) {
 			twoFiles:         true,
 			wantErr:          fs.ErrPermission,
 			unreadableSecond: true,
+		}, {
+			caseName: "-U with -s is rejected",
+			src:      "testdata/store.json",
+			args:     []string{"-U", "-s", ".store.book[]"},
+			golden:   "testdata/store.json",
+			errstr:   "cannot combine -U with -s",
+		}, {
+			caseName: "-U with -O is rejected",
+			src:      "testdata/store.json",
+			args:     []string{"-U", "-O", os.DevNull, ".store.book[0]"},
+			golden:   "testdata/store.json",
+			errstr:   "cannot combine -U with -O",
+		}, {
+			caseName: "-U with -c is rejected",
+			src:      "testdata/store.json",
+			args:     []string{"-U", "-c", ".store.book[0]"},
+			golden:   "testdata/store.json",
+			errstr:   "cannot combine -U with -c",
 		},
 	}
 	stdinOrg := os.Stdin
@@ -905,7 +920,7 @@ func TestRunInplace(t *testing.T) {
 					t.Errorf("got error %v; want it to wrap the target", err)
 				}
 			} else if tc.errstr != "" {
-				want := "failed to evaluate " + target + ": " + tc.errstr
+				want := strings.ReplaceAll(tc.errstr, "{target}", target)
 				if err == nil || err.Error() != want {
 					t.Fatalf("got error %v; want %s", err, want)
 				}
