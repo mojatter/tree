@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mojatter/io2"
 	"github.com/mojatter/tree"
@@ -571,15 +572,20 @@ func pipePath(t *testing.T, src string) string {
 
 // TestInputFilesNextReader checks that only non-seekable files that must be rewound are spooled.
 func TestInputFilesNextReader(t *testing.T) {
+	stdinOrg := os.Stdin
+	defer func() { os.Stdin = stdinOrg }()
+
 	testCases := []struct {
 		caseName  string
 		pipe      bool
+		stdin     bool
 		rewind    bool
 		wantSpool bool
 	}{
 		{caseName: "pipe without rewind is read directly", pipe: true},
 		{caseName: "pipe with rewind is spooled", pipe: true, rewind: true, wantSpool: true},
 		{caseName: "regular file with rewind is read directly", rewind: true},
+		{caseName: "regular file as stdin with rewind is read directly", stdin: true, rewind: true},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
@@ -587,13 +593,32 @@ func TestInputFilesNextReader(t *testing.T) {
 			if tc.pipe {
 				filename = pipePath(t, filename)
 			}
+			if tc.stdin {
+				file, err := os.Open(filename)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer func() { _ = file.Close() }()
+
+				os.Stdin = file
+				filename = filenameStdin
+			}
 			in, err := newInputFiles([]string{filename}, tc.rewind).nextReader()
 			if err != nil {
 				t.Fatal(err)
 			}
 			defer func() { _ = in.Close() }()
 
-			if _, isFile := in.(*os.File); isFile == tc.wantSpool {
+			if tc.stdin {
+				// Spooling would have read stdin to EOF already.
+				if off, err := os.Stdin.Seek(0, io.SeekCurrent); err != nil || off != 0 {
+					t.Errorf("stdin offset %d, %v; want 0", off, err)
+				}
+				_ = in.Close()
+				if _, err := os.Stdin.Seek(0, io.SeekCurrent); err != nil {
+					t.Errorf("stdin after Close: %v", err)
+				}
+			} else if _, isFile := in.(*os.File); isFile == tc.wantSpool {
 				t.Errorf("spooled: got %v, want %v", !isFile, tc.wantSpool)
 			}
 			if !tc.rewind {
@@ -604,6 +629,87 @@ func TestInputFilesNextReader(t *testing.T) {
 			}
 			if _, err := in.Seek(0, io.SeekStart); err != nil {
 				t.Errorf("Seek: %v", err)
+			}
+		})
+	}
+}
+
+// TestInputFilesNextReaderStdin checks that stdin is read without waiting for EOF unless it must be rewound.
+func TestInputFilesNextReaderStdin(t *testing.T) {
+	stdinOrg := os.Stdin
+	defer func() { os.Stdin = stdinOrg }()
+
+	testCases := []struct {
+		caseName string
+		rewind   bool
+	}{
+		{caseName: "stdin without rewind is read directly"},
+		{caseName: "stdin with rewind is spooled", rewind: true},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			pr, pw, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = pr.Close() }()
+			defer func() { _ = pw.Close() }()
+
+			os.Stdin = pr
+			const doc = `{"a":1}`
+			if _, err := pw.WriteString(doc); err != nil {
+				t.Fatal(err)
+			}
+			type result struct {
+				in  io.ReadSeekCloser
+				err error
+			}
+			ch := make(chan result, 1)
+			go func() {
+				in, err := newInputFiles([]string{filenameStdin}, tc.rewind).nextReader()
+				ch <- result{in, err}
+			}()
+			var res result
+			if tc.rewind {
+				select {
+				case res = <-ch:
+					t.Error("nextReader returned before EOF")
+				case <-time.After(100 * time.Millisecond):
+					_ = pw.Close()
+					select {
+					case res = <-ch:
+					case <-time.After(5 * time.Second):
+						t.Fatal("nextReader did not return after EOF")
+					}
+				}
+			} else {
+				select {
+				case res = <-ch:
+				case <-time.After(5 * time.Second):
+					t.Fatal("nextReader waited for EOF")
+				}
+			}
+			if res.err != nil {
+				t.Fatal(res.err)
+			}
+			// A pipe returned as is cannot seek; a spooled temp file can.
+			if _, err := res.in.Seek(0, io.SeekCurrent); tc.rewind && err != nil {
+				t.Errorf("stdin with rewind is not spooled: %v", err)
+			}
+			got := make([]byte, len(doc))
+			if _, err := io.ReadFull(res.in, got); err != nil || string(got) != doc {
+				t.Fatalf("read %q, %v; want %q", got, err, doc)
+			}
+			_ = res.in.Close()
+			if tc.rewind {
+				return
+			}
+			// Close must not close os.Stdin, which tq does not own.
+			if _, err := pw.WriteString("x"); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := pr.Read(make([]byte, 1)); err != nil {
+				t.Errorf("stdin after Close: %v", err)
 			}
 		})
 	}

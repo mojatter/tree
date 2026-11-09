@@ -74,21 +74,27 @@ func (f *inputFiles) nextReader() (io.ReadSeekCloser, error) {
 	f.filename = f.filenames[f.off]
 	f.off++
 	if f.filename == filenameStdin {
-		return spool(os.Stdin)
+		// Close is a no-op because tq does not own os.Stdin.
+		return f.rewindable(io2.NopReadSeekCloser(os.Stdin))
 	}
 	file, err := os.Open(f.filename)
 	if err != nil {
 		return nil, err
 	}
-	if !f.rewind {
-		return file, nil
-	}
-	if _, err := file.Seek(0, io.SeekCurrent); err == nil {
-		return file, nil
-	}
-	defer func() { _ = file.Close() }()
+	return f.rewindable(file)
+}
 
-	return spool(file)
+// rewindable returns in as is unless it must be rewound and cannot seek, in which case it spools and closes in.
+func (f *inputFiles) rewindable(in io.ReadSeekCloser) (io.ReadSeekCloser, error) {
+	if !f.rewind {
+		return in, nil
+	}
+	if _, err := in.Seek(0, io.SeekCurrent); err == nil {
+		return in, nil
+	}
+	defer func() { _ = in.Close() }()
+
+	return spool(in)
 }
 
 // spool copies src to a temp file so that format detection can rewind it.
