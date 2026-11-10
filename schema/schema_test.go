@@ -13,7 +13,7 @@ func TestValidate(t *testing.T) {
 		caseName string
 		n        tree.Node
 		rules    QueryRules
-		wantErrs []string // all substrings must appear; empty means no error
+		wantErrs []string // one substring per error; empty means no error
 	}{
 		{
 			caseName: "require fires on nil root",
@@ -36,16 +36,133 @@ func TestValidate(t *testing.T) {
 			rules:    QueryRules{".missing": String{}},
 		},
 		{
-			caseName: "missing key under a filter query fires per element",
-			n:        tree.Map{"arr": tree.Array{tree.Map{"k": tree.V("a")}, tree.Map{}}},
+			caseName: "[] in the middle names each element",
+			n:        tree.Map{"arr": tree.A(tree.Map{}, tree.Map{}, tree.Map{"k": tree.V(1)})},
+			rules:    QueryRules{".arr[].k": Required(String{})},
+			wantErrs: []string{".arr[0].k: required", ".arr[1].k: required", ".arr[2].k: expected string, got number"},
+		},
+		{
+			caseName: "[] in the middle on an empty array fires nothing",
+			n:        tree.Map{"arr": tree.A()},
+			rules:    QueryRules{".arr[].k": Required(String{})},
+		},
+		{
+			caseName: "[] in the middle on an empty map fires nothing",
+			n:        tree.Map{"m": tree.Map{}},
+			rules:    QueryRules{".m[].k": Required(String{})},
+		},
+		{
+			caseName: "filter after [] fires per element with no match",
+			n:        tree.Map{"u": tree.A(tree.Map{"r": tree.A("admin")}, tree.Map{"r": tree.A("x")})},
+			rules:    QueryRules{`.u[].r[. == "admin"]`: Required(String{})},
+			wantErrs: []string{`.u[1].r[(. == "admin")]: required`},
+		},
+		{
+			caseName: "walk after [] fires per element with no match",
+			n:        tree.Map{"u": tree.A(tree.Map{"r": tree.A("admin")}, tree.Map{"r": tree.A("x")})},
+			rules:    QueryRules{".u[]..k": Required(String{})},
+			wantErrs: []string{".u[0]..k: required", ".u[1]..k: required"},
+		},
+		{
+			caseName: "[] in the middle on a missing base fires once",
+			n:        tree.Map{},
 			rules:    QueryRules{".arr[].k": Required(String{})},
 			wantErrs: []string{".arr[].k: required"},
+		},
+		{
+			caseName: "[] in the middle on a null base fires once",
+			n:        tree.Map{"arr": tree.Nil},
+			rules:    QueryRules{".arr[].k": Required(String{})},
+			wantErrs: []string{".arr[].k: required"},
+		},
+		{
+			caseName: "[] under [] on an element without the key fires at the element",
+			n:        tree.Map{"arr": tree.A(tree.Map{"k": tree.A("a")}, tree.Map{})},
+			rules:    QueryRules{".arr[].k[]": Required(String{})},
+			wantErrs: []string{".arr[1].k[]: required"},
 		},
 		{
 			caseName: "[] after a key read as null on some elements keeps keyed paths",
 			n:        tree.Map{"arr": tree.Array{tree.Map{"k": tree.Map{"a": tree.V(1)}}, tree.Map{}}},
 			rules:    QueryRules{".arr[].k[]": String{}},
-			wantErrs: []string{`.arr[].k["a"]: expected string, got number`},
+			wantErrs: []string{`.arr[0].k["a"]: expected string, got number`},
+		},
+		{
+			caseName: "[] under [] keeps each parent's index",
+			n:        tree.Map{"x": tree.A(tree.Map{"y": tree.A(1, "a")}, tree.Map{"y": tree.A("b", 2)})},
+			rules:    QueryRules{".x[].y[]": String{}},
+			wantErrs: []string{".x[0].y[0]: expected string", ".x[1].y[1]: expected string"},
+		},
+		{
+			caseName: "[] after a walk indexes each match",
+			n:        tree.Map{"x": tree.A(tree.Map{"y": tree.A(1, "a")}, tree.Map{"y": tree.A("b", 2)})},
+			rules:    QueryRules{"..y[]": String{}},
+			wantErrs: []string{"..y[0]: expected string", "..y[1]: expected string"},
+		},
+		{
+			caseName: "[] after a pipe indexes the collected array",
+			n:        tree.Map{"x": tree.V(1)},
+			rules:    QueryRules{".x | .[]": String{}},
+			wantErrs: []string{".x | .[0]: expected string"},
+		},
+		{
+			caseName: "[] before a pipe does not expand",
+			n:        tree.Map{"x": tree.A(1, 2)},
+			rules:    QueryRules{".x[] | .": Array{MaxLen: IntPtr(1)}},
+			wantErrs: []string{".x[] | .: "},
+		},
+		{
+			caseName: "[] inside a group without a pipe expands",
+			n:        tree.Map{"arr": tree.A(tree.Map{"k": tree.A(1)}, tree.Map{"k": tree.A(2)})},
+			rules:    QueryRules{"(.arr[]).k[]": String{}},
+			wantErrs: []string{".arr[0].k[0]: expected string", ".arr[1].k[0]: expected string"},
+		},
+		{
+			caseName: "[] inside a group with a pipe does not expand",
+			n:        tree.Map{"a": tree.Map{"k": tree.V(1)}},
+			rules:    QueryRules{"(.a | .[]).k": String{}},
+			wantErrs: []string{"(.a | .[]).k: expected string, got number"},
+		},
+		{
+			caseName: "[] after a slice keeps each element's own index",
+			n:        tree.Map{"arr": tree.A(tree.A(1), tree.A(2))},
+			rules:    QueryRules{".arr[0:2][]": String{}},
+			wantErrs: []string{".arr[0:2][0]: expected string", ".arr[0:2][0]: expected string"},
+		},
+		{
+			caseName: "[] on a nil Array fires once",
+			n:        tree.Map{"arr": tree.Array(nil)},
+			rules:    QueryRules{".arr[]": Required(String{})},
+			wantErrs: []string{".arr[]: required"},
+		},
+		{
+			caseName: "[] on a nil Map fires once",
+			n:        tree.Map{"m": tree.Map(nil)},
+			rules:    QueryRules{".m[]": Required(String{})},
+			wantErrs: []string{".m[]: required"},
+		},
+		{
+			caseName: "[] after a walk with only a null parent fires once",
+			n:        tree.Map{"a": tree.Map{"tags": tree.Nil}},
+			rules:    QueryRules{"..tags[]": Required(String{})},
+			wantErrs: []string{"..tags[]: required"},
+		},
+		{
+			caseName: "[] after a walk with a null parent beside a container fires nothing for it",
+			n:        tree.Map{"a": tree.Map{"tags": tree.Nil}, "b": tree.Map{"tags": tree.A("x")}},
+			rules:    QueryRules{"..tags[]": Required(String{})},
+		},
+		{
+			caseName: "expanding rule uses one spelling when nothing expands",
+			n:        tree.Map{},
+			rules:    QueryRules{`."a"[]`: Required(String{})},
+			wantErrs: []string{".a[]: required"},
+		},
+		{
+			caseName: "[] inside a select does not expand",
+			n:        tree.Map{"x": tree.A(tree.Map{"y": tree.A(1)})},
+			rules:    QueryRules{".x[.y[] == 1]": String{}},
+			wantErrs: []string{".x[.y[] == 1]: expected string"},
 		},
 		{
 			caseName: "[][] with a null element leaves the document unchanged",
@@ -268,7 +385,7 @@ func TestValidate_ErrQuery(t *testing.T) {
 				t.Errorf("Query = %q; want %q", eq.Query, tc.wantQuery)
 			}
 			if eq.Err == nil {
-				t.Error("Unwrap returned nil; want underlying tree.Find error")
+				t.Error("Unwrap returned nil; want underlying tree error")
 			}
 			// Sibling String{} violation on .ok must NOT appear when ErrQuery fires.
 			if strings.Contains(err.Error(), "expected string") {
@@ -307,9 +424,7 @@ func TestEvery_ErrQueryFailsFast(t *testing.T) {
 	}
 }
 
-// checkErrs asserts that err either is nil (when wantErrs is empty) or
-// contains every substring in wantErrs. Shared by the test files in
-// this package.
+// checkErrs asserts that err is nil when wantErrs is empty, or reports exactly len(wantErrs) lines, one per violation, each containing its substring.
 func checkErrs(t *testing.T, err error, wantErrs []string) {
 	t.Helper()
 	if len(wantErrs) == 0 {
@@ -321,9 +436,13 @@ func checkErrs(t *testing.T, err error, wantErrs []string) {
 	if err == nil {
 		t.Fatalf("got nil; want error containing %v", wantErrs)
 	}
-	for _, want := range wantErrs {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error %q missing %q", err.Error(), want)
+	got := strings.Split(err.Error(), "\n")
+	if len(got) != len(wantErrs) {
+		t.Fatalf("got %d errors %q; want %d", len(got), got, len(wantErrs))
+	}
+	for i, want := range wantErrs {
+		if !strings.Contains(got[i], want) {
+			t.Errorf("error %d %q missing %q", i, got[i], want)
 		}
 	}
 }

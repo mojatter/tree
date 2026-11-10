@@ -18,10 +18,11 @@
 //     [github.com/mojatter/tree.Nil]; only [Require] fires on Nil, so
 //     [Required] (= And{Require{}, r}) is the idiomatic "must be
 //     present and satisfy r".
-//   - A rule query ending in "[]" expands matches: errors carry the
-//     concrete index (.arr[i]) for arrays and the concrete key
-//     (.obj["k"]) for maps.
-//   - Only a literal "[]" suffix triggers element expansion. Filter
+//   - Each "[]" after the last pipe in a rule query, outside selectors
+//     and groups with a pipe, expands matches: errors carry the concrete
+//     index (.arr[i].k) for arrays and the concrete key (.obj["k"]) for
+//     maps. An empty array or map fires nothing.
+//   - Only a "[]" after the last pipe triggers element expansion. Filter
 //     queries like ".arr[.age > 18]" still run but attribute all
 //     failures to the filter expression itself; see docs/schema.md
 //     for the workaround.
@@ -43,15 +44,15 @@
 //   - [Or]: passes when at least one child passes.
 //   - [Not]: passes when the inner rule fails; skips Nil.
 //   - [Every]: apply a QueryRules set to each element of an array or
-//     each value of a map. Required inside Every fires per element,
-//     which a bare "[]"-suffixed query cannot do.
+//     each value of a map. Use it for nested structure or several
+//     rules per element.
 //   - [String]: string leaf with optional Enum, Regex, MinLen, MaxLen.
 //   - [Int]: integer-valued number with optional Min/Max; rejects NaN,
 //     Inf, fractional, and out-of-int64-range values.
 //   - [Float]: number leaf with optional Min/Max; rejects NaN.
 //   - [Bool]: boolean leaf.
 //   - [Array]: array leaf with optional MinLen/MaxLen. Element rules
-//     go on separate "[]"-suffixed queries.
+//     go on separate "[]" queries.
 //   - [Map]: map leaf with optional Keys allow-list and per-key
 //     KeyedRules. Either field "closes" the map (unknown keys are
 //     reported); KeyedRules entries also recursively validate each

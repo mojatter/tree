@@ -102,12 +102,7 @@ func (rs Or) Validate(n tree.Node, q string) error {
 // each value of a map. Error paths include the concrete index
 // (.foo[0]) or key (.foo["a"]) of the element. On Nil it returns nil
 // (skip); wrap with Required to require presence.
-//
-// Unlike the bare "[]" suffix at the top level, which flattens
-// matches and therefore cannot detect a specific element that is
-// missing a required sub-field, Every runs its rules starting from
-// each element individually, so Required(r) in Rules fires per
-// element.
+// Prefer it over a "[]" query for nested structure or several rules per element.
 type Every struct {
 	Rules QueryRules
 }
