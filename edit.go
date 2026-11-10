@@ -81,8 +81,12 @@ func editStep(n Node, q Query) (Query, error) {
 
 // editPath flattens groups without a pipe and rejects a step the edit cannot write through, before any data is read.
 // Steps before the last pipe are only read, so only the steps after it are checked; a trailing pipe, as in |=, is a step.
+// A final [], select or slice gets a . appended, so .a[] = x edits like .a[]. = x.
 func editPath(q Query) (FilterQuery, error) {
 	fq := flattenGroups(q)
+	if len(fq) > 0 && isEachStep(fq[len(fq)-1]) {
+		fq = append(fq, NopQuery{})
+	}
 	seg := dropNopSteps(fq[lastPipe(fq[:max(len(fq)-1, 0)])+1:])
 	for i, s := range seg {
 		if !canEditStep(s, i == len(seg)-1) {
@@ -122,10 +126,8 @@ func lastPipe(fq FilterQuery) int {
 // canEditStep reports whether an edit can write through q, as the last step when last is true.
 func canEditStep(q Query, last bool) bool {
 	switch q.(type) {
-	case MapQuery, ArrayQuery, WalkQuery, indexQuery:
+	case MapQuery, ArrayQuery, WalkQuery, indexQuery, SelectQuery, ArrayRangeQuery:
 		return true
-	case SelectQuery, ArrayRangeQuery:
-		return !last
 	}
 	_, ok := q.(EditorQuery)
 	return last && ok
@@ -305,16 +307,23 @@ func dropNopSteps(fq FilterQuery) FilterQuery {
 			kept = append(kept, q)
 			continue
 		}
-		if i == len(fq)-1 && len(kept) > 0 {
-			if !canEditStep(kept[len(kept)-1], true) {
-				kept = append(kept, q) // a trailing . after a step without write-back, such as [] or a slice, is the editable last step
-			}
+		if i == len(fq)-1 && len(kept) > 0 && isEachStep(kept[len(kept)-1]) {
+			kept = append(kept, q) // a trailing . after [], a select or a slice edits each match
 		}
 	}
 	if len(kept) == 0 {
 		return FilterQuery{NopQuery{}}
 	}
 	return kept
+}
+
+// isEachStep reports whether q is [], a select or a slice, whose matches an edit sets one by one.
+func isEachStep(q Query) bool {
+	switch q.(type) {
+	case SelectQuery, ArrayRangeQuery:
+		return true
+	}
+	return false
 }
 
 // isNopQuery reports whether q is a bare . or .., by value or pointer.
