@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strings"
 
 	"github.com/mojatter/tree"
 )
@@ -13,9 +12,9 @@ import (
 // Rule validates a single tree.Node reached via query q.
 //
 // q is a display path used for error messages; when Validate (top-level
-// function) drives the call, q is the query string, with array-element
-// rules (queries ending in []) having their suffix expanded to the
-// concrete index (e.g. .arr[0], .arr[1]).
+// function) drives the call, q is the query string, with each [] after
+// the last pipe, outside selectors and groups with a pipe, expanded to
+// the concrete index or key (e.g. .arr[0].k).
 type Rule interface {
 	Validate(n tree.Node, q string) error
 }
@@ -23,15 +22,15 @@ type Rule interface {
 // QueryRules maps a tree query to the rule applied at each match.
 type QueryRules map[string]Rule
 
-// ErrQuery indicates that a rule's query string is malformed (tree.Find
-// rejected it). It represents a bug in the rules definition, not a
+// ErrQuery indicates that a rule's query string is malformed (parsing
+// or running it failed). It represents a bug in the rules definition, not a
 // data violation, so Validate and ValidateWithPrefix fail fast and
 // return only this error instead of joining it with data-level
 // violation errors. Callers that want to distinguish can errors.As
 // into *ErrQuery.
 type ErrQuery struct {
-	Query string // joined display path (prefix + rule query) that failed to parse
-	Err   error  // underlying tree.Find error
+	Query string // joined display path (prefix + rule query) that failed to parse or run
+	Err   error  // underlying tree error
 }
 
 // Error implements error.
@@ -39,7 +38,7 @@ func (e *ErrQuery) Error() string {
 	return fmt.Sprintf("query %q: %s", e.Query, e.Err)
 }
 
-// Unwrap returns the underlying tree.Find error.
+// Unwrap returns the underlying tree error.
 func (e *ErrQuery) Unwrap() error {
 	return e.Err
 }
@@ -47,12 +46,12 @@ func (e *ErrQuery) Unwrap() error {
 // Validate executes every (query, rule) entry in rules against n.
 // Errors from all rules are collected and joined.
 //
-// For each query q, tree.Find is called. If q yields no matches, the
-// rule is invoked once with tree.Nil (so Require{} can fire). When q
-// ends with "[]", matches are reported with a concrete path:
-// .arr[0]/.arr[1]... for array parents and .obj["a"]/.obj["b"]...
-// for map parents (keys sorted). If the base of "[]" resolves to more
-// than one non-null parent, numeric indices are used as the fallback.
+// For each query q, the rule runs on every match. If q yields no matches, the
+// rule is invoked once with tree.Nil (so Require{} can fire). Each "[]"
+// after the last pipe, outside selectors and groups with a pipe, expands,
+// so matches are reported with a concrete path: .arr[0].k for array parents
+// and .obj["a"].k for map parents (keys sorted). An empty array or map
+// before a "[]" fires nothing; docs/schema.md has the full rules.
 func Validate(n tree.Node, rules QueryRules) error {
 	return ValidateWithPrefix(n, rules, "")
 }
@@ -89,76 +88,125 @@ func validateNode(n tree.Node, rules QueryRules, prefix string) ([]error, *ErrQu
 
 	var errs []error
 	for _, q := range qs {
-		r := rules[q]
-		vs, err := tree.Find(n, q)
+		pq, err := tree.ParseQuery(q)
 		if err != nil {
 			return nil, &ErrQuery{Query: joinPath(prefix, q), Err: err}
 		}
+		fq := flattenGroups(pq)
+		text := q
+		if firstEach(fq) >= 0 {
+			text = fq.String() // one spelling for the expanded and unexpanded paths of a rule
+		}
+		sub, err := validateSteps(n, fq, prefix, text, rules[q])
+		if err != nil {
+			return nil, &ErrQuery{Query: joinPath(prefix, q), Err: err}
+		}
+		errs = append(errs, sub...)
+	}
+	return errs, nil
+}
+
+// validateSteps runs r on what fq yields from n, at the path prefix + text.
+// The first [] after the last pipe expands: the rest of fq runs on each element with its index or key in the path.
+// A step that yields nothing, other than an empty array or map before a [], passes Nil once; a nil Array or Map is null.
+func validateSteps(n tree.Node, fq tree.FilterQuery, prefix, text string, r Rule) ([]error, error) {
+	i := firstEach(fq)
+	if i < 0 {
+		vs, err := fq.Exec(n)
+		if err != nil {
+			return nil, err
+		}
 		if len(vs) == 0 {
-			if err := r.Validate(tree.Nil, joinPath(prefix, q)); err != nil {
-				errs = append(errs, err)
-			}
-			continue
+			vs = []tree.Node{tree.Nil}
 		}
-		if base, ok := strings.CutSuffix(q, "[]"); ok {
-			sub, fe := validateExpanded(n, base, vs, r, prefix)
-			if fe != nil {
-				return nil, fe
-			}
-			errs = append(errs, sub...)
-			continue
-		}
-		display := joinPath(prefix, q)
+		var errs []error
+		display := joinPath(prefix, text)
 		for _, v := range vs {
 			if err := r.Validate(v, display); err != nil {
 				errs = append(errs, err)
 			}
 		}
-	}
-	return errs, nil
-}
-
-// validateExpanded runs r against each matched value of a "[]"-suffixed
-// query. When the base query resolves to a single non-null map parent, error
-// paths include the concrete key (e.g. .obj["a"]); otherwise numeric
-// indices are used (e.g. .arr[0]). prefix is prepended to the base
-// so nested contexts (from Every) render full paths.
-//
-// A parse failure on the base query is propagated as *ErrQuery; in
-// practice this should not fire when the caller already parsed the
-// full "[]"-suffixed query successfully, but it is handled for safety.
-func validateExpanded(root tree.Node, base string, vs []tree.Node, r Rule, prefix string) ([]error, *ErrQuery) {
-	display := joinPath(prefix, base)
-	q := base
-	if strings.TrimSpace(q) == "" {
-		q = "." // a bare "[]" expands the current node
-	}
-	parents, err := tree.Find(root, q)
-	if err != nil {
-		return nil, &ErrQuery{Query: joinPath(prefix, base), Err: err}
-	}
-	// A key step after [] reads null for elements without the key; they have nothing to expand.
-	// Find may return the document's own array, so filter a copy.
-	parents = slices.DeleteFunc(slices.Clone(parents), func(n tree.Node) bool { return n.Type().IsNilValue() })
-	if len(parents) == 1 && parents[0].Type().IsMap() {
-		m := parents[0].Map()
-		var errs []error
-		for _, k := range m.Keys() {
-			qi := fmt.Sprintf("%s[%q]", display, k)
-			if err := r.Validate(m.Get(k), qi); err != nil {
-				errs = append(errs, err)
-			}
-		}
 		return errs, nil
 	}
+	base, rest := fq[:i], fq[i+1:]
+	parents, err := append(tree.FilterQuery{tree.NopQuery{}}, base...).Exec(n)
+	if err != nil {
+		return nil, err
+	}
+	basePath, restText := joinPath(prefix, base.String()), rest.String()
 	var errs []error
-	for i, v := range vs {
-		qi := fmt.Sprintf("%s[%d]", display, i)
-		if err := r.Validate(v, qi); err != nil {
+	expanded := false
+	for _, p := range parents {
+		switch {
+		case p.IsNil():
+			continue // a nil Array or Map is null, as Require reads it
+		case p.Type().IsArray():
+			a := p.Array()
+			for j := range a {
+				sub, err := validateSteps(a.Get(j), rest, fmt.Sprintf("%s[%d]", basePath, j), restText, r)
+				if err != nil {
+					return nil, err
+				}
+				errs = append(errs, sub...)
+			}
+		case p.Type().IsMap():
+			m := p.Map()
+			for _, k := range m.Keys() {
+				sub, err := validateSteps(m.Get(k), rest, fmt.Sprintf("%s[%q]", basePath, k), restText, r)
+				if err != nil {
+					return nil, err
+				}
+				errs = append(errs, sub...)
+			}
+		default:
+			continue
+		}
+		expanded = true
+	}
+	if !expanded {
+		if err := r.Validate(tree.Nil, joinPath(prefix, text)); err != nil {
 			errs = append(errs, err)
 		}
 	}
 	return errs, nil
+}
+
+// flattenGroups inlines groups without a pipe, as the edit path does, so a [] inside one expands.
+func flattenGroups(q tree.Query) tree.FilterQuery {
+	fq, ok := q.(tree.FilterQuery)
+	if !ok {
+		return tree.FilterQuery{q}
+	}
+	flat := make(tree.FilterQuery, 0, len(fq))
+	for _, s := range fq {
+		if g, ok := s.(tree.FilterQuery); ok && !slices.ContainsFunc(g, isPipe) {
+			flat = append(flat, flattenGroups(g)...)
+			continue
+		}
+		flat = append(flat, s)
+	}
+	return flat
+}
+
+func isPipe(q tree.Query) bool {
+	_, ok := q.(tree.SlurpQuery)
+	return ok
+}
+
+// firstEach returns the index of the first [] after the last pipe in fq, or -1.
+func firstEach(fq tree.FilterQuery) int {
+	start := 0
+	for i, q := range fq {
+		if isPipe(q) {
+			start = i + 1
+		}
+	}
+	for i := start; i < len(fq); i++ {
+		if s, ok := fq[i].(tree.SelectQuery); ok && s.Selector == nil {
+			return i
+		}
+	}
+	return -1
 }
 
 // joinPath concatenates a prefix path and a rule query into the

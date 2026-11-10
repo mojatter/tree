@@ -19,7 +19,7 @@ set of rules keyed by tree queries.
 - [Getting started: flat rules](#getting-started-flat-rules)
 - [Closed object schemas with `Map.KeyedRules`](#closed-object-schemas-with-mapkeyedrules)
 - [Nested validation with `Every`](#nested-validation-with-every)
-- [`"[]"` suffix vs `Every`](#-suffix-vs-every)
+- [`"[]"` vs `Every`](#-vs-every)
 - [Filter queries and where they fall short](#filter-queries-and-where-they-fall-short)
 - [Nil semantics](#nil-semantics)
 - [Loading rules from YAML / JSON](#loading-rules-from-yaml--json)
@@ -170,21 +170,19 @@ inside the outer one.
 See [`ExampleValidate_nested`](../schema/example_test.go) for a
 runnable version of the full fixture.
 
-## `"[]"` suffix vs `Every`
+## `"[]"` vs `Every`
 
 Both iterate over array elements or map values, but they differ in
 how they treat each element:
 
-| Feature | `"[]"` suffix | `Every` |
-| ------- | ------------- | ------- |
+| Feature | `"[]"` | `Every` |
+| ------- | ------ | ------- |
 | Applies leaf rule per element | ✓ | via inner rules |
 | Applies sub-rule set per element | — | ✓ |
-| `Required` fires per element | — (only on the parent) | ✓ |
-| Good for | `.arr[] = String{}` type checks | elements with required sub-fields |
+| `Required` fires per element | ✓ (`.arr[].k`) | ✓ |
+| Good for | `.arr[].k: Required(String{})` | nested structure, several rules per element |
 
-Use `"[]"` for cheap "every element must be type X" checks. Reach
-for `Every` the moment you need per-element `Required`, nested
-structure, or two or more rules per element.
+Each `[]` after the last `|` in a rule query, outside selectors and outside parentheses that contain a `|`, expands, so errors name the element: `.arr[].k` reports `.arr[0].k`, and `.x[].y[]` reports `.x[1].y[0]`. An empty array or map fires nothing, while a missing, null or scalar base still fires `Required` once at the path reached so far: `.arr[].k` on `{}` reports `.arr[].k`, and `.arr[].k[]` on an element without `k` reports `.arr[0].k[]`. Likewise, a filter, walk or slice after an expanding `[]` that matches nothing fires `Required` once per element at that element's path: `.u[].r[. == "admin"]` reports `.u[1].r[(. == "admin")]: required` for each element without an admin. Under a walk, a filter or a slice that yields several parents, the index is each element's own, so `..y[0]` can appear once per parent. Under a walk, a filter or a slice, a null or scalar parent fires nothing when another parent is a container, and paths cannot name it; when no parent is a container, `Required` fires once at the unexpanded path. Add a `..tags: Required(Array{})` rule to catch it, or spell the parents' location with `[]` to get per-parent paths. A `[]` before a `|` does not expand, since the pipe collects all elements. Paths of a rule with an expanding `[]` use the query's canonical spelling, e.g. `."a"[]` reports `.a[0]`. Reach for `Every` when you need nested structure or two or more rules per element.
 
 ## Filter queries and where they fall short
 
@@ -199,9 +197,10 @@ jobs:
    which element failed.
 2. **Zero matches treat the filter as a single Nil node.** A
    `Required` rule on a filter fires once with the filter itself as
-   the "missing" path, which is rarely the intent.
+   the "missing" path, which is rarely the intent. After an
+   expanding `[]`, it fires once per element instead.
 
-Only a literal `"[]"` suffix triggers per-element expansion. When
+Only a `"[]"` after the last `|` triggers per-element expansion. When
 you want element-level error reporting, use `"[]"` or wrap the
 parent array/map in `Every`. Filter queries are great for the
 `tree.Find` side (selecting nodes to read) but clash with
@@ -211,7 +210,7 @@ validation's need for attribution.
 
 When a query yields no matches, the rule is invoked with `tree.Nil`.
 A key step on missing data yields `tree.Nil` itself, so `.arr[].k`
-passes `tree.Nil` once for each element without `k`. A key step
+passes `tree.Nil` once for each element without `k`, at `.arr[i].k`. A key step
 on a scalar or an array also yields `tree.Nil`, so
 `".name.first": String{}` passes when `.name` is a string; add a
 `".name": Map{}` rule or use `Required` to check the shape:
@@ -418,7 +417,7 @@ violations scales with the data.
 
 ### `*ErrQuery` — malformed rule queries
 
-A malformed rule query (one that `tree.Find` rejects) is a bug in
+A malformed rule query (one that fails to parse or run) is a bug in
 the rules definition, not a data violation. `Validate` and
 `ValidateWithPrefix` fail fast on that case and return a single
 [`*ErrQuery`][ErrQuery] without joining any data-level violations:
@@ -433,7 +432,7 @@ if errors.As(err, &eq) {
     // The rules are broken. eq.Query is the failing path
     // (already prefixed if the rule ran inside Every or
     // ValidateWithPrefix); eq.Err wraps the underlying
-    // tree.Find error.
+    // tree error.
 }
 ```
 
