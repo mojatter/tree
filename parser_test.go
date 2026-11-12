@@ -369,6 +369,39 @@ func TestParseQuery(t *testing.T) {
 		}, {
 			expr: `1.or`,
 			want: FilterQuery{ValueQuery{NumberValue(1)}, MapQuery("or")},
+		}, {
+			expr: `(.a | .[0].b).c`,
+			want: FilterQuery{FilterQuery{MapQuery("a"), SlurpQuery{}, NopQuery{}, ArrayQuery(0), MapQuery("b")}, MapQuery("c")},
+		}, {
+			expr: `.x[](.a | .b)`,
+			want: FilterQuery{MapQuery("x"), SelectQuery{}, FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")}},
+		}, {
+			expr: `.((.a | .b) | .c).d`,
+			want: FilterQuery{NopQuery{}, FilterQuery{FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")}, SlurpQuery{}, MapQuery("c")}, MapQuery("d")},
+		}, {
+			expr:      `(.a .b).c`,
+			want:      FilterQuery{FilterQuery{MapQuery("a"), MapQuery("b")}, MapQuery("c")},
+			roundTrip: FilterQuery{MapQuery("a"), MapQuery("b"), MapQuery("c")},
+		}, {
+			expr: `."x"(.a | .b)`,
+			want: FilterQuery{MapQuery("x"), FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")}},
+		}, {
+			expr: `.x["y"](.a | .b)`,
+			want: FilterQuery{MapQuery("x"), MapQuery("y"), FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")}},
+		}, {
+			expr:      `(.a .b)(.c | .d)`,
+			want:      FilterQuery{FilterQuery{MapQuery("a"), MapQuery("b")}, FilterQuery{MapQuery("c"), SlurpQuery{}, MapQuery("d")}},
+			roundTrip: FilterQuery{MapQuery("a"), MapQuery("b"), FilterQuery{MapQuery("c"), SlurpQuery{}, MapQuery("d")}},
+		}, {
+			expr: `.x1(.a | .b)`,
+			want: FilterQuery{MapQuery("x1"), FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")}},
+		}, {
+			expr:      `(.a .).b`,
+			want:      FilterQuery{FilterQuery{MapQuery("a"), NopQuery{}}, MapQuery("b")},
+			roundTrip: FilterQuery{MapQuery("a"), MapQuery("b")},
+		}, {
+			expr: `true (.a | .b)`,
+			want: FilterQuery{ValueQuery{BoolValue(true)}, FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")}},
 		},
 	}
 	for _, tc := range testCases {

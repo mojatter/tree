@@ -429,6 +429,30 @@ func TestQueryString(t *testing.T) {
 			caseName: "value null",
 			q:        ValueQuery{Nil},
 			want:     `null`,
+		}, {
+			caseName: "group with a pipe",
+			q:        FilterQuery{FilterQuery{MapQuery("a"), SlurpQuery{}, NopQuery{}, ArrayQuery(0), MapQuery("b")}, MapQuery("c")},
+			want:     `(.a | .[0].b).c`,
+		}, {
+			caseName: "group without a pipe",
+			q:        FilterQuery{FilterQuery{MapQuery("a"), MapQuery("b")}, MapQuery("c")},
+			want:     `.a.b.c`,
+		}, {
+			caseName: "key before a group with a pipe",
+			q:        FilterQuery{MapQuery("x"), FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")}},
+			want:     `.x (.a | .b)`,
+		}, {
+			caseName: "group ending in a bare .",
+			q:        FilterQuery{FilterQuery{MapQuery("a"), NopQuery{}}, MapQuery("b")},
+			want:     `.a.b`,
+		}, {
+			caseName: "key before a group starting with a group with a pipe",
+			q:        FilterQuery{MapQuery("x"), FilterQuery{FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")}, MapQuery("c")}},
+			want:     `.x (.a | .b).c`,
+		}, {
+			caseName: "literal before a group with a pipe",
+			q:        FilterQuery{ValueQuery{BoolValue(true)}, FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")}},
+			want:     `true (.a | .b)`,
 		},
 	}
 	for _, tc := range testCases {

@@ -124,6 +124,12 @@ func TestValidate(t *testing.T) {
 			wantErrs: []string{"(.a | .[]).k: expected string, got number"},
 		},
 		{
+			caseName: "[] after a group with a pipe keeps the parentheses",
+			n:        tree.Map{"a": tree.Map{"b": tree.Map{"c": tree.A(1)}}},
+			rules:    QueryRules{"(.a | .[0].b).c[]": String{}},
+			wantErrs: []string{"(.a | .[0].b).c[0]: expected string"},
+		},
+		{
 			caseName: "[] after a slice keeps each element's own index",
 			n:        tree.Map{"arr": tree.A(tree.A(1), tree.A(2))},
 			rules:    QueryRules{".arr[0:2][]": String{}},
