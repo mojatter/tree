@@ -453,11 +453,11 @@ Usage:
   tq [flags] [query] ([file...])
 
 Flags:
-  -c, --color                  output with colors
+  -c, --color[=true|false]     output with colors
   -e, --edit stringArray       edit expression
-  -x, --expand                 expand results
-  -h, --help                   help for tq
-  -U, --inplace                update files, inplace
+  -x, --expand[=true|false]    expand results
+  -h, --help[=true|false]      help for tq
+  -U, --inplace[=true|false]   update files, inplace
   -i, --input-format string    input format (json or yaml, default: json if the input starts with { or [, else json then yaml)
   -j, --input-json             alias --input-format json
   -y, --input-yaml             alias --input-format yaml
@@ -465,10 +465,10 @@ Flags:
   -o, --output-format string   output format (json or yaml, default: input format)
   -J, --output-json            alias --output-format json
   -Y, --output-yaml            alias --output-format yaml
-  -r, --raw                    output raw strings
-  -s, --slurp                  slurp all results into an array
+  -r, --raw[=true|false]       output raw strings
+  -s, --slurp[=true|false]     slurp all results into an array
   -t, --template string        golang text/template string
-  -v, --version                print version
+  -v, --version[=true|false]   print version
 
 Examples:
   % echo '{"colors": ["red", "green", "blue"]}' | tq '.colors[0]'
