@@ -424,9 +424,15 @@ func (r *runner) needsRewind() bool {
 var utf8BOM = [3]byte{0xEF, 0xBB, 0xBF}
 
 // skipBOM drops a leading UTF-8 BOM and returns the rest of in and the number of bytes dropped.
+// It reads past the first byte only when that byte starts a BOM, so a short document on a pipe is not held back.
 func skipBOM(in io.Reader) (io.Reader, int64, error) {
 	var head [3]byte
-	n, err := io.ReadFull(in, head[:])
+	n, err := io.ReadFull(in, head[:1])
+	if n == 1 && head[0] == utf8BOM[0] {
+		var m int
+		m, err = io.ReadFull(in, head[1:])
+		n += m
+	}
 	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 		return nil, 0, err
 	}

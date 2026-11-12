@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/mojatter/io2"
@@ -715,6 +716,74 @@ func TestInputFilesNextReaderStdin(t *testing.T) {
 	}
 }
 
+// TestRunEmitsFirstDocumentBeforeEOF checks that a JSON document shorter than a BOM is output before stdin closes (#231).
+// YAML is not covered: its decoder cannot tell a document has ended until the next token or EOF.
+func TestRunEmitsFirstDocumentBeforeEOF(t *testing.T) {
+	// Cleanups run in reverse: stop run, close the pipes, then restore os.Stdin.
+	stdinOrg := os.Stdin
+	t.Cleanup(func() { os.Stdin = stdinOrg })
+
+	inR, inW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = inR.Close() })
+
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = outR.Close(); _ = outW.Close() })
+
+	os.Stdin = inR
+	r := &runner{stderr: io2.NopWriteCloser(new(bytes.Buffer)), out: outW}
+	done := make(chan error, 1)
+	finished := make(chan struct{})
+	go func() {
+		defer close(finished)
+
+		done <- r.run([]string{"tq", "-j", ".", filenameStdin})
+	}()
+	t.Cleanup(func() {
+		_ = inW.Close()
+		select {
+		case <-finished:
+		case <-time.After(5 * time.Second):
+		}
+	})
+
+	if _, err := inW.WriteString("1\n"); err != nil {
+		t.Fatal(err)
+	}
+	const want = "1\n"
+	got := make(chan string, 1)
+	go func() {
+		b := make([]byte, len(want))
+		if _, err := io.ReadFull(outR, b); err == nil {
+			got <- string(b)
+		}
+	}()
+	select {
+	case s := <-got:
+		if s != want {
+			t.Errorf("got %q, want %q", s, want)
+		}
+	case err := <-done:
+		t.Fatalf("run returned before the first document: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first document was not output before EOF")
+	}
+	_ = inW.Close()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("run did not return after EOF")
+	}
+}
+
 // TestNewRunnerDefaults ensures newRunner() wires stderr/out to the
 // process streams. Previously this constructor was uncovered.
 func TestNewRunnerDefaults(t *testing.T) {
@@ -1193,6 +1262,7 @@ func TestSkipBOM(t *testing.T) {
 		caseName   string
 		input      []byte
 		consumed   int
+		open       bool // the input never reaches EOF; reading past it fails
 		wantOffset int64
 		wantOutput []byte
 	}{
@@ -1209,6 +1279,13 @@ func TestSkipBOM(t *testing.T) {
 			wantOutput: []byte("{"),
 		},
 		{
+			caseName:   "1-byte from an open stream",
+			input:      []byte("1"),
+			open:       true,
+			wantOffset: 0,
+			wantOutput: []byte("1"),
+		},
+		{
 			caseName:   "2-byte",
 			input:      []byte("{}"),
 			wantOffset: 0,
@@ -1221,10 +1298,42 @@ func TestSkipBOM(t *testing.T) {
 			wantOutput: []byte("foo"),
 		},
 		{
+			caseName:   "0xEF only",
+			input:      []byte("\xEF"),
+			wantOffset: 0,
+			wantOutput: []byte("\xEF"),
+		},
+		{
+			caseName:   "0xEF 0xBB only",
+			input:      []byte("\xEF\xBB"),
+			wantOffset: 0,
+			wantOutput: []byte("\xEF\xBB"),
+		},
+		{
+			caseName:   "0xEF non-BOM",
+			input:      []byte("\xEFab"),
+			wantOffset: 0,
+			wantOutput: []byte("\xEFab"),
+		},
+		{
+			caseName:   "0xEF non-BOM from an open stream",
+			input:      []byte("\xEFab"),
+			open:       true,
+			wantOffset: 0,
+			wantOutput: []byte("\xEFab"),
+		},
+		{
 			caseName:   "UTF-8 BOM",
 			input:      append([]byte{0xEF, 0xBB, 0xBF}, []byte(`{"a":1}`)...),
 			wantOffset: 3,
 			wantOutput: []byte(`{"a":1}`),
+		},
+		{
+			caseName:   "UTF-8 BOM from an open stream",
+			input:      []byte("\xEF\xBB\xBF1"),
+			open:       true,
+			wantOffset: 3,
+			wantOutput: []byte("1"),
 		},
 		{
 			caseName:   "double UTF-8 BOM skips only first BOM",
@@ -1250,9 +1359,14 @@ func TestSkipBOM(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
-			in := bytes.NewReader(tc.input)
-			if _, err := in.Seek(int64(tc.consumed), io.SeekStart); err != nil {
+			br := bytes.NewReader(tc.input)
+			if _, err := br.Seek(int64(tc.consumed), io.SeekStart); err != nil {
 				t.Fatal(err)
+			}
+			var in io.Reader = br
+			errPastInput := errors.New("read past the available input")
+			if tc.open {
+				in = io.MultiReader(br, iotest.ErrReader(errPastInput))
 			}
 
 			reader, offset, err := skipBOM(in)
@@ -1262,12 +1376,23 @@ func TestSkipBOM(t *testing.T) {
 			if offset != tc.wantOffset {
 				t.Errorf("offset = %d, want %d", offset, tc.wantOffset)
 			}
-			got, err := io.ReadAll(reader)
+			var got []byte
+			if tc.open {
+				got = make([]byte, len(tc.wantOutput))
+				_, err = io.ReadFull(reader, got)
+			} else {
+				got, err = io.ReadAll(reader)
+			}
 			if err != nil {
-				t.Fatalf("ReadAll: unexpected error %v", err)
+				t.Fatalf("read: unexpected error %v", err)
 			}
 			if !bytes.Equal(got, tc.wantOutput) {
 				t.Errorf("got %q, want %q", got, tc.wantOutput)
+			}
+			if tc.open {
+				if _, err := reader.Read(make([]byte, 1)); err != errPastInput {
+					t.Errorf("read past output: %v, want %v", err, errPastInput)
+				}
 			}
 		})
 	}
