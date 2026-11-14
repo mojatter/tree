@@ -394,13 +394,28 @@ func (qs FilterQuery) String() string {
 	ss := make([]string, len(qs))
 	for i, q := range qs {
 		ss[i] = q.String()
+		if g, ok := q.(FilterQuery); ok && lastPipe(g) >= 0 {
+			ss[i] = "(" + ss[i] + ")" // a group with a pipe would otherwise pipe the steps after it
+		}
 	}
 	for i := range len(ss) - 1 {
-		if isNopQuery(qs[i]) && strings.HasPrefix(ss[i+1], ".") {
-			ss[i] = "" // a bare . before .b would print ..b, which parses as a walk
+		if strings.HasSuffix(ss[i], ".") && strings.HasPrefix(ss[i+1], ".") {
+			ss[i] = ss[i][:len(ss[i])-1] // a bare . before .b would print ..b, which parses as a walk
+		}
+		if endsWithMethodName(ss[i]) && strings.HasPrefix(ss[i+1], "(") {
+			ss[i] += " " // .x(...) would parse as a method call
 		}
 	}
 	return strings.Join(ss, "")
+}
+
+// endsWithMethodName reports whether s ends in a lowercase word the lexer would read as a method name before "(".
+func endsWithMethodName(s string) bool {
+	i := len(s)
+	for i > 0 && isLower(s[i-1]) {
+		i--
+	}
+	return i < len(s) && (i == 0 || !isWord(s[i-1]))
 }
 
 // WalkQuery is a key of each nodes that implements methods of the Query.
