@@ -16,7 +16,7 @@ var editOps = []string{"+=", "^?", "="}
 
 // Edit parses the edit expression and applies it to the node tree.
 // The RHS after "=" or "+=" is parsed as YAML; on error, matches edited before the failing one stay edited.
-// A step the edit cannot write through, such as a method other than first() and last(), is a syntax error.
+// A step the edit cannot write through, such as a method other than first() and last(), is a syntax error, and so is a single step other than ..key after a pipe.
 func Edit(pn *Node, expr string) error {
 	left, op, right, ok := splitEdit(expr)
 	if !ok {
@@ -81,17 +81,22 @@ func editStep(n Node, q Query) (Query, error) {
 
 // editPath flattens groups without a pipe and rejects a step the edit cannot write through, before any data is read.
 // Steps before the last pipe are only read, so only the steps after it are checked; a trailing pipe, as in |=, is a step.
+// After a pipe, one step other than ..key is rejected too, since it would write into the array the pipe collects.
 // A final [], select or slice gets a . appended, so .a[] = x edits like .a[]. = x.
 func editPath(q Query) (FilterQuery, error) {
 	fq := flattenGroups(q)
-	if len(fq) > 0 && isEachStep(fq[len(fq)-1]) {
-		fq = append(fq, NopQuery{})
-	}
-	seg := dropNopSteps(fq[lastPipe(fq[:max(len(fq)-1, 0)])+1:])
+	p := lastPipe(fq[:max(len(fq)-1, 0)])
+	seg := dropNopSteps(fq[p+1:])
 	for i, s := range seg {
 		if !canEditStep(s, i == len(seg)-1) {
 			return nil, errUnsupportedEditQuery(s)
 		}
+	}
+	if _, walk := seg[0].(WalkQuery); p >= 0 && !walk && (len(seg) < 2 || isNopQuery(seg[1])) {
+		return nil, fmt.Errorf("syntax error: unsupported edit query: %s", strings.TrimSpace(fq[p:].String()))
+	}
+	if len(fq) > 0 && isEachStep(fq[len(fq)-1]) {
+		fq = append(fq, NopQuery{})
 	}
 	return fq, nil
 }

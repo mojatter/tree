@@ -183,7 +183,7 @@ So, like `Map.Set` and `(*Array).Set`:
 
 ### Paths
 
-An edit writes through keys, indexes, `first()` and `last()`, and through `[]`, selects, slices and `..key`, which edit every match. Any other step, such as another method, a literal, or a parenthesised group containing a pipe inside a longer path, is a syntax error before any data is read (`.a.sort()[0] = 1` fails with `syntax error: unsupported edit query: sort()`). A trailing `|` (as in jq's `.a |= 1`) is also a syntax error as the last step. Parentheses around steps without a pipe are ignored, so `(.a[0]).b = 1` edits like `.a[0].b = 1`, and so are parentheses around the whole query: `(.a | .[0]) = 9` edits like `.a | .[0] = 9`, which changes only the array `|` collects, not the document.
+An edit writes through keys, indexes, `first()` and `last()`, and through `[]`, selects, slices and `..key`, which edit every match. Any other step, such as another method, a literal, or a parenthesised group containing a pipe inside a longer path, is a syntax error before any data is read (`.a.sort()[0] = 1` fails with `syntax error: unsupported edit query: sort()`). A trailing `|` (as in jq's `.a |= 1`) is also a syntax error as the last step. Parentheses around steps without a pipe are ignored, so `(.a[0]).b = 1` edits like `.a[0].b = 1`, and so are parentheses around the whole query. An edit after a top-level `|` needs at least two steps after it, or a `..key`, since any other single step would write into the array `|` collects rather than the document: `.a | .[0] = 9` and `(.a | .[]) = 9` fail with `syntax error: unsupported edit query: | .[0]` and `| .[]`, while `.a[] | .[].x = 9` sets `x` in every object of `a` and `.a | ..x = 9` sets every `x` under `a`.
 
 Bare `.` and `..` steps are ignored, so `.[0]` edits like `[0]`, `.a.` like `.a` and `..b. ^?` deletes like `..b ^?`. `[]`, a select or a slice as the last step edits the matched elements themselves: `.a[] = 1` sets every element of `a`, `null` elements included, `.a[] += 1` turns a `null` element into `[1]` as `.a[0] += 1` would, and `.a[] ^?` deletes every element, `null` elements included, as `.a[0] ^?` would, so `.a[. == 1] ^?` deletes the elements equal to `1` and leaves the others in place, as jq's `del(.a[] | select(. == 1))` does, and on an object it deletes the matching keys: `.m[. == 1] ^?` deletes every key of `m` whose value is `1`. A trailing `.` after them, as in `.a[]. = 1`, edits the same way.
 
@@ -236,7 +236,7 @@ From jq:
 
 - A key or an index on a scalar and a key on an array read `null` instead of failing, and an index on an object reads the key with that number.
 - `|` collects results into one array instead of streaming them, see [Pipes](#pipes).
-- An edit through `|` edits the array `|` collects, not the document, see [Paths](#paths); there is no `|=`.
+- An edit through `|` writes through the array `|` collects, so it needs at least two steps after `|`, or a `..key`, see [Paths](#paths); there is no `|=`.
 - Each side of a comparison yields at most one value, and an ordered operator with `null`, a boolean or a container never matches.
 - `0`, negative numbers and empty strings, arrays and objects are falsy in a select.
 - `count()` on a string is `0`.

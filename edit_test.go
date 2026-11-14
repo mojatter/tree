@@ -925,10 +925,10 @@ func TestEdit(t *testing.T) {
 
 		// --- Intermediate-step edge cases in resolveAndEdit ---
 		{
-			caseName: "pipe-prefixed query slurps root then edits wrapper",
+			caseName: "pipe-prefixed query with one step is an unsupported edit query",
 			n:        Map{"a": StringValue("v")},
 			expr:     `| [0] = "x"`,
-			want:     Map{"a": StringValue("v")},
+			errstr:   `syntax error: unsupported edit query: | [0]`,
 		}, {
 			caseName: "bare .. before an index is dropped like .",
 			n:        Map{},
@@ -960,10 +960,10 @@ func TestEdit(t *testing.T) {
 			expr:     `.[0] += 1`,
 			want:     Array{Array{NumberValue(1)}},
 		}, {
-			caseName: "edit ending in a piped dot is a no-op",
+			caseName: "edit ending in a piped dot is an unsupported edit query",
 			n:        Map{"a": NumberValue(1)},
 			expr:     `.a | . = 1`,
-			want:     Map{"a": NumberValue(1)},
+			errstr:   `syntax error: unsupported edit query: | .`,
 		}, {
 			caseName: "trailing bare dot on a null root sets the key",
 			n:        Nil,
@@ -1389,7 +1389,7 @@ func TestEdit(t *testing.T) {
 		}, {
 			caseName: "slurp left.Exec error propagates up",
 			n:        Map{"items": Array{Map{"k": NumberValue(1), "z": Map{"k": NumberValue(2)}}}},
-			expr:     `.items[..k == 1] | .x = 1`,
+			expr:     `.items[..k == 1] | .[0].x = 1`,
 			errstr:   `..k returns more than one value [1 2]`,
 		}, {
 			caseName: "[] as the last step sets each element like a trailing .",
@@ -2323,10 +2323,60 @@ func TestEdit(t *testing.T) {
 			expr:     `(.a | .[0]).b = 1`,
 			errstr:   `syntax error: unsupported edit query: (.a | .[0])`,
 		}, {
-			caseName: "group around the whole query edits like a top-level pipe",
+			caseName: "group around the whole query is checked like a top-level pipe",
 			n:        Map{"a": Array{Map{"x": NumberValue(1)}}},
 			expr:     `(.a | .[0]) = 9`,
-			want:     Map{"a": Array{Map{"x": NumberValue(1)}}},
+			errstr:   `syntax error: unsupported edit query: | .[0]`,
+		}, {
+			caseName: "one step and a trailing dot after a pipe is an unsupported edit query",
+			n:        Map{"a": Array{NumberValue(1)}},
+			expr:     `.a | .[]. = 9`,
+			errstr:   `syntax error: unsupported edit query: | .[].`,
+		}, {
+			caseName: "delete one step after a pipe is an unsupported edit query",
+			n:        Map{"a": Array{NumberValue(1)}},
+			expr:     `.a | .[0] ^?`,
+			errstr:   `syntax error: unsupported edit query: | .[0]`,
+		}, {
+			caseName: "two steps after a pipe write through the collected containers",
+			n:        Map{"a": Array{Map{"x": NumberValue(1)}, Map{"x": NumberValue(2)}}},
+			expr:     `.a[] | .[].x = 9`,
+			want:     Map{"a": Array{Map{"x": NumberValue(9)}, Map{"x": NumberValue(9)}}},
+		}, {
+			caseName: "a walk after a pipe edits the document",
+			n:        Map{"a": Array{Map{"x": NumberValue(1)}}},
+			expr:     `.a | ..x = 9`,
+			want:     Map{"a": Array{Map{"x": NumberValue(9)}}},
+		}, {
+			caseName: "a walk after a pipe deletes from the document",
+			n:        Map{"a": Array{Map{"x": NumberValue(1)}}},
+			expr:     `.a | ..x ^?`,
+			want:     Map{"a": Array{Map{}}},
+		}, {
+			caseName: "a walk and a trailing dot after a pipe edits the document",
+			n:        Map{"a": Array{Map{"x": NumberValue(1)}}},
+			expr:     `.a | ..x. = 9`,
+			want:     Map{"a": Array{Map{"x": NumberValue(9)}}},
+		}, {
+			caseName: "a numeric walk after a pipe edits keys named 0 in the document",
+			n:        Map{"a": Map{"0": NumberValue(1), "b": Map{"0": NumberValue(2)}}},
+			expr:     `.a | ..0 = 9`,
+			want:     Map{"a": Map{"0": NumberValue(9), "b": Map{"0": NumberValue(9)}}},
+		}, {
+			caseName: "a second trailing pipe is reported as the pipe",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.a | | = 9`,
+			errstr:   `syntax error: unsupported edit query: |`,
+		}, {
+			caseName: "an unsupported step after a pipe is reported as the step",
+			n:        Map{"a": Array{NumberValue(1)}},
+			expr:     `.a | sort() = 9`,
+			errstr:   `syntax error: unsupported edit query: sort()`,
+		}, {
+			caseName: "first() alone after a pipe is an unsupported edit query",
+			n:        Map{"a": Array{NumberValue(1)}},
+			expr:     `.a | first() = 9`,
+			errstr:   `syntax error: unsupported edit query: | first()`,
 		}, {
 			caseName: "slice step edits each element in range",
 			n:        Map{"a": Array{Map{"b": NumberValue(0)}, Map{"b": NumberValue(5)}}},
@@ -3355,10 +3405,12 @@ func TestEditDocExamples(t *testing.T) {
 		{caseName: "slice sets each element in range unlike jq", input: `{"a": [0, 1, 2]}`, expr: `.a[1:] = 9`, want: `{"a": [0, 9, 9]}`},
 		{caseName: "trailing pipe", input: `{"a": 1}`, expr: `.a |= 1`, errstr: `syntax error: unsupported edit query: |`},
 		{caseName: "group without a pipe", input: `{"a": [{}]}`, expr: `(.a[0]).b = 1`, want: `{"a": [{"b": 1}]}`},
-		{caseName: "group with a pipe", input: `{"a": [1]}`, expr: `(.a | .[0]) = 9`, want: `{"a": [1]}`},
-		{caseName: "pipe edits the collected array", input: `{"a": [1]}`, expr: `.a | .[0] = 9`, want: `{"a": [1]}`},
-		{caseName: "pipe with a final []", input: `{"a": [1]}`, expr: `.a | .[] = 9`, want: `{"a": [1]}`},
-		{caseName: "group with a pipe and a final []", input: `{"a": [1]}`, expr: `(.a | .[]) = 9`, want: `{"a": [1]}`},
+		{caseName: "group with a pipe", input: `{"a": [1]}`, expr: `(.a | .[0]) = 9`, errstr: `syntax error: unsupported edit query: | .[0]`},
+		{caseName: "one step after a pipe", input: `{"a": [1]}`, expr: `.a | .[0] = 9`, errstr: `syntax error: unsupported edit query: | .[0]`},
+		{caseName: "pipe with a final []", input: `{"a": [1]}`, expr: `.a | .[] = 9`, errstr: `syntax error: unsupported edit query: | .[]`},
+		{caseName: "group with a pipe and a final []", input: `{"a": [1]}`, expr: `(.a | .[]) = 9`, errstr: `syntax error: unsupported edit query: | .[]`},
+		{caseName: "two steps after a pipe", input: `{"a": [{"x": 1}]}`, expr: `.a[] | .[].x = 9`, want: `{"a": [{"x": 9}]}`},
+		{caseName: "a walk after a pipe", input: `{"a": [{"x": 1}]}`, expr: `.a | ..x = 9`, want: `{"a": [{"x": 9}]}`},
 		{caseName: "bare dot before an index", input: `[1]`, expr: `.[0] = 9`, want: `[9]`},
 		{caseName: "trailing bare dot after a key", input: `{"a": 1}`, expr: `.a. = 9`, want: `{"a": 9}`},
 		{caseName: "trailing bare dot after a walk", input: `{"b": 1, "c": {"b": 2}}`, expr: `..b. ^?`, want: `{"c": {}}`},
