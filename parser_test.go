@@ -402,6 +402,49 @@ func TestParseQuery(t *testing.T) {
 		}, {
 			expr: `true (.a | .b)`,
 			want: FilterQuery{ValueQuery{BoolValue(true)}, FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")}},
+		}, {
+			expr: `.x true`,
+			want: FilterQuery{MapQuery("x"), ValueQuery{BoolValue(true)}},
+		}, {
+			expr: `.x null`,
+			want: FilterQuery{MapQuery("x"), ValueQuery{Nil}},
+		}, {
+			expr: `.x 1.5`,
+			want: FilterQuery{MapQuery("x"), ValueQuery{NumberValue(1.5)}},
+		}, {
+			expr: `.x count()`,
+			want: FilterQuery{MapQuery("x"), &CountQuery{}},
+		}, {
+			expr: `.x .count()`,
+			want: FilterQuery{MapQuery("x"), NopQuery{}, &CountQuery{}},
+		}, {
+			expr: `1 1`,
+			want: FilterQuery{ValueQuery{NumberValue(1)}, ValueQuery{NumberValue(1)}},
+		}, {
+			expr: `1 .5`,
+			want: FilterQuery{ValueQuery{NumberValue(1)}, MapQuery("5")},
+		}, {
+			expr: `1.x .5`,
+			want: FilterQuery{ValueQuery{NumberValue(1)}, MapQuery("x"), MapQuery("5")},
+		}, {
+			expr: `1.5.5`,
+			want: FilterQuery{ValueQuery{NumberValue(1.5)}, MapQuery("5")},
+		}, {
+			expr:      `1 . .5`,
+			want:      FilterQuery{ValueQuery{NumberValue(1)}, NopQuery{}, MapQuery("5")},
+			roundTrip: FilterQuery{ValueQuery{NumberValue(1)}, MapQuery("5")},
+		}, {
+			expr:      `.a.("x")`,
+			want:      FilterQuery{MapQuery("a"), NopQuery{}, ValueQuery{StringValue("x")}},
+			roundTrip: FilterQuery{MapQuery("a"), ValueQuery{StringValue("x")}},
+		}, {
+			expr:      `.x.(1)`,
+			want:      FilterQuery{MapQuery("x"), NopQuery{}, ValueQuery{NumberValue(1)}},
+			roundTrip: FilterQuery{MapQuery("x"), ValueQuery{NumberValue(1)}},
+		}, {
+			expr:      `.(true)`,
+			want:      FilterQuery{NopQuery{}, ValueQuery{BoolValue(true)}},
+			roundTrip: ValueQuery{BoolValue(true)},
 		},
 	}
 	for _, tc := range testCases {

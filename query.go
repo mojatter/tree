@@ -10,6 +10,7 @@ import (
 // Query is an interface that defines the methods to query a node.
 type Query interface {
 	Exec(n Node) ([]Node, error)
+	// String returns text that ParseQuery reads back to an equivalent query, provided ParseQuery can return the query itself, not just as a part of another.
 	String() string
 }
 
@@ -391,22 +392,52 @@ func (qs FilterQuery) Exec(n Node) ([]Node, error) {
 }
 
 func (qs FilterQuery) String() string {
-	ss := make([]string, len(qs))
-	for i, q := range qs {
-		ss[i] = q.String()
+	out := ""
+	for _, q := range qs {
+		s := q.String()
 		if g, ok := q.(FilterQuery); ok && lastPipe(g) >= 0 {
-			ss[i] = "(" + ss[i] + ")" // a group with a pipe would otherwise pipe the steps after it
+			s = "(" + s + ")" // a group with a pipe would otherwise pipe the steps after it
 		}
+		if strings.HasSuffix(out, ".") && (strings.HasPrefix(s, ".") || startsWithLiteral(s)) {
+			out = out[:len(out)-1] // a bare . before .b or a literal would print ..b or a key
+		}
+		if needsSpace(out, s) {
+			out += " "
+		}
+		out += s
 	}
-	for i := range len(ss) - 1 {
-		if strings.HasSuffix(ss[i], ".") && strings.HasPrefix(ss[i+1], ".") {
-			ss[i] = ss[i][:len(ss[i])-1] // a bare . before .b would print ..b, which parses as a walk
-		}
-		if endsWithMethodName(ss[i]) && strings.HasPrefix(ss[i+1], "(") {
-			ss[i] += " " // .x(...) would parse as a method call
-		}
+	return out
+}
+
+// startsWithLiteral reports whether s starts with a string, number, true, false or null literal.
+func startsWithLiteral(s string) bool {
+	return s != "" && (s[0] == '"' || isWord(s[0])) && !startsWithMethod(s)
+}
+
+// startsWithMethod reports whether s starts with a lowercase word the lexer reads as a method name before "(".
+func startsWithMethod(s string) bool {
+	i := 0
+	for i < len(s) && isLower(s[i]) {
+		i++
 	}
-	return strings.Join(ss, "")
+	return i > 0 && i < len(s) && s[i] == '('
+}
+
+// needsSpace reports whether next printed right after prev would lex as a different token.
+func needsSpace(prev, next string) bool {
+	if prev == "" || next == "" {
+		return false
+	}
+	last := prev[len(prev)-1]
+	switch {
+	case isWord(last) && isWord(next[0]):
+		return true // .x true would print .xtrue
+	case next[0] == '(':
+		return endsWithMethodName(prev) // .x(...) would parse as a method call
+	case next[0] == '.' && len(next) > 1 && isNumber(next[1]):
+		return endsWithNumber(prev) // 1 .5 would print 1.5
+	}
+	return false
 }
 
 // endsWithMethodName reports whether s ends in a lowercase word the lexer would read as a method name before "(".
@@ -416,6 +447,15 @@ func endsWithMethodName(s string) bool {
 		i--
 	}
 	return i < len(s) && (i == 0 || !isWord(s[i-1]))
+}
+
+// endsWithNumber reports whether s ends in a digit-led word not after a dot, which the lexer would extend over .5.
+func endsWithNumber(s string) bool {
+	i := len(s)
+	for i > 0 && isWord(s[i-1]) {
+		i--
+	}
+	return i < len(s) && isNumber(s[i]) && (i == 0 || s[i-1] != '.')
 }
 
 // WalkQuery is a key of each nodes that implements methods of the Query.
