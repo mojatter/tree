@@ -174,15 +174,7 @@ func quoteString(s string) string {
 }
 
 func isIdent(s string) bool {
-	if len(s) == 0 {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		if !isWord(s[i]) {
-			return false
-		}
-	}
-	return true
+	return s != "" && wordEnd(s, 0) == len(s)
 }
 
 // ArrayQuery is an index of the Array that implements methods of the Query.
@@ -411,7 +403,7 @@ func (qs FilterQuery) String() string {
 
 // startsWithLiteral reports whether s starts with a string, number, true, false or null literal.
 func startsWithLiteral(s string) bool {
-	return s != "" && (s[0] == '"' || isWord(s[0])) && !startsWithMethod(s)
+	return s != "" && (s[0] == '"' || startsWord(s)) && !startsWithMethod(s)
 }
 
 // startsWithMethod reports whether s starts with a lowercase word the lexer reads as a method name before "(".
@@ -428,9 +420,8 @@ func needsSpace(prev, next string) bool {
 	if prev == "" || next == "" {
 		return false
 	}
-	last := prev[len(prev)-1]
 	switch {
-	case isWord(last) && isWord(next[0]):
+	case endsWord(prev) && startsWord(next):
 		return true // .x true would print .xtrue
 	case next[0] == '(':
 		return endsWithMethodName(prev) // .x(...) would parse as a method call
@@ -446,15 +437,12 @@ func endsWithMethodName(s string) bool {
 	for i > 0 && isLower(s[i-1]) {
 		i--
 	}
-	return i < len(s) && (i == 0 || !isWord(s[i-1]))
+	return i < len(s) && !endsWord(s[:i])
 }
 
 // endsWithNumber reports whether s ends in a digit-led word not after a dot, which the lexer would extend over .5.
 func endsWithNumber(s string) bool {
-	i := len(s)
-	for i > 0 && isWord(s[i-1]) {
-		i--
-	}
+	i := wordStart(s, len(s))
 	return i < len(s) && isNumber(s[i]) && (i == 0 || s[i-1] != '.')
 }
 

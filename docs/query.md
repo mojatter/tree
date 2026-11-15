@@ -28,7 +28,7 @@ A query is a sequence of steps, written without separators: `.store.book[0].titl
 
 | Step | Meaning |
 | - | - |
-| `.key`, `."key"`, `["key"]` | Key. An unquoted key is a run of `A-Z`, `a-z`, `0-9` and `_`; quote anything else (`."a b"`). |
+| `.key`, `."key"`, `["key"]` | Key. An unquoted key is a run of Unicode letters, decimal digits and marks and `_`, such as `.名前`; quote anything else (`."a b"`, `."$a"`, `."1e+3"`). A sign ends an unquoted key, so `.a.1e+3` is a syntax error. |
 | `.0` | Key `"0"`, which an array reads as the index 0. |
 | `[i]`, `[-i]` | Index. |
 | `[from:to]` | Slice; either bound may be omitted or negative. |
@@ -50,6 +50,8 @@ Literals appear in selectors, and a query made of a literal alone yields it:
 Method arguments are read as one CSV record, so `sort(".a")` passes `.a`; a `"` inside an argument is written `""` and a backslash is not an escape: `has("a""b")` checks the key `a"b`, and `has("a\"b")` fails with `failed to parse args: ...`.
 
 An empty expression, such as ``, `()`, `[.a == ]` or `sort("")`, is a syntax error.
+
+Outside quotes and method arguments, a space, tab, line feed or carriage return is skipped. Any other character there that starts no token, such as `$`, `!` or a full-width space, is a syntax error, and so is an unterminated string: `.a!` fails with `syntax error: unexpected character "!" at offset 2: ".a!"`, where the offset counts bytes of the expression shown in quotes, before it is escaped.
 
 ## Results
 
@@ -154,7 +156,7 @@ A step never fails because of the data it reads.
 
 ## Edits
 
-`Edit(&n, expr)` and tq `-e` take `<query> = <value>` (set), `<query> += <value>` (append) or `<query> ^?` (delete). The expression is split at the first `=`, `+=` or `^?` outside quotes, parentheses and method arguments, and `<value>` is parsed as a single YAML document, so `.url = "http://x?a=1"` sets the whole URL and `.a = [1, 2]` sets an array. Comparison operators (`==`, `!=`, `<=`, `>=`, `~=`) are never read as an assignment, so `.a[.b == 1].c = 2` splits after `]` and `.a ==1` is a syntax error; write `.a = "=1"` to set that string.
+`Edit(&n, expr)` and tq `-e` take `<query> = <value>` (set), `<query> += <value>` (append) or `<query> ^?` (delete), where only spaces, tabs and line breaks may follow `^?`. The expression is split at the first `=`, `+=` or `^?` outside quotes, parentheses and method arguments, and `<value>` is parsed as a single YAML document, so `.url = "http://x?a=1"` sets the whole URL and `.a = [1, 2]` sets an array. Comparison operators (`==`, `!=`, `<=`, `>=`, `~=`) are never read as an assignment, so `.a[.b == 1].c = 2` splits after `]` and `.a ==1` is a syntax error; write `.a = "=1"` to set that string.
 
 ### Go equivalents
 
