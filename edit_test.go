@@ -907,6 +907,66 @@ func TestEdit(t *testing.T) {
 			expr:     `= 1`,
 			errstr:   `syntax error: invalid edit expression "= 1"`,
 		}, {
+			caseName: "set non-ASCII key",
+			n:        Map{"a": NumberValue(1)},
+			expr:     `.名前 = 9`,
+			want:     Map{"a": NumberValue(1), "名前": NumberValue(9)},
+		}, {
+			caseName: "unknown operator returns syntax error",
+			n:        Map{},
+			expr:     `.a *= 1`,
+			errstr:   `syntax error: unexpected character "*" at offset 3: ".a *"`,
+		}, {
+			caseName: "leading full-width space on LHS returns syntax error",
+			n:        Map{},
+			expr:     "\u3000.a = 1",
+			errstr:   `syntax error: unexpected character "\u3000" at offset 0: "\u3000.a"`,
+		}, {
+			caseName: "trailing full-width space on LHS returns syntax error",
+			n:        Map{},
+			expr:     ".a\u3000 = 1",
+			errstr:   `syntax error: unexpected character "\u3000" at offset 2: ".a\u3000"`,
+		}, {
+			caseName: "form feed on LHS returns syntax error",
+			n:        Map{},
+			expr:     ".a\f= 1",
+			errstr:   `syntax error: unexpected character "\f" at offset 2: ".a\f"`,
+		}, {
+			caseName: "full-width space after delete returns syntax error",
+			n:        Map{"a": NumberValue(1)},
+			expr:     ".a ^?\u3000",
+			errstr:   `syntax error: invalid edit expression ".a ^?\u3000"`,
+		}, {
+			caseName: "form feed after delete returns syntax error",
+			n:        Map{"a": NumberValue(1)},
+			expr:     ".a ^?\f",
+			errstr:   `syntax error: invalid edit expression ".a ^?\f"`,
+		}, {
+			caseName: "blanks after delete",
+			n:        Map{"a": NumberValue(1)},
+			expr:     ".a ^?\t\r\n",
+			want:     Map{},
+		}, {
+			caseName: "full-width space as the whole value returns syntax error",
+			n:        Map{},
+			expr:     ".a = \u3000",
+			errstr:   `syntax error: invalid edit expression ".a = \u3000"`,
+		}, {
+			caseName: "tab and line feed around LHS",
+			n:        Map{},
+			expr:     "\t.a\n= 1",
+			want:     Map{"a": NumberValue(1)},
+		}, {
+			caseName: "unknown character on LHS returns syntax error",
+			n:        Map{},
+			expr:     `.foo! = 9`,
+			errstr:   `syntax error: unexpected character "!" at offset 4: ".foo!"`,
+		}, {
+			caseName: "signed exponent after a path dot on LHS returns syntax error",
+			n:        Map{},
+			expr:     `.a.1e-3 = 1`,
+			errstr:   `syntax error: invalid token -: ".a.1e-3"`,
+		}, {
 			caseName: "stray plus on LHS returns syntax error",
 			n:        Map{"list": Array{StringValue("a")}},
 			expr:     `.list + = "x"`,

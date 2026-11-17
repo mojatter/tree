@@ -445,6 +445,27 @@ func TestParseQuery(t *testing.T) {
 			expr:      `.(true)`,
 			want:      FilterQuery{NopQuery{}, ValueQuery{BoolValue(true)}},
 			roundTrip: ValueQuery{BoolValue(true)},
+		}, {
+			expr: `.名前`,
+			want: MapQuery("名前"),
+		}, {
+			expr: `..名前`,
+			want: WalkQuery("名前"),
+		}, {
+			expr: `.日本foo.é_1`,
+			want: FilterQuery{MapQuery("日本foo"), MapQuery("é_1")},
+		}, {
+			expr: `[.x == orégano]`,
+			want: SelectQuery{Selector: And{Comparator{Left: MapQuery("x"), Op: EQ, Right: ValueQuery{StringValue("orégano")}}}},
+		}, {
+			expr: ".a\t|\r\n.b",
+			want: FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")},
+		}, {
+			expr: `.a."1e+3"`,
+			want: FilterQuery{MapQuery("a"), MapQuery("1e+3")},
+		}, {
+			expr: `.a."1e-3"`,
+			want: FilterQuery{MapQuery("a"), MapQuery("1e-3")},
 		},
 	}
 	for _, tc := range testCases {
@@ -548,6 +569,57 @@ func TestParseQueryErrors(t *testing.T) {
 		}, {
 			expr:   `[has("abc]`,
 			errstr: `failed to parse args: parse error on line 1, column 6: extraneous or missing " in quoted-field`,
+		}, {
+			expr:   `.foo!!!`,
+			errstr: `syntax error: unexpected character "!" at offset 4: ".foo!!!"`,
+		}, {
+			expr:   `.$foo`,
+			errstr: `syntax error: unexpected character "$" at offset 1: ".$foo"`,
+		}, {
+			expr:   `.$or`,
+			errstr: `syntax error: unexpected character "$" at offset 1: ".$or"`,
+		}, {
+			expr:   `.a*or`,
+			errstr: `syntax error: unexpected character "*" at offset 2: ".a*or"`,
+		}, {
+			expr:   `.a+foo`,
+			errstr: `syntax error: unexpected character "+" at offset 2: ".a+foo"`,
+		}, {
+			expr:   `.foo?`,
+			errstr: `syntax error: unexpected character "?" at offset 4: ".foo?"`,
+		}, {
+			expr:   `.foo\bar`,
+			errstr: `syntax error: unexpected character "\\" at offset 4: ".foo\\bar"`,
+		}, {
+			expr:   `[.foo = 1]`,
+			errstr: `syntax error: unexpected character "=" at offset 6: "[.foo = 1]"`,
+		}, {
+			expr:   ".foo\u3000",
+			errstr: `syntax error: unexpected character "\u3000" at offset 4: ".foo\u3000"`,
+		}, {
+			expr:   ".foo\xff",
+			errstr: `syntax error: unexpected character "\xff" at offset 4: ".foo\xff"`,
+		}, {
+			expr:   `.名前!`,
+			errstr: `syntax error: unexpected character "!" at offset 7: ".名前!"`,
+		}, {
+			expr:   `.a.1e+3`,
+			errstr: `syntax error: unexpected character "+" at offset 5: ".a.1e+3"`,
+		}, {
+			expr:   `.a.1e-3`,
+			errstr: `syntax error: invalid token -: ".a.1e-3"`,
+		}, {
+			expr:   `.1e-3`,
+			errstr: `syntax error: invalid token -: ".1e-3"`,
+		}, {
+			expr:   `[.a == .1e-3]`,
+			errstr: `syntax error: invalid token -: "[.a == .1e-3]"`,
+		}, {
+			expr:   `.foo "bar`,
+			errstr: `syntax error: unterminated string at offset 5: ".foo \"bar"`,
+		}, {
+			expr:   `.a['b]`,
+			errstr: `syntax error: unterminated string at offset 3: ".a['b]"`,
 		},
 	}
 	for _, tc := range testCases {
@@ -563,9 +635,7 @@ func TestParseQueryErrors(t *testing.T) {
 	}
 }
 
-// FuzzParseQuery exercises the query parser with arbitrary input,
-// ensuring it never panics. It does not assert successful parsing;
-// it only requires that errors are returned cleanly for invalid input.
+// FuzzParseQuery checks that the parser never panics and that a parsed query's String() parses back to the same String().
 func FuzzParseQuery(f *testing.F) {
 	seeds := []string{
 		".",
@@ -580,12 +650,25 @@ func FuzzParseQuery(f *testing.F) {
 		".a.sort(\".name\")",
 		"[.a == 1 or .b == 2]",
 		".orders",
+		".名前",
+		".foo!!!",
 	}
 	for _, s := range seeds {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, expr string) {
-		_, _ = ParseQuery(expr)
+		q, err := ParseQuery(expr)
+		if err != nil {
+			return
+		}
+		s := q.String()
+		rt, err := ParseQuery(s)
+		if err != nil {
+			t.Fatalf("re-parse %q (from %q): %v", s, expr, err)
+		}
+		if got := rt.String(); got != s {
+			t.Errorf("round-trip %q (from %q): got %q", s, expr, got)
+		}
 	})
 }
 

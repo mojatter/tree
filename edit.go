@@ -186,7 +186,7 @@ func splitEdit(expr string) (left, op, right string, ok bool) {
 				continue
 			}
 		default:
-			if isWord(expr[i]) {
+			if startsWord(expr[i:]) {
 				i = skipWord(expr, i)
 				continue
 			}
@@ -194,8 +194,12 @@ func splitEdit(expr string) (left, op, right string, ok bool) {
 		for _, o := range editOps {
 			if strings.HasPrefix(expr[i:], o) {
 				// Keep the RHS verbatim apart from leading blanks so YAML block scalars survive.
-				left, right = strings.TrimSpace(expr[:i]), strings.TrimLeft(expr[i+len(o):], " \t")
-				if strings.TrimSpace(right) == "" {
+				left, right = strings.Trim(expr[:i], blanks), strings.TrimLeft(expr[i+len(o):], " \t")
+				blank := strings.TrimSpace(right) == ""
+				if o == "^?" {
+					blank = strings.Trim(right, blanks) == "" // only the lexer's blanks may follow ^?
+				}
+				if blank {
 					right = ""
 				}
 				if left == "" || (o == "^?") != (right == "") {
@@ -219,7 +223,7 @@ func skipParen(expr string, p int) int {
 		case ')':
 			return i + 1
 		}
-		if isWord(expr[i]) {
+		if startsWord(expr[i:]) {
 			i = skipWord(expr, i)
 			continue
 		}
@@ -228,19 +232,10 @@ func skipParen(expr string, p int) int {
 	return p + 1
 }
 
-// skipWord returns the position past the keyword, method call or identifier the lexer reads at expr[p] (an isWord byte).
+// skipWord returns the position past the keyword, method call or identifier the lexer reads at expr[p] (a word rune).
 func skipWord(expr string, p int) int {
-	afterDot := p > 0 && expr[p-1] == '.'
-	if kw := matchOp(expr, p, afterDot); kw != "" {
-		return p + len(kw)
-	}
 	l := lexer{expr: expr, pos: p}
-	if isLower(expr[p]) {
-		if _, ok := l.scanMethod(); ok {
-			return l.pos
-		}
-	}
-	l.scanIdent(afterDot)
+	l.scanWord(p > 0 && expr[p-1] == '.')
 	return l.pos
 }
 

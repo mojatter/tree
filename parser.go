@@ -7,13 +7,19 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // ParseQuery parses the provided expr to a Query.
 // See https://github.com/mojatter/tree/blob/main/docs/query.md for the semantics.
 func ParseQuery(expr string) (Query, error) {
 	l := &lexer{expr: expr}
-	p := &parser{expr: expr, tokens: l.lex()}
+	tokens, err := l.lex()
+	if err != nil {
+		return nil, err
+	}
+	p := &parser{expr: expr, tokens: tokens}
 	q, err := p.parseSequence(tkEOF)
 	if err != nil {
 		return nil, err
@@ -89,10 +95,7 @@ type lexer struct {
 	pos  int
 }
 
-// scanQuoted parses the quoted string literal at l.pos and unconditionally
-// advances l.pos: past the closing quote on a terminated literal, or just
-// past the opening quote on an unterminated one. ok=true means the literal
-// is terminated (possibly empty); unterminated ones return ok=false.
+// scanQuoted parses the quoted string at l.pos and advances past its closing quote; ok is false when it is unterminated.
 func (l *lexer) scanQuoted() (tok token, ok bool) {
 	var sb strings.Builder
 	quote := l.expr[l.pos]
@@ -110,7 +113,6 @@ func (l *lexer) scanQuoted() (tok token, ok bool) {
 		l.pos = end + 1
 		return token{kind: tkString, text: sb.String()}, true
 	}
-	l.pos++
 	return token{}, false
 }
 
@@ -160,78 +162,76 @@ func (l *lexer) scanMethod() (tok token, ok bool) {
 	return tok, true
 }
 
-// scanIdent parses a tkIdent token starting at l.pos (where l.expr[l.pos]
-// is an isWord byte). A digit-led run absorbs an optional `.[0-9]+`
-// fractional part for float literals, plus an optional `[eE][+-]?[0-9]+`
-// exponent. prevPathDot suppresses the fractional continuation so path
-// steps like `.1.5` stay chained.
+// scanWord parses the keyword, method call or identifier starting at l.pos (a word rune).
+// and/or are keywords unless they directly follow a '.', so .orders and .or stay keys.
+func (l *lexer) scanWord(prevPathDot bool) token {
+	end := wordEnd(l.expr, l.pos)
+	if text := l.expr[l.pos:end]; (text == "and" || text == "or") && (l.pos == 0 || l.expr[l.pos-1] != '.') {
+		l.pos = end
+		return token{kind: cmdKind(text), text: text}
+	}
+	if isLower(l.expr[l.pos]) {
+		if tok, ok := l.scanMethod(); ok {
+			return tok
+		}
+	}
+	return l.scanIdent(prevPathDot)
+}
+
+// scanIdent parses the tkIdent at l.pos; unless prevPathDot, a digit-led one also takes a fraction (1.5) and a signed exponent (1e+3).
 func (l *lexer) scanIdent(prevPathDot bool) token {
 	start := l.pos
-	end := l.pos + 1
-	for end < len(l.expr) && isWord(l.expr[end]) {
-		end++
-	}
+	end := wordEnd(l.expr, start)
 	digitLed := isNumber(l.expr[start])
 	if digitLed && !prevPathDot &&
 		end+1 < len(l.expr) && l.expr[end] == '.' && isNumber(l.expr[end+1]) {
-		end++
-		for end < len(l.expr) && isWord(l.expr[end]) {
-			end++
-		}
+		end = wordEnd(l.expr, end+1)
 	}
-	// Exponent sign continuation: a digit-led run that ended at `e`/`E`
-	// followed by `+`/`-` followed by a digit absorbs the sign and digits.
-	// Unsigned exponent (`1e3`) is already covered by the isWord body loop.
-	if digitLed && end+1 < len(l.expr) &&
+	// Unsigned exponent (`1e3`) is already part of the word.
+	if digitLed && !prevPathDot && end+1 < len(l.expr) &&
 		(l.expr[end] == '+' || l.expr[end] == '-') &&
-		end > start && (l.expr[end-1] == 'e' || l.expr[end-1] == 'E') &&
+		(l.expr[end-1] == 'e' || l.expr[end-1] == 'E') &&
 		isNumber(l.expr[end+1]) {
-		end++
-		for end < len(l.expr) && isWord(l.expr[end]) {
-			end++
-		}
+		end = wordEnd(l.expr, end+1)
 	}
 	l.pos = end
 	return token{kind: tkIdent, text: l.expr[start:end]}
 }
 
+// blanks are the whitespace characters the lexer skips.
+const blanks = " \t\n\r"
+
 // lex returns the source as a flat slice of tokens terminated by tkEOF.
-// Whitespace and stray punctuation that don't form a recognized token
-// (e.g. '+', '*', '\') are silently skipped, preserving legacy behavior.
-// '-' is the deliberate exception: it's recognized as tkMinus (used for
-// negative number literals and array ranges), so a stray '-' produces a
-// parse error rather than being skipped. This asymmetry is intentional;
-// '-' carries language-level meaning, while '+', '*', '\' do not.
-func (l *lexer) lex() []token {
+// Whitespace is one of blanks; any other character that starts no token is a syntax error.
+func (l *lexer) lex() ([]token, error) {
 	var out []token
 	for l.pos < len(l.expr) {
 		c := l.expr[l.pos]
-		if c == '"' || c == '\'' {
-			if tok, ok := l.scanQuoted(); ok {
-				out = append(out, tok)
+		switch c {
+		case ' ', '\t', '\n', '\r':
+			l.pos++
+			continue
+		case '"', '\'':
+			tok, ok := l.scanQuoted()
+			if !ok {
+				return nil, fmt.Errorf("syntax error: unterminated string at offset %d: %q", l.pos, l.expr)
 			}
+			out = append(out, tok)
 			continue
 		}
-		// Raw byte, not prevIsPathDot: "[. and .b]" must keep the keyword.
-		if op := matchOp(l.expr, l.pos, l.pos > 0 && l.expr[l.pos-1] == '.'); op != "" {
+		if op := matchOp(l.expr, l.pos); op != "" {
 			out = append(out, token{kind: cmdKind(op), text: op})
 			l.pos += len(op)
 			continue
 		}
-		if isLower(c) {
-			if tok, ok := l.scanMethod(); ok {
-				out = append(out, tok)
-				continue
-			}
+		r, size := utf8.DecodeRuneInString(l.expr[l.pos:])
+		if !isWordRune(r) {
+			return nil, fmt.Errorf("syntax error: unexpected character %q at offset %d: %q", l.expr[l.pos:l.pos+size], l.pos, l.expr)
 		}
-		if isWord(c) {
-			out = append(out, l.scanIdent(prevIsPathDot(out)))
-			continue
-		}
-		l.pos++
+		out = append(out, l.scanWord(prevIsPathDot(out)))
 	}
 	out = append(out, token{kind: tkEOF})
-	return out
+	return out, nil
 }
 
 // skipQuoted returns the position past a quoted string literal at expr[p]
@@ -269,19 +269,10 @@ func skipCSVQuoted(expr string, p int) int {
 	return p
 }
 
-// matchOp returns the operator, keyword, or punctuation token starting
-// at expr[i], or "" if none matches.
+// matchOp returns the operator or punctuation token starting at expr[i], or "" if none matches.
 // Multi-byte operators are probed before single bytes so ".." and "<=" win.
-// Keywords need a word boundary and no preceding '.', so .orders and .or stay keys.
-func matchOp(expr string, i int, afterDot bool) string {
+func matchOp(expr string, i int) string {
 	rest := expr[i:]
-	if !afterDot {
-		for _, kw := range []string{"and", "or"} {
-			if strings.HasPrefix(rest, kw) && (len(rest) == len(kw) || !isWord(rest[len(kw)])) {
-				return kw
-			}
-		}
-	}
 	for _, op := range []string{"==", "<=", ">=", "!=", "~=", ".."} {
 		if strings.HasPrefix(rest, op) {
 			return op
@@ -344,16 +335,48 @@ func isNumber(c byte) bool {
 	return c >= '0' && c <= '9'
 }
 
-func isWord(c byte) bool {
-	return isLower(c) ||
-		(c >= 'A' && c <= 'Z') ||
-		isNumber(c) ||
-		c == '_'
+// isWordRune reports whether r can appear in an unquoted key: a Unicode letter, digit or mark, or '_'.
+func isWordRune(r rune) bool {
+	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r)
 }
 
-// prevIsPathDot reports whether the most recently emitted token is a path-step
-// `.` or `..`. Used to suppress float-literal extension after a path separator
-// so that `.1.5` stays as chained `MapQuery("1"), MapQuery("5")`.
+// startsWord reports whether s starts with a word rune.
+func startsWord(s string) bool {
+	r, _ := utf8.DecodeRuneInString(s)
+	return isWordRune(r)
+}
+
+// endsWord reports whether s ends with a word rune.
+func endsWord(s string) bool {
+	r, _ := utf8.DecodeLastRuneInString(s)
+	return isWordRune(r)
+}
+
+// wordStart returns the index of the run of word runes in s ending at j.
+func wordStart(s string, j int) int {
+	for j > 0 {
+		r, size := utf8.DecodeLastRuneInString(s[:j])
+		if !isWordRune(r) {
+			break
+		}
+		j -= size
+	}
+	return j
+}
+
+// wordEnd returns the index past the run of word runes in s starting at i.
+func wordEnd(s string, i int) int {
+	for i < len(s) {
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if !isWordRune(r) {
+			break
+		}
+		i += size
+	}
+	return i
+}
+
+// prevIsPathDot reports whether the last emitted token is `.` or `..`, after which a digit-led key takes no fraction or signed exponent.
 func prevIsPathDot(out []token) bool {
 	if len(out) == 0 {
 		return false

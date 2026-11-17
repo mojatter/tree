@@ -485,6 +485,22 @@ func TestQueryString(t *testing.T) {
 			caseName: "bare dot before a method",
 			q:        FilterQuery{MapQuery("a"), NopQuery{}, &CountQuery{}},
 			want:     `.a.count()`,
+		}, {
+			caseName: "non-ASCII key",
+			q:        FilterQuery{MapQuery("名前"), WalkQuery("é")},
+			want:     `.名前..é`,
+		}, {
+			caseName: "key with a non-word rune",
+			q:        FilterQuery{MapQuery("a\u3000"), MapQuery("😀")},
+			want:     ".\"a\u3000\".\"😀\"",
+		}, {
+			caseName: "non-ASCII key before a literal",
+			q:        FilterQuery{MapQuery("é"), ValueQuery{BoolValue(true)}},
+			want:     `.é true`,
+		}, {
+			caseName: "non-ASCII key before a group",
+			q:        FilterQuery{MapQuery("aé"), FilterQuery{MapQuery("b"), SlurpQuery{}}},
+			want:     `.aé(.b | )`,
 		},
 	}
 	for _, tc := range testCases {
@@ -904,6 +920,8 @@ func TestQueryDocExamples(t *testing.T) {
 		{caseName: "single quotes", input: `[{"a": "x"}]`, expr: `[.a == 'x']`, want: `[{"a": "x"}]`},
 		{caseName: "sort by an expression", input: `{"b": [{"a": 2}, {"a": 1}]}`, expr: `.b.sort(".a")`, want: `[[{"a": 1}, {"a": 2}]]`},
 		{caseName: "quoted key", input: `{"a b": 1}`, expr: `."a b"`, want: `[1]`},
+		{caseName: "non-ASCII key", input: `{"名前": 1}`, expr: `.名前`, want: `[1]`},
+		{caseName: "quoted dollar key", input: `{"$a": 1}`, expr: `."$a"`, want: `[1]`},
 		{caseName: "numeric key on an array", input: `{"a": [5, 6]}`, expr: `.a.0`, want: `[5]`},
 		{caseName: "negative index", input: `{"a": [5, 6]}`, expr: `.a[-1]`, want: `[6]`},
 		{caseName: "negative slice bound", input: `{"a": [5, 6]}`, expr: `.a[-1:]`, want: `[6]`},
@@ -916,6 +934,8 @@ func TestQueryDocExamples(t *testing.T) {
 		{caseName: "empty group", input: `{}`, expr: `()`, errstr: `syntax error: empty expression: "()"`},
 		{caseName: "empty comparison side", input: `[]`, expr: `[.a == ]`, errstr: `syntax error: empty expression: "[.a == ]"`},
 		{caseName: "empty sort expression", input: `{"a": []}`, expr: `.a.sort("")`, errstr: `syntax error: empty expression: ""`},
+		{caseName: "unexpected character", input: `{}`, expr: `.a!`, errstr: `syntax error: unexpected character "!" at offset 2: ".a!"`},
+		{caseName: "unterminated string", input: `{}`, expr: `."a`, errstr: `syntax error: unterminated string at offset 1: ".\"a"`},
 		// Results
 		{caseName: "missing key", input: store, expr: `.store.zz`, want: `[null]`},
 		{caseName: "key after []", input: store, expr: `.store.book[].isbn`, want: `["x", null, null]`},
