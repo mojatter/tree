@@ -18,6 +18,11 @@ func ParseQuery(expr string) (Query, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseTokens(expr, tokens)
+}
+
+// parseTokens parses the tokens lexed from expr.
+func parseTokens(expr string, tokens []token) (Query, error) {
 	p := &parser{expr: expr, tokens: tokens}
 	q, err := p.parseSequence(tkEOF)
 	if err != nil {
