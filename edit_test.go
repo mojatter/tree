@@ -815,7 +815,7 @@ func TestEdit(t *testing.T) {
 			caseName: "signed exponent after a spaced path dot",
 			n:        Map{},
 			expr:     `. 1e+3 = 1`,
-			errstr:   `syntax error: unexpected character "+" at offset 4: ". 1e+3 = 1"`,
+			errstr:   `syntax error: unexpected blank at offset 1: ". 1e+3 = 1"`,
 		}, {
 			caseName: "unknown character without an operator",
 			n:        Map{},
@@ -928,9 +928,9 @@ func TestEdit(t *testing.T) {
 			errstr:   `syntax error: unterminated string at offset 5: "[has(\"a\\\"b)].v = 1"`,
 		}, {
 			caseName: "escaped quote in parens after an uppercase-led key keeps lexer rules",
-			n:        Array{Map{"Xa": NumberValue(1)}},
-			expr:     `[.Xa("a\"=)")].v = 1`,
-			want:     Array{Map{"Xa": NumberValue(1), "v": NumberValue(1)}},
+			n:        Array{Map{"Xa": Map{`a"=)`: NumberValue(1)}}},
+			expr:     `[.Xa(."a\"=)")].v = 1`,
+			want:     Array{Map{"Xa": Map{`a"=)`: NumberValue(1)}, "v": NumberValue(1)}},
 		}, {
 			caseName: "exponent sign on the LHS is not an append",
 			n:        Array{Map{"x": NumberValue(1000)}},
@@ -1125,10 +1125,10 @@ func TestEdit(t *testing.T) {
 
 		// --- Intermediate-step edge cases in resolveAndEdit ---
 		{
-			caseName: "pipe-prefixed query with one step is an unsupported edit query",
+			caseName: "pipe-prefixed query is an empty expression",
 			n:        Map{"a": StringValue("v")},
 			expr:     `| [0] = "x"`,
-			errstr:   `syntax error: unsupported edit query: | [0]`,
+			errstr:   `syntax error: empty expression: "| [0] = \"x\""`,
 		}, {
 			caseName: "bare .. before an index is dropped like .",
 			n:        Map{},
@@ -2563,10 +2563,10 @@ func TestEdit(t *testing.T) {
 			expr:     `.a | ..0 = 9`,
 			want:     Map{"a": Map{"0": NumberValue(9), "b": Map{"0": NumberValue(9)}}},
 		}, {
-			caseName: "a second trailing pipe is reported as the pipe",
+			caseName: "a pipe right after a pipe is an empty expression",
 			n:        Map{"a": NumberValue(1)},
 			expr:     `.a | | = 9`,
-			errstr:   `syntax error: unsupported edit query: |`,
+			errstr:   `syntax error: empty expression: ".a | | = 9"`,
 		}, {
 			caseName: "an unsupported step after a pipe is reported as the step",
 			n:        Map{"a": Array{NumberValue(1)}},
@@ -2693,10 +2693,15 @@ func TestEdit(t *testing.T) {
 			expr:     `.a.keys() = 1`,
 			errstr:   `syntax error: unsupported edit query: keys()`,
 		}, {
-			caseName: "value step is an unsupported edit query",
+			caseName: "literal query is an unsupported edit query",
+			n:        Map{},
+			expr:     `"x" = 1`,
+			errstr:   `syntax error: unsupported edit query: "x"`,
+		}, {
+			caseName: "literal next to a step is a syntax error",
 			n:        Map{},
 			expr:     `"x".b = 1`,
-			errstr:   `syntax error: unsupported edit query: "x"`,
+			errstr:   `syntax error: unexpected literal "x": "\"x\".b = 1"`,
 		}, {
 			caseName: "empty group step is a syntax error",
 			n:        Map{"a": Array{NumberValue(1)}},

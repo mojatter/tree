@@ -355,6 +355,12 @@ func (q SlurpQuery) String() string {
 	return " | "
 }
 
+// isSlurpQuery reports whether q is a pipe.
+func isSlurpQuery(q Query) bool {
+	_, ok := q.(SlurpQuery)
+	return ok
+}
+
 // FilterQuery consists of multiple queries that filter the nodes in order.
 type FilterQuery []Query
 
@@ -390,8 +396,8 @@ func (qs FilterQuery) String() string {
 		if g, ok := q.(FilterQuery); ok && lastPipe(g) >= 0 {
 			s = "(" + s + ")" // a group with a pipe would otherwise pipe the steps after it
 		}
-		if strings.HasSuffix(out, ".") && (strings.HasPrefix(s, ".") || startsWithLiteral(s)) {
-			out = out[:len(out)-1] // a bare . before .b or a literal would print ..b or a key
+		if strings.HasSuffix(out, ".") && strings.HasPrefix(s, ".") {
+			out = out[:len(out)-1] // a bare . before .b would print ..b
 		}
 		if needsSpace(out, s) {
 			out += " "
@@ -401,20 +407,6 @@ func (qs FilterQuery) String() string {
 	return out
 }
 
-// startsWithLiteral reports whether s starts with a string, number, true, false or null literal.
-func startsWithLiteral(s string) bool {
-	return s != "" && (s[0] == '"' || startsWord(s)) && !startsWithMethod(s)
-}
-
-// startsWithMethod reports whether s starts with a lowercase word the lexer reads as a method name before "(".
-func startsWithMethod(s string) bool {
-	i := 0
-	for i < len(s) && isLower(s[i]) {
-		i++
-	}
-	return i > 0 && i < len(s) && s[i] == '('
-}
-
 // needsSpace reports whether next printed right after prev would lex as a different token.
 func needsSpace(prev, next string) bool {
 	if prev == "" || next == "" {
@@ -422,11 +414,9 @@ func needsSpace(prev, next string) bool {
 	}
 	switch {
 	case endsWord(prev) && startsWord(next):
-		return true // .x true would print .xtrue
+		return true // .x count() would print .xcount()
 	case next[0] == '(':
 		return endsWithMethodName(prev) // .x(...) would parse as a method call
-	case next[0] == '.' && len(next) > 1 && isNumber(next[1]):
-		return endsWithNumber(prev) // 1 .5 would print 1.5
 	}
 	return false
 }
@@ -438,12 +428,6 @@ func endsWithMethodName(s string) bool {
 		i--
 	}
 	return i < len(s) && !endsWord(s[:i])
-}
-
-// endsWithNumber reports whether s ends in a digit-led word not after a dot, which the lexer would extend over .5.
-func endsWithNumber(s string) bool {
-	i := wordStart(s, len(s))
-	return i < len(s) && isNumber(s[i]) && (i == 0 || s[i-1] != '.')
 }
 
 // WalkQuery is a key of each nodes that implements methods of the Query.

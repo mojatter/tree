@@ -450,37 +450,9 @@ func TestQueryString(t *testing.T) {
 			q:        FilterQuery{MapQuery("x"), FilterQuery{FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")}, MapQuery("c")}},
 			want:     `.x (.a | .b).c`,
 		}, {
-			caseName: "literal before a group with a pipe",
-			q:        FilterQuery{ValueQuery{BoolValue(true)}, FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")}},
-			want:     `true (.a | .b)`,
-		}, {
-			caseName: "key before a literal",
-			q:        FilterQuery{MapQuery("x"), ValueQuery{BoolValue(true)}},
-			want:     `.x true`,
-		}, {
 			caseName: "key before a method",
 			q:        FilterQuery{MapQuery("x"), &CountQuery{}},
 			want:     `.x count()`,
-		}, {
-			caseName: "number before a numeric key",
-			q:        FilterQuery{ValueQuery{NumberValue(1)}, MapQuery("5")},
-			want:     `1 .5`,
-		}, {
-			caseName: "number before a key",
-			q:        FilterQuery{ValueQuery{NumberValue(1)}, MapQuery("x")},
-			want:     `1.x`,
-		}, {
-			caseName: "number, key, numeric key",
-			q:        FilterQuery{ValueQuery{NumberValue(1)}, MapQuery("x"), MapQuery("5")},
-			want:     `1.x.5`,
-		}, {
-			caseName: "float before a numeric key",
-			q:        FilterQuery{ValueQuery{NumberValue(1.5)}, MapQuery("5")},
-			want:     `1.5.5`,
-		}, {
-			caseName: "bare dot before a literal",
-			q:        FilterQuery{MapQuery("a"), NopQuery{}, ValueQuery{NumberValue(1)}},
-			want:     `.a 1`,
 		}, {
 			caseName: "bare dot before a method",
 			q:        FilterQuery{MapQuery("a"), NopQuery{}, &CountQuery{}},
@@ -493,10 +465,6 @@ func TestQueryString(t *testing.T) {
 			caseName: "key with a non-word rune",
 			q:        FilterQuery{MapQuery("a\u3000"), MapQuery("😀")},
 			want:     ".\"a\u3000\".\"😀\"",
-		}, {
-			caseName: "non-ASCII key before a literal",
-			q:        FilterQuery{MapQuery("é"), ValueQuery{BoolValue(true)}},
-			want:     `.é true`,
 		}, {
 			caseName: "non-ASCII key before a group",
 			q:        FilterQuery{MapQuery("aé"), FilterQuery{MapQuery("b"), SlurpQuery{}}},
