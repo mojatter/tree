@@ -47,11 +47,18 @@ Literals appear in selectors, and a query made of a literal alone yields it:
 - Strings in double or single quotes; a backslash escapes the next byte (`"a\"b"`).
 - Any other bare word is a string, so `[.a == x]` compares with `"x"`. Quote strings to keep them apart from `null`, `true`, `false` and numbers: `"null"` is a string.
 
-Method arguments are separated by commas and end at the `)` that closes the call; quoted strings and paired parentheses and brackets inside an argument are skipped, so `sort(.a.count())` and `has("a)b")` each take one argument. A parenthesis or bracket outside quotes must have its pair inside the same argument, so a key with a lone one is quoted: `has("a]b")`. Spaces, tabs and line breaks around an argument are dropped, and nothing or only blanks between the parentheses is no argument; any other character, such as a form feed or a full-width space, is part of the argument. An argument written as a string literal, in double or single quotes with the same backslash escape as elsewhere, passes its contents: `has("a,b")`, `has('x')` and `has("a\"b")` check the keys `a,b`, `x` and `a"b`. Any other argument passes its text as written, with any quoted strings, backslashes and inner blanks kept: `has(isbn)`, `has(0)`, `sort(.price)`, `has(a b)` checks the key `a b`, and `has(a"b")` checks the key `a"b"`. A quote anywhere in an argument opens a string that must be closed, so a key with a lone quote is quoted: `has("it's")`. `sort()` and `rsort()` read their argument as a query, so `sort(.price)` and `sort(".price")` are the same. An argument that starts with a quote must be that one string literal, and an empty argument (`has(,)`), a parenthesis or bracket without its pair (`has(a]b)`, `sort(.a[0)`), a quote without its pair (`has(it's)`) or a missing `)` is a syntax error.
+Method arguments are separated by commas and end at the `)` that closes the call:
 
-An empty expression, such as ``, `()`, `[.a == ]` or `sort("")`, is a syntax error.
+- Quoted strings and paired parentheses and brackets inside an argument are skipped, so `sort(.a.count())` and `has("a)b")` each take one argument. A parenthesis or bracket outside quotes must have its pair inside the same argument, so a key with a lone one is quoted: `has("a]b")`.
+- Blanks (spaces, tabs, line feeds and carriage returns) around an argument are dropped, and nothing or only blanks between the parentheses is no argument; any other character, such as a form feed or a full-width space, is part of the argument.
+- An argument written as a string literal, in double or single quotes with the same backslash escape as elsewhere, passes its contents: `has("a,b")`, `has('x')` and `has("a\"b")` check the keys `a,b`, `x` and `a"b`.
+- Any other argument passes its text as written, with any quoted strings, backslashes and inner blanks kept: `has(isbn)`, `has(0)`, `sort(.price)`, `has(a b)` checks the key `a b`, and `has(a"b")` checks the key `a"b"`. A quote anywhere in an argument opens a string that must be closed, so a key with a lone quote is quoted: `has("it's")`.
+- `sort()` and `rsort()` read their argument as a query, so `sort(.price)` and `sort(".price")` are the same.
+- An argument that starts with a quote must be that one string literal, and an empty argument (`has(,)`), a parenthesis or bracket without its pair (`has(a]b)`, `sort(.a[0)`), a quote without its pair (`has(it's)`) or a missing `)` is a syntax error.
 
-Outside quotes and method arguments, a space, tab, line feed or carriage return is skipped. Any other character there that starts no token, such as `$`, `!` or a full-width space, is a syntax error, and so is an unterminated string: `.a!` fails with `syntax error: unexpected character "!" at offset 2: ".a!"`, where the offset counts bytes of the expression shown in quotes, before it is escaped.
+An empty expression, such as the empty string, `()`, `[.a == ]` or `sort("")`, is a syntax error.
+
+Outside quotes and method arguments, a blank between tokens is skipped. Any other character there that starts no token, such as `$`, `!` or a full-width space, is a syntax error, and so is an unterminated string: `.a!` fails with `syntax error: unexpected character "!" at offset 2: ".a!"`, where the offset counts bytes of the expression shown in quotes, before it is escaped. A method name is followed directly by its `(`: after a blank the name is a key, or a bare word without a `.` before it, and the parentheses are a group, so `.a.count (.x)` reads `.a.count.x` and `.a.count ()` fails for its empty group with `syntax error: empty expression: ".a.count ()"`.
 
 ## Results
 
@@ -158,7 +165,7 @@ A step never fails because of the data it reads.
 
 ## Edits
 
-`Edit(&n, expr)` and tq `-e` take `<query> = <value>` (set), `<query> += <value>` (append) or `<query> ^?` (delete), where only spaces, tabs and line breaks may follow `^?`. The expression is read as a query up to the first `=`, `+=` or `^?` outside quotes, parentheses, brackets and method arguments, and the rest is `<value>`, parsed as a single YAML document, so `.url = "http://x?a=1"` sets the whole URL and `.a = [1, 2]` sets an array. Comparison operators (`==`, `!=`, `<=`, `>=`, `~=`) are never read as an assignment, so `.a[.b == 1].c = 2` sets `c` on the matching elements and `.a ==1` is a syntax error; write `.a = "=1"` to set that string. An edit operator inside parentheses or brackets is a syntax error: `.a[.b = 1].c = 2` fails with `syntax error: unexpected character "=" at offset 6: ".a[.b = 1].c = 2"`. Inside a method argument it is part of the argument and not an edit operator, so `[has(a=b)].v = 1` sets `v` where the key `a=b` exists, and `.a.sort(.k = 1) = 1` fails on the `sort()` expression alone: `syntax error: unexpected character "=" at offset 3: ".k = 1"`.
+`Edit(&n, expr)` and tq `-e` take `<query> = <value>` (set), `<query> += <value>` (append) or `<query> ^?` (delete), where only blanks may follow `^?`. The expression is read as a query up to the first `=`, `+=` or `^?` outside quotes, parentheses, brackets and method arguments, and the rest is `<value>`, parsed as a single YAML document, so `.url = "http://x?a=1"` sets the whole URL and `.a = [1, 2]` sets an array. Comparison operators (`==`, `!=`, `<=`, `>=`, `~=`) are never read as an assignment, so `.a[.b == 1].c = 2` sets `c` on the matching elements and `.a ==1` is a syntax error; write `.a = "=1"` to set that string. An edit operator inside parentheses or brackets is a syntax error: `.a[.b = 1].c = 2` fails with `syntax error: unexpected character "=" at offset 6: ".a[.b = 1].c = 2"`. Inside a method argument it is part of the argument and not an edit operator, so `[has(a=b)].v = 1` sets `v` where the key `a=b` exists, and `.a.sort(.k = 1) = 1` fails on the `sort()` expression alone: `syntax error: unexpected character "=" at offset 3: ".k = 1"`.
 
 ### Go equivalents
 
@@ -170,8 +177,8 @@ Where a query step reads with `Get`, the edit of that step writes with `Set` and
 | `.key += v`, `[i] += v` | `n.Set(key, append(n.Get(key).Array(), v))` when the value is an array or `null`, else an error |
 | `.key ^?`, `[i] ^?` | `n.Delete(key)`, `n.Delete(i)` |
 | `first()`, `last()` | `[0]` and `[-1]` on an array; an error on an object |
-| `. = v` | `*pn = v` |
-| `. += v` | `*pn = append(a, v)` for an array `a`, `Array{v}` for `null`, else an error |
+| `. = v` | `n = v` |
+| `. += v` | `n = append(a, v)` for an array `a`, `Array{v}` for `null`, else an error |
 | `. ^?` | an error |
 
 So, like `Map.Set` and `(*Array).Set`:
@@ -191,7 +198,7 @@ An edit writes through keys, indexes, `first()` and `last()`, and through `[]`, 
 
 Bare `.` and `..` steps are ignored, so `.[0]` edits like `[0]`, `.a.` like `.a` and `..b. ^?` deletes like `..b ^?`. `[]`, a select or a slice as the last step edits the matched elements themselves: `.a[] = 1` sets every element of `a`, `null` elements included, `.a[] += 1` turns a `null` element into `[1]` as `.a[0] += 1` would, and `.a[] ^?` deletes every element, `null` elements included, as `.a[0] ^?` would, so `.a[. == 1] ^?` deletes the elements equal to `1` and leaves the others in place, as jq's `del(.a[] | select(. == 1))` does, and on an object it deletes the matching keys: `.m[. == 1] ^?` deletes every key of `m` whose value is `1`. A trailing `.` after them, as in `.a[]. = 1`, edits the same way.
 
-On `null`, `[]`, a select and a slice edit nothing. A slice edits each element in range as `[i]` would.
+`[]`, a select and a slice edit nothing on `null`. A slice edits each element in range as `[i]` would.
 
 ### Multiple matches
 
@@ -210,7 +217,14 @@ An array whose `Array()` is nil, such as a pointer to a nil `Array`, edits as an
 
 ### Edit errors
 
-An edit fails for a syntax error, an unknown method or a wrong number of method arguments, and a comparison side that yields more than one value (see [Errors](#errors)), an expression without a query, an operator, a value after `=` or `+=`, or with anything after `^?` (`syntax error: invalid edit expression "..."`), an unsupported step (see [Paths](#paths)), a value that is not valid YAML (the YAML parser's own message, `yaml: ...`), more than one YAML document in the value (`syntax error: multiple YAML documents in edit value ...`), and for these conditions, reported when the edit reaches them:
+An edit fails for these, before any data is read:
+
+- A syntax error, an unknown method or a wrong number of method arguments in the query (see [Errors](#errors)).
+- An expression without a query, without an operator, without a value after `=` or `+=`, or with anything but blanks after `^?` (`syntax error: invalid edit expression "..."`). A value of white space alone is no value, and white space here is wider than blanks: a form feed or a full-width space alone is no value either.
+- An unsupported step (see [Paths](#paths)).
+- A value that is not valid YAML (the YAML parser's own message, `yaml: ...`) or that holds more than one YAML document (`syntax error: multiple YAML documents in edit value ...`).
+
+It also fails for these conditions, reported when the edit reaches them:
 
 | Condition | Example | Message |
 | - | - | - |
@@ -222,10 +236,11 @@ An edit fails for a syntax error, an unknown method or a wrong number of method 
 | `+=` on a value that is not an array or `null`, however the edit reaches it | `.a += 1` on `{"a": 1}`, `. += 1` on `1`, `.a[] += 1` on `{"a": [1]}` | `cannot append to number` |
 | An index of `1<<24` or more | `.a[16777216] = 1` | `array index 16777216 exceeds maximum 16777215` |
 | `^?` on the root itself | `. ^?` | `cannot delete .` |
+| A comparison side that yields more than one value | `.a[.b[] == 1].c = 1` on `{"a": [{"b": [1, 2]}]}` | `.b[] returns more than one value [1 2]` |
 
-A syntax error found while reading the query quotes the whole edit expression, value included, and an offset in it counts bytes from the start of that expression: `.foo! = 9` fails with `syntax error: unexpected character "!" at offset 4: ".foo! = 9"`. As in a query, an error inside the expression of `sort()` or `rsort()` quotes that expression alone, and an unknown method or a wrong number of arguments quotes nothing. An unsupported step is found once the query is read and shows only that step (see [Paths](#paths)). Any of these errors in the query is reported before an error in the value: `.a] = [` fails with `syntax error: no left bracket: ".a] = ["`, and `.a.sort()[0] = [` with `syntax error: unsupported edit query: sort()`. A missing value is not such an error: `.a.sort()[0] =` fails with `syntax error: invalid edit expression ".a.sort()[0] ="`.
+A syntax error found while reading the query quotes the whole edit expression, value included, and an offset in it counts bytes from the start of that expression: `.foo! = 9` fails with `syntax error: unexpected character "!" at offset 4: ".foo! = 9"`. As in a query, an error inside the expression of `sort()` or `rsort()` quotes that expression alone, and an unknown method or a wrong number of arguments quotes nothing. An unsupported step is found once the query is read, and its message shows that step, or a `|` with what follows it, rather than the edit expression (see [Paths](#paths)). Any of these errors in the query is reported before an error in the value: `.a] = [` fails with `syntax error: no left bracket: ".a] = ["`, and `.a.sort()[0] = [` with `syntax error: unsupported edit query: sort()`. A comparison side that yields more than one value depends on the data and comes after the value: `.a[.b[] == 1].c = [` fails with the YAML error. The expression itself is checked once the operator has been looked for, before the query is parsed: `.a] =` and `.a.sort()[0] =` fail with `syntax error: invalid edit expression "..."`, not with the query's error. Only an error met while looking for the operator comes before that, namely an unexpected character, an unterminated string or a method argument list that breaks the rules of [Syntax](#syntax), such as `has(,)` or a missing `)`: `.foo! =` fails with `syntax error: unexpected character "!" at offset 4: ".foo! ="`, while `.a.has() =` and `.a.sort(.k!) =` fail with `syntax error: invalid edit expression "..."`.
 
-Each message names the receiver's type as `type()` does, whatever the operator and whether an array is an `Array`, a `*Array` or inside an `Any`: `.a.b += 1` and `.a.b ^?` on `{"a": []}` fail like `.a.b = 1`. A key, a method or a slice is shown as the query prints it, a key always quoted and an index as a number (`.a[ 1 : ] = 1` says `[1:]`), except that `last()` on an empty array fails as the index `-1` it resolves to. A custom `EditorNode` reports its own `Set` and `Delete` errors.
+Each `cannot index`, `cannot iterate over` and `cannot append to` message names the receiver's type as `type()` does, whatever the operator and whether an array is an `Array`, a `*Array` or inside an `Any`: `.a.b += 1` and `.a.b ^?` on `{"a": []}` fail like `.a.b = 1`. A key, a method or a slice is shown as the query prints it, a key always quoted and an index as a number (`.a[ 1 : ] = 1` says `[1:]`), except that `last()` on an empty array fails as the index `-1` it resolves to. A custom `EditorNode` reports its own `Set` and `Delete` errors.
 
 An edit whose steps are all keys, indexes, `first()` and `last()` leaves the document as it was when it fails, a `null` root included: `.a[16777216] = 1` on `{}` leaves `{}` and on `null` leaves `null`. An edit with several matches keeps the matches edited before the failure (see [Multiple matches](#multiple-matches)); `^?` whose last step is `[]`, a select or a slice runs the selector on every element or value of a container before it deletes any of them, so a selector that fails deletes nothing from that container, while the containers it deleted from before, through `..key` or an earlier `[]`, stay edited: `..a[.t[] == 1] ^?` on `{"x": {"a": [{"t": [1]}]}, "y": {"a": [{"t": [1, 2]}]}}` empties `x.a` and then fails on `y.a`. A caller that needs the document untouched after any failure edits a deep copy, `c := tree.CloneDeep(n)` (`Clone` copies only the top level); tq `-U` writes a file only when every edit on it succeeds.
 
@@ -236,7 +251,7 @@ From the Go API, on purpose:
 - A negative index counts from the end of an array in queries and edits, while `Array.Get(-1)` gives `Nil` and `(*Array).Set(-1, v)` fails.
 - An edit replaces a `null` intermediate or root with what the rest of the path needs (see [Null intermediates](#null-intermediates)); `Nil` has no `Set`.
 - `first()` and `last()` give `null` on an object, while `Map.Get(0)` reads the key `"0"`: a key is not a position, and `[0]` already reads that key as `Get` does.
-- Multi-valued steps (`[]`, selects, slices, `..key`, pipes and the other methods) have no single Go call.
+- `[]`, selects, slices, `..key`, pipes and the methods other than `first()` and `last()` have no `Node` method of their own; [Steps](#steps) gives the Go each one amounts to.
 
 From jq:
 
@@ -248,6 +263,6 @@ From jq:
 - `count()` on a string is `0`.
 - `[]` on an object yields its values in sorted key order.
 - `^?` with a negative index before the start of an array fails, while jq's `del(.[-5])` ignores it.
-- A slice edits each element in range: `.a[1:] = 9` on `{"a": [0, 1, 2]}` gives `{"a": [0, 9, 9]}` and `+=` appends to each, while jq's `.a[1:] = v` replaces the slice with the array `v`.
+- A slice edits each element in range: `.a[1:] = 9` on `{"a": [0, 1, 2]}` gives `{"a": [0, 9, 9]}` and `+=` appends to each element in range, which must be an array or `null`, while jq's `.a[1:] = v` replaces the slice with the array `v`.
 - `[]` or a select on `null` edits nothing: `.a[] = 1` on `{"a": null}` leaves it, while jq fails with `Cannot iterate over null`.
 - `+=` appends `v` as one element, so `.a += [1]` on `{"a": [0]}` gives `{"a": [0, [1]]}`; jq's `+=` adds, and would give `[0, 1]`.
