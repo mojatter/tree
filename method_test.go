@@ -708,6 +708,19 @@ func TestRegisterNewMethodQueryFunc(t *testing.T) {
 	if _, ok := query2.(*KeysQuery); !ok {
 		t.Errorf("expected KeysQuery, got %T", query2)
 	}
+
+	// Test the arguments a registered method receives
+	var got []string
+	RegisterNewMethodQueryFunc("test", func(args ...string) (Query, error) {
+		got = args
+		return &CountQuery{}, nil
+	})
+	if _, err := ParseQuery(`test( 'a,b' , .c[0], "d\"e" )`); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"a,b", ".c[0]", `d"e`}; !reflect.DeepEqual(got, want) {
+		t.Errorf("args = %q; want %q", got, want)
+	}
 }
 
 func TestMethodQueryString(t *testing.T) {
@@ -738,10 +751,10 @@ func TestMethodQueryString(t *testing.T) {
 		{"sort expr", sortByName, `sort(".name")`},
 		{"rsort noarg", &RSortQuery{}, "rsort()"},
 		{"rsort expr", rsortByAge, `rsort(".age")`},
-		{"has quote", &HasQuery{Key: `a"b`}, `has("a""b")`},
-		{"has backslash", &HasQuery{Key: `a\`}, `has("a\")`},
+		{"has quote", &HasQuery{Key: `a"b`}, `has("a\"b")`},
+		{"has backslash", &HasQuery{Key: `a\`}, `has("a\\")`},
 		{"contains comma", &ContainsQuery{Value: "x,y"}, `contains("x,y")`},
-		{"sort quoted key", &SortQuery{Expr: `."b c"`, Query: MapQuery("b c")}, `sort(".""b c""")`},
+		{"sort quoted key", &SortQuery{Expr: `."b c"`, Query: MapQuery("b c")}, `sort(".\"b c\"")`},
 	}
 
 	for _, tc := range testCases {

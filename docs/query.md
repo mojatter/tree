@@ -47,7 +47,7 @@ Literals appear in selectors, and a query made of a literal alone yields it:
 - Strings in double or single quotes; a backslash escapes the next byte (`"a\"b"`).
 - Any other bare word is a string, so `[.a == x]` compares with `"x"`. Quote strings to keep them apart from `null`, `true`, `false` and numbers: `"null"` is a string.
 
-Method arguments are read as one CSV record, so `sort(".a")` passes `.a`; a `"` inside an argument is written `""` and a backslash is not an escape: `has("a""b")` checks the key `a"b`, and `has("a\"b")` fails with `failed to parse args: ...`.
+Method arguments are separated by commas and end at the `)` that closes the call; quoted strings and paired parentheses and brackets inside an argument are skipped, so `sort(.a.count())` and `has("a)b")` each take one argument. A parenthesis or bracket outside quotes must have its pair inside the same argument, so a key with a lone one is quoted: `has("a]b")`. Spaces, tabs and line breaks around an argument are dropped, and nothing or only blanks between the parentheses is no argument; any other character, such as a form feed or a full-width space, is part of the argument. An argument written as a string literal, in double or single quotes with the same backslash escape as elsewhere, passes its contents: `has("a,b")`, `has('x')` and `has("a\"b")` check the keys `a,b`, `x` and `a"b`. Any other argument passes its text as written, with any quoted strings, backslashes and inner blanks kept: `has(isbn)`, `has(0)`, `sort(.price)`, `has(a b)` checks the key `a b`, and `has(a"b")` checks the key `a"b"`. A quote anywhere in an argument opens a string that must be closed, so a key with a lone quote is quoted: `has("it's")`. `sort()` and `rsort()` read their argument as a query, so `sort(.price)` and `sort(".price")` are the same. An argument that starts with a quote must be that one string literal, and an empty argument (`has(,)`), a parenthesis or bracket without its pair (`has(a]b)`, `sort(.a[0)`), a quote without its pair (`has(it's)`) or a missing `)` is a syntax error.
 
 An empty expression, such as ``, `()`, `[.a == ]` or `sort("")`, is a syntax error.
 
@@ -148,7 +148,7 @@ A query used alone is truthy when a result is `true`, a number greater than 0, a
 A query fails only for:
 
 - A syntax error, reported as `syntax error: ...`, including an empty expression.
-- An unknown method (`unknown method: foo`), `has()` or `contains()` without exactly one argument (`has() requires exactly 1 argument, got 0`) or an argument that is not a CSV record (`failed to parse args: ...`), reported when the query is parsed.
+- An unknown method (`unknown method: foo`) or `has()` or `contains()` without exactly one argument (`has() requires exactly 1 argument, got 0`), reported when the query is parsed.
 - A comparison side that yields more than one value.
 - An error from the expression of `sort()` or `rsort()`.
 
