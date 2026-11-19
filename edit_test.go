@@ -747,6 +747,11 @@ func TestEdit(t *testing.T) {
 			expr:     `[has(a=b)].v = 1`,
 			want:     Array{Map{"a=b": NumberValue(1), "v": NumberValue(1)}},
 		}, {
+			caseName: "argument to a method that takes none",
+			n:        Map{"a": Array{NumberValue(1)}},
+			expr:     `.a.first(1) = 2`,
+			errstr:   `first() requires no arguments, got 1`,
+		}, {
 			caseName: "unpaired bracket in method args",
 			n:        Map{"a": Array{}},
 			expr:     `.a[has(x].v = 2`,

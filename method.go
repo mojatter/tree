@@ -20,6 +20,7 @@ var (
 // It takes the call's arguments, cut and unquoted as https://github.com/mojatter/tree/blob/main/docs/query.md describes, and returns a Query implementation.
 // It is called without the registry lock held, so it may itself parse a query or call NewMethodQuery, as sort does,
 // and it may run concurrently with other factories, so it must be safe for concurrent use.
+// It should reject a number of arguments it does not take, as the built-in methods do.
 type NewMethodQueryFunc func(args ...string) (Query, error)
 
 // RegisterNewMethodQueryFunc registers a factory function for a method query.
@@ -48,8 +49,11 @@ func NewMethodQuery(method string, args ...string) (Query, error) {
 type CountQuery struct{}
 
 // NewCountQuery creates a new CountQuery instance.
-// Arguments are ignored for this query type.
+// It takes no arguments.
 func NewCountQuery(args ...string) (Query, error) {
+	if err := checkArgCount("count", args, 0, 0); err != nil {
+		return nil, err
+	}
 	return &CountQuery{}, nil
 }
 
@@ -74,8 +78,11 @@ func (q *CountQuery) String() string {
 type KeysQuery struct{}
 
 // NewKeysQuery creates a new KeysQuery instance.
-// Arguments are ignored for this query type.
+// It takes no arguments.
 func NewKeysQuery(args ...string) (Query, error) {
+	if err := checkArgCount("keys", args, 0, 0); err != nil {
+		return nil, err
+	}
 	return &KeysQuery{}, nil
 }
 
@@ -111,8 +118,11 @@ func (q *KeysQuery) String() string {
 type ValuesQuery struct{}
 
 // NewValuesQuery creates a new ValuesQuery instance.
-// Arguments are ignored for this query type.
+// It takes no arguments.
 func NewValuesQuery(args ...string) (Query, error) {
+	if err := checkArgCount("values", args, 0, 0); err != nil {
+		return nil, err
+	}
 	return &ValuesQuery{}, nil
 }
 
@@ -138,8 +148,11 @@ func (q *ValuesQuery) String() string {
 type EmptyQuery struct{}
 
 // NewEmptyQuery creates a new EmptyQuery instance.
-// Arguments are ignored for this query type.
+// It takes no arguments.
 func NewEmptyQuery(args ...string) (Query, error) {
+	if err := checkArgCount("empty", args, 0, 0); err != nil {
+		return nil, err
+	}
 	return &EmptyQuery{}, nil
 }
 
@@ -167,8 +180,11 @@ func (q *EmptyQuery) String() string {
 type TypeQuery struct{}
 
 // NewTypeQuery creates a new TypeQuery instance.
-// Arguments are ignored for this query type.
+// It takes no arguments.
 func NewTypeQuery(args ...string) (Query, error) {
+	if err := checkArgCount("type", args, 0, 0); err != nil {
+		return nil, err
+	}
 	return &TypeQuery{}, nil
 }
 
@@ -188,10 +204,10 @@ type HasQuery struct {
 }
 
 // NewHasQuery creates a new HasQuery instance.
-// Requires exactly one argument specifying the key to check.
+// It takes exactly one argument, the key to check.
 func NewHasQuery(args ...string) (Query, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("has() requires exactly 1 argument, got %d", len(args))
+	if err := checkArgCount("has", args, 1, 1); err != nil {
+		return nil, err
 	}
 	return &HasQuery{Key: args[0]}, nil
 }
@@ -222,10 +238,10 @@ type ContainsQuery struct {
 }
 
 // NewContainsQuery creates a new ContainsQuery instance.
-// Requires exactly one argument specifying the value to check.
+// It takes exactly one argument, the value to check.
 func NewContainsQuery(args ...string) (Query, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("contains() requires exactly 1 argument, got %d", len(args))
+	if err := checkArgCount("contains", args, 1, 1); err != nil {
+		return nil, err
 	}
 	return &ContainsQuery{Value: args[0]}, nil
 }
@@ -270,8 +286,11 @@ func (q *ContainsQuery) String() string {
 type FirstQuery struct{}
 
 // NewFirstQuery creates a new FirstQuery instance.
-// Arguments are ignored for this query type.
+// It takes no arguments.
 func NewFirstQuery(args ...string) (Query, error) {
+	if err := checkArgCount("first", args, 0, 0); err != nil {
+		return nil, err
+	}
 	return &FirstQuery{}, nil
 }
 
@@ -300,8 +319,11 @@ func (q *FirstQuery) editIndex() ArrayQuery {
 type LastQuery struct{}
 
 // NewLastQuery creates a new LastQuery instance.
-// Arguments are ignored for this query type.
+// It takes no arguments.
 func NewLastQuery(args ...string) (Query, error) {
+	if err := checkArgCount("last", args, 0, 0); err != nil {
+		return nil, err
+	}
 	return &LastQuery{}, nil
 }
 
@@ -414,9 +436,11 @@ type SortQuery struct {
 }
 
 // NewSortQuery creates a new SortQuery instance.
-// Arguments:
-//   - args[0] (optional): the query expression to sort by.
+// It takes at most one argument, the query expression to sort by.
 func NewSortQuery(args ...string) (Query, error) {
+	if err := checkArgCount("sort", args, 0, 1); err != nil {
+		return nil, err
+	}
 	var expr string
 	var q Query
 	if len(args) > 0 {
@@ -457,9 +481,11 @@ type RSortQuery struct {
 }
 
 // NewRSortQuery creates a new RSortQuery instance.
-// Arguments:
-//   - args[0] (optional): the query expression to sort by.
+// It takes at most one argument, the query expression to sort by.
 func NewRSortQuery(args ...string) (Query, error) {
+	if err := checkArgCount("rsort", args, 0, 1); err != nil {
+		return nil, err
+	}
 	var expr string
 	var q Query
 	if len(args) > 0 {
@@ -490,6 +516,21 @@ func (q *RSortQuery) String() string {
 		return "rsort(" + quoteString(q.Expr) + ")"
 	}
 	return "rsort()"
+}
+
+// checkArgCount returns an error unless name() is given lo to hi arguments; lo is 0 or hi, and hi is at most 1.
+func checkArgCount(name string, args []string, lo, hi int) error {
+	if len(args) >= lo && len(args) <= hi {
+		return nil
+	}
+	want := "no arguments"
+	switch {
+	case lo == hi && hi > 0:
+		want = fmt.Sprintf("exactly %d argument", hi)
+	case hi > 0:
+		want = fmt.Sprintf("at most %d argument", hi)
+	}
+	return fmt.Errorf("%s() requires %s, got %d", name, want, len(args))
 }
 
 // init automatically registers the built-in method queries.

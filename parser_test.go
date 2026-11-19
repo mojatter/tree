@@ -624,6 +624,12 @@ func TestParseQueryErrors(t *testing.T) {
 			expr:   `has("a", "b")`,
 			errstr: `has() requires exactly 1 argument, got 2`,
 		}, {
+			expr:   `.a.first(1)`,
+			errstr: `first() requires no arguments, got 1`,
+		}, {
+			expr:   `.a.sort(.k, .x)`,
+			errstr: `sort() requires at most 1 argument, got 2`,
+		}, {
 			expr:   `.a.sort(".b"`,
 			errstr: `syntax error: no right brackets: ".a.sort(\".b\""`,
 		}, {

@@ -106,11 +106,13 @@ A `null` element of an array or value of an object is yielded as `null`.
 | `sort([expr])` | the node as is | the node as is | a sorted copy | the node as is |
 | `rsort([expr])` | the node as is | the node as is | a copy sorted in descending order | the node as is |
 
+Each of these methods fails to parse when given a number of arguments it does not take. `has()` and `contains()` take exactly one, `sort()` and `rsort()` take at most one, the expression, and the other methods take none: `has()`, `sort(.k, .x)` and `count("x")` fail with `has() requires exactly 1 argument, got 0`, `sort() requires at most 1 argument, got 2` and `count() requires no arguments, got 1`. Nothing or only blanks between the parentheses is no argument, so `count( )` counts, while `""` is one argument: `count("")` fails and `has("")` checks the empty key.
+
 `values()`, `sort()` and `rsort()` yield an array whose own elements hold no Go `nil` node, each read as `null`: `values()` copies an array only when it holds a Go `nil` element, and `sort()` and `rsort()` sort a copy anyway. Nested arrays and objects are yielded as they are.
 
 `keys()` and `values()` yield one array, not one result per key, so `.a.keys()[]` yields each key. Array keys are numbers: `.a.keys()[. == 0]` matches and `.a.keys()[. == "0"]` does not. `first()` and `last()` are the single-valued steps of [Steps](#steps), listed here because they are written as methods.
 
-`contains()` never matches a `null`, array or object element, so `contains("")` matches only an empty string. A string element must equal `v`: on `{"s": "hello", "a": ["hello"]}`, `.s.contains("ell")` is `true` and `.a.contains("ell")` is `false`. `has()` and `contains()` take exactly one argument and fail to parse otherwise. `sort()` and `rsort()` take an optional expression and ignore any further argument, so `sort(".k",".x")` sorts by `.k`. The other methods ignore their arguments, so `count("x")` counts.
+`contains()` never matches a `null`, array or object element, so `contains("")` matches only an empty string. A string element must equal `v`: on `{"s": "hello", "a": ["hello"]}`, `.s.contains("ell")` is `true` and `.a.contains("ell")` is `false`.
 
 `sort()` orders `null < false < true < numbers < strings < arrays < objects`; numbers compare by value with NaN first, strings bytewise, and arrays and objects keep their original order among themselves. With an expression, each element is sorted by the first result of `expr` on it, or `null` when it yields nothing. The sort is stable, and so is `rsort()`: elements with equal keys, arrays and objects included, keep their original order, so `rsort()` is not `sort()` reversed: `rsort(".k")` on `[{"k": 1, "i": "a"}, {"k": 1, "i": "b"}]` returns it unchanged.
 
@@ -148,7 +150,7 @@ A query used alone is truthy when a result is `true`, a number greater than 0, a
 A query fails only for:
 
 - A syntax error, reported as `syntax error: ...`, including an empty expression.
-- An unknown method (`unknown method: foo`) or `has()` or `contains()` without exactly one argument (`has() requires exactly 1 argument, got 0`), reported when the query is parsed.
+- An unknown method (`unknown method: foo`) or a method given a number of arguments it does not take (`has() requires exactly 1 argument, got 0`), reported when the query is parsed.
 - A comparison side that yields more than one value.
 - An error from the expression of `sort()` or `rsort()`.
 

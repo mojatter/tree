@@ -979,8 +979,11 @@ func TestQueryDocExamples(t *testing.T) {
 		{caseName: "count() on a string", input: `{"a": "abc"}`, expr: `.a.count()`, want: `[0]`},
 		{caseName: "sort() order", input: `{"a": [{"o": 1}, [1], "s", 2, true, false, null]}`, expr: `.a.sort()`, want: `[[null, false, true, 2, "s", [1], {"o": 1}]]`},
 		{caseName: "rsort() is stable", input: `{"a": [{"k": 1, "i": "a"}, {"k": 1, "i": "b"}]}`, expr: `.a.rsort(".k")`, want: `[[{"k": 1, "i": "a"}, {"k": 1, "i": "b"}]]`},
-		{caseName: "sort() ignores further arguments", input: `{"a": [{"k": 2, "x": 1}, {"k": 1, "x": 2}]}`, expr: `.a.sort(".k",".x")`, want: `[[{"k": 1, "x": 2}, {"k": 2, "x": 1}]]`},
-		{caseName: "count() ignores its argument", input: `{"a": [1, 2]}`, expr: `.a.count("x")`, want: `[2]`},
+		{caseName: "sort() with two arguments", input: `{"a": []}`, expr: `.a.sort(.k, .x)`, errstr: `sort() requires at most 1 argument, got 2`},
+		{caseName: "count() with an argument", input: `{"a": [1, 2]}`, expr: `.a.count("x")`, errstr: `count() requires no arguments, got 1`},
+		{caseName: "count() with blanks", input: `{"a": [1, 2]}`, expr: `.a.count( )`, want: `[2]`},
+		{caseName: "count() with an empty string", input: `{"a": [1, 2]}`, expr: `.a.count("")`, errstr: `count() requires no arguments, got 1`},
+		{caseName: "has() with an empty string", input: `{"a": {"": 1}}`, expr: `.a.has("")`, want: `[true]`},
 		// Selects and comparisons
 		{caseName: "several values", input: `[{"tags": [{"x": 1}, {"x": 2}]}]`, expr: `[.tags[].x == 1]`, errstr: `.tags[].x returns more than one value [1 2]`},
 		{caseName: "nested select", input: `[{"tags": [{"x": 1}, {"x": 2}]}, {"tags": [{"x": 2}]}]`, expr: `[.tags[.x == 1]]`, want: `[{"tags": [{"x": 1}, {"x": 2}]}]`},
