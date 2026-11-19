@@ -3646,6 +3646,8 @@ func TestEditDocExamples(t *testing.T) {
 		{caseName: "delete a null key", input: `{"a": null}`, expr: `.a ^?`, want: `{}`},
 		{caseName: "last [] deletes a null element", input: `{"a": [null]}`, expr: `.a[] ^?`, want: `{"a": []}`},
 		// Edit errors
+		{caseName: "blank before a key before a missing value", input: `{}`, expr: `. a =`, errstr: `syntax error: unexpected blank at offset 1: ". a ="`},
+		{caseName: "literal next to a step before a missing value", input: `{}`, expr: `.a x =`, errstr: `syntax error: invalid edit expression ".a x ="`},
 		{caseName: "key on a scalar", input: `{"a": 1}`, expr: `.a.b = 1`, errstr: `cannot index number with "b"`},
 		{caseName: "append before the start", input: `{"a": []}`, expr: `.a[-5] += 1`, errstr: `cannot index array with -5`},
 		{caseName: "delete before the start", input: `{"a": [1]}`, expr: `.a[-5] ^?`, errstr: `cannot index array with -5`},
@@ -3692,7 +3694,7 @@ func TestEditDocExamples(t *testing.T) {
 		{caseName: "invalid edit expression", input: `{"a": 1}`, expr: `.a ^? x`, errstr: `syntax error: invalid edit expression ".a ^? x"`},
 		{caseName: "value that is not valid YAML", input: `{}`, expr: `.a = [`, errstr: `yaml: line 1: did not find expected node content`},
 		{caseName: "blanks after delete", input: `{"a": 1, "b": 2}`, expr: ".a ^?\t\r\n", want: `{"b": 2}`},
-		{caseName: "literal step", input: `{}`, expr: `"x" = 1`, errstr: `syntax error: unsupported edit query: "x"`},
+		{caseName: "literal alone", input: `{}`, expr: `"x" = 1`, errstr: `syntax error: unsupported edit query: "x"`},
 		{caseName: "pipe group inside a longer path", input: `{"a": [{"b": 1}]}`, expr: `(.a | .[0]).b = 1`, errstr: `syntax error: unsupported edit query: (.a | .[0])`},
 		{caseName: "parentheses around the whole query", input: `{"a": 1}`, expr: `(.a) = 2`, want: `{"a": 2}`},
 		{caseName: "select on null edits nothing", input: `{"a": null}`, expr: `.a[. == 1] = 9`, want: `{"a": null}`},
