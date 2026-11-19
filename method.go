@@ -17,7 +17,7 @@ var (
 )
 
 // NewMethodQueryFunc is a factory function type for creating method queries.
-// It takes string arguments and returns a Query implementation.
+// It takes the call's arguments, cut and unquoted as https://github.com/mojatter/tree/blob/main/docs/query.md describes, and returns a Query implementation.
 // It is called without the registry lock held, so it may itself parse a query or call NewMethodQuery, as sort does,
 // and it may run concurrently with other factories, so it must be safe for concurrent use.
 type NewMethodQueryFunc func(args ...string) (Query, error)
@@ -212,7 +212,7 @@ func (q *HasQuery) Exec(n Node) ([]Node, error) {
 }
 
 func (q *HasQuery) String() string {
-	return "has(" + quoteArg(q.Key) + ")"
+	return "has(" + quoteString(q.Key) + ")"
 }
 
 // ContainsQuery checks if the node contains the specified value.
@@ -262,7 +262,7 @@ func containsValue(n Node, v string) bool {
 }
 
 func (q *ContainsQuery) String() string {
-	return "contains(" + quoteArg(q.Value) + ")"
+	return "contains(" + quoteString(q.Value) + ")"
 }
 
 // FirstQuery returns the first element of an array.
@@ -444,7 +444,7 @@ func (q *SortQuery) Exec(n Node) ([]Node, error) {
 
 func (q *SortQuery) String() string {
 	if q.Expr != "" {
-		return "sort(" + quoteArg(q.Expr) + ")"
+		return "sort(" + quoteString(q.Expr) + ")"
 	}
 	return "sort()"
 }
@@ -487,14 +487,9 @@ func (q *RSortQuery) Exec(n Node) ([]Node, error) {
 
 func (q *RSortQuery) String() string {
 	if q.Expr != "" {
-		return "rsort(" + quoteArg(q.Expr) + ")"
+		return "rsort(" + quoteString(q.Expr) + ")"
 	}
 	return "rsort()"
-}
-
-// quoteArg double-quotes s as a method argument, which is read as CSV: only '"' is escaped, by doubling.
-func quoteArg(s string) string {
-	return `"` + strings.ReplaceAll(s, `"`, `""`) + `"`
 }
 
 // init automatically registers the built-in method queries.

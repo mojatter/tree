@@ -235,7 +235,9 @@ func skipParen(expr string, p int) int {
 // skipWord returns the position past the keyword, method call or identifier the lexer reads at expr[p] (a word rune).
 func skipWord(expr string, p int) int {
 	l := lexer{expr: expr, pos: p}
-	l.scanWord(p > 0 && expr[p-1] == '.')
+	if _, err := l.scanWord(p > 0 && expr[p-1] == '.'); err != nil {
+		return wordEnd(expr, p) // ParseQuery reports it, unless an unterminated quote hides the operator: invalid edit expression
+	}
 	return l.pos
 }
 

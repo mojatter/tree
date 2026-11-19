@@ -1,7 +1,6 @@
 package tree
 
 import (
-	"encoding/csv"
 	"fmt"
 	"math"
 	"slices"
@@ -81,12 +80,11 @@ func (k tokenKind) operator() Operator {
 }
 
 // token is a single lexer token. text holds the original source slice (for
-// use in error messages); args is populated only for tkMethod and carries
-// the raw argument string between the parentheses.
+// use in error messages); args holds a tkMethod's decoded arguments.
 type token struct {
 	kind tokenKind
 	text string
-	args string
+	args []string
 }
 
 // lexer holds the lex state: the source string and current position.
@@ -116,66 +114,111 @@ func (l *lexer) scanQuoted() (tok token, ok bool) {
 	return token{}, false
 }
 
-// scanMethod parses a method-call token (`name(args)`) starting at l.pos
-// (where l.expr[l.pos] is a lowercase letter). On success returns the
-// tkMethod token with name and raw args text, advancing l.pos past the
-// closing `)`. A '"' in the args is skipped by CSV rules, as the args are
-// read as CSV; an unterminated '"' keeps the call with the rest of the
-// input as args so the CSV reader reports it. Returns ok=false (and
-// leaves l.pos unchanged) when there is no `(` after the lowercase run,
-// or when the `)` is missing; the caller then scans a plain ident.
-func (l *lexer) scanMethod() (tok token, ok bool) {
+// scanMethod parses the method call `name(args)` at l.pos (a lowercase letter); ok is false when no `(` follows the name.
+func (l *lexer) scanMethod() (tok token, ok bool, err error) {
 	nameEnd := l.pos + 1
 	for nameEnd < len(l.expr) && isLower(l.expr[nameEnd]) {
 		nameEnd++
 	}
 	if nameEnd >= len(l.expr) || l.expr[nameEnd] != '(' {
-		return token{}, false
+		return token{}, false, nil
 	}
-	closeIdx := nameEnd + 1
-	for closeIdx < len(l.expr) && l.expr[closeIdx] != ')' {
-		switch l.expr[closeIdx] {
-		case '"':
-			closeIdx = skipCSVQuoted(l.expr, closeIdx)
-			if closeIdx >= len(l.expr) {
-				// Let the CSV reader report it rather than reading the name as an ident.
-				tok = token{kind: tkMethod, text: l.expr[l.pos:nameEnd], args: l.expr[nameEnd+1:]}
-				l.pos = len(l.expr)
-				return tok, true
+	var args []string
+	var closers []byte // the closers expected for the open parentheses and brackets, innermost last
+	argStart := nameEnd + 1
+	for i := argStart; i < len(l.expr); i++ {
+		c := l.expr[i]
+		switch {
+		case c == '"' || c == '\'':
+			q := lexer{expr: l.expr, pos: i}
+			if _, ok := q.scanQuoted(); !ok {
+				return token{}, false, l.unterminated(i)
 			}
-			continue
-		case '\'':
-			closeIdx = skipQuoted(l.expr, closeIdx)
-			continue
+			i = q.pos - 1
+		case c == '(':
+			closers = append(closers, ')')
+		case c == '[':
+			closers = append(closers, ']')
+		case len(closers) > 0 && (c == ')' || c == ']'):
+			if closers[len(closers)-1] != c {
+				return token{}, false, l.unexpected(i)
+			}
+			closers = closers[:len(closers)-1]
+		case c == ']':
+			return token{}, false, l.unexpected(i)
+		case len(closers) == 0 && (c == ',' || c == ')'):
+			start, end := trimBlanks(l.expr, argStart, i)
+			if start == end && (c == ',' || args != nil) {
+				return token{}, false, fmt.Errorf("syntax error: empty argument at offset %d: %q", start, l.expr)
+			}
+			if start != end {
+				arg, err := l.methodArg(start, end)
+				if err != nil {
+					return token{}, false, err
+				}
+				args = append(args, arg)
+			}
+			if c == ')' {
+				tok = token{kind: tkMethod, text: l.expr[l.pos:nameEnd], args: args}
+				l.pos = i + 1
+				return tok, true, nil
+			}
+			argStart = i + 1
 		}
-		closeIdx++
 	}
-	if closeIdx >= len(l.expr) {
-		return token{}, false
+	return token{}, false, errNoRightBrackets(l.expr)
+}
+
+// methodArg returns the argument l.expr[start:end], trimmed of blanks: a lone string literal's contents, else its text.
+func (l *lexer) methodArg(start, end int) (string, error) {
+	if c := l.expr[start]; c != '"' && c != '\'' {
+		return l.expr[start:end], nil
 	}
-	tok = token{
-		kind: tkMethod,
-		text: l.expr[l.pos:nameEnd],
-		args: l.expr[nameEnd+1 : closeIdx],
+	q := lexer{expr: l.expr, pos: start}
+	tok, _ := q.scanQuoted() // terminated: scanMethod skipped it
+	if rest, _ := trimBlanks(l.expr, q.pos, end); rest < end {
+		return "", l.unexpected(rest)
 	}
-	l.pos = closeIdx + 1
-	return tok, true
+	return tok.text, nil
+}
+
+// trimBlanks returns the bounds of s[start:end] without the blanks around it.
+func trimBlanks(s string, start, end int) (int, int) {
+	t := strings.TrimLeft(s[start:end], blanks)
+	start = end - len(t)
+	return start, start + len(strings.TrimRight(t, blanks))
+}
+
+// unterminated returns the syntax error for the string that opens at offset i.
+func (l *lexer) unterminated(i int) error {
+	return fmt.Errorf("syntax error: unterminated string at offset %d: %q", i, l.expr)
+}
+
+// errNoRightBrackets returns the syntax error for a bracket that expr never closes.
+func errNoRightBrackets(expr string) error {
+	return fmt.Errorf("syntax error: no right brackets: %q", expr)
+}
+
+// unexpected returns the syntax error for the character at offset i.
+func (l *lexer) unexpected(i int) error {
+	_, size := utf8.DecodeRuneInString(l.expr[i:])
+	return fmt.Errorf("syntax error: unexpected character %q at offset %d: %q", l.expr[i:i+size], i, l.expr)
 }
 
 // scanWord parses the keyword, method call or identifier starting at l.pos (a word rune).
 // and/or are keywords unless they directly follow a '.', so .orders and .or stay keys.
-func (l *lexer) scanWord(prevPathDot bool) token {
+func (l *lexer) scanWord(prevPathDot bool) (token, error) {
 	end := wordEnd(l.expr, l.pos)
 	if text := l.expr[l.pos:end]; (text == "and" || text == "or") && (l.pos == 0 || l.expr[l.pos-1] != '.') {
 		l.pos = end
-		return token{kind: cmdKind(text), text: text}
+		return token{kind: cmdKind(text), text: text}, nil
 	}
 	if isLower(l.expr[l.pos]) {
-		if tok, ok := l.scanMethod(); ok {
-			return tok
+		if tok, ok, err := l.scanMethod(); err != nil || ok {
+			return tok, err
 		}
 	}
-	return l.scanIdent(prevPathDot)
+	return l.scanIdent(prevPathDot), nil
 }
 
 // scanIdent parses the tkIdent at l.pos; unless prevPathDot, a digit-led one also takes a fraction (1.5) and a signed exponent (1e+3).
@@ -214,7 +257,7 @@ func (l *lexer) lex() ([]token, error) {
 		case '"', '\'':
 			tok, ok := l.scanQuoted()
 			if !ok {
-				return nil, fmt.Errorf("syntax error: unterminated string at offset %d: %q", l.pos, l.expr)
+				return nil, l.unterminated(l.pos)
 			}
 			out = append(out, tok)
 			continue
@@ -224,11 +267,14 @@ func (l *lexer) lex() ([]token, error) {
 			l.pos += len(op)
 			continue
 		}
-		r, size := utf8.DecodeRuneInString(l.expr[l.pos:])
-		if !isWordRune(r) {
-			return nil, fmt.Errorf("syntax error: unexpected character %q at offset %d: %q", l.expr[l.pos:l.pos+size], l.pos, l.expr)
+		if r, _ := utf8.DecodeRuneInString(l.expr[l.pos:]); !isWordRune(r) {
+			return nil, l.unexpected(l.pos)
 		}
-		out = append(out, l.scanWord(prevIsPathDot(out)))
+		tok, err := l.scanWord(prevIsPathDot(out))
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, tok)
 	}
 	out = append(out, token{kind: tkEOF})
 	return out, nil
@@ -249,21 +295,6 @@ func skipQuoted(expr string, p int) int {
 		p++
 	}
 	if p < len(expr) {
-		return p + 1
-	}
-	return p
-}
-
-// skipCSVQuoted returns the position past the CSV-quoted field at expr[p] (a doubled '"' is literal, '\' is plain), or len(expr) when unterminated.
-func skipCSVQuoted(expr string, p int) int {
-	for p++; p < len(expr); p++ {
-		if expr[p] != '"' {
-			continue
-		}
-		if p+1 < len(expr) && expr[p+1] == '"' {
-			p++
-			continue
-		}
 		return p + 1
 	}
 	return p
@@ -430,7 +461,7 @@ func (p *parser) parseSequence(stops ...tokenKind) (Query, error) {
 	}
 	if len(steps) == 0 {
 		if p.peek().kind == tkEOF && !slices.Contains(stops, tkEOF) {
-			return nil, fmt.Errorf("syntax error: no right brackets: %q", p.expr)
+			return nil, errNoRightBrackets(p.expr)
 		}
 		return nil, fmt.Errorf("syntax error: empty expression: %q", p.expr)
 	}
@@ -464,23 +495,14 @@ func (p *parser) parseStep() (Query, error) {
 			return nil, err
 		}
 		if p.peek().kind != tkRParen {
-			return nil, fmt.Errorf("syntax error: no right brackets: %q", p.expr)
+			return nil, errNoRightBrackets(p.expr)
 		}
 		p.skip(1)
 		return inner, nil
 	case tkPipe:
 		return SlurpQuery{}, nil
 	case tkMethod:
-		var args []string
-		if t.args != "" {
-			r := csv.NewReader(strings.NewReader(t.args))
-			var err error
-			args, err = r.Read()
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse args: %w", err)
-			}
-		}
-		return NewMethodQuery(t.text, args...)
+		return NewMethodQuery(t.text, t.args...)
 	case tkIdent:
 		return ValueQuery{wordValue(t.text)}, nil
 	case tkString:
@@ -540,7 +562,7 @@ func (p *parser) parseBracket() (Query, error) {
 		return nil, err
 	}
 	if p.peek().kind != tkRBrack {
-		return nil, fmt.Errorf("syntax error: no right brackets: %q", p.expr)
+		return nil, errNoRightBrackets(p.expr)
 	}
 	p.skip(1)
 	return SelectQuery{Selector: sel}, nil
@@ -680,7 +702,7 @@ func (p *parser) parseCompExpr() (Selector, error) {
 			return nil, err
 		}
 		if p.peek().kind != tkRParen {
-			return nil, fmt.Errorf("syntax error: no right brackets: %q", p.expr)
+			return nil, errNoRightBrackets(p.expr)
 		}
 		p.skip(1)
 		return inner, nil

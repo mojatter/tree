@@ -147,28 +147,67 @@ func TestParseQuery(t *testing.T) {
 			expr: `[.k == "a\"b\\c"]`,
 			want: SelectQuery{And{Comparator{MapQuery("k"), EQ, ValueQuery{StringValue(`a"b\c`)}}}},
 		}, {
-			expr: `has("a""b")`,
+			expr: `has("a\"b")`,
 			want: &HasQuery{Key: `a"b`},
 		}, {
-			expr: `has("a\""b")`,
-			want: &HasQuery{Key: `a\"b`},
+			expr: `has('a"b')`,
+			want: &HasQuery{Key: `a"b`},
 		}, {
-			expr: `has("a\")`,
+			expr: `has("a\\")`,
 			want: &HasQuery{Key: `a\`},
+		}, {
+			expr: `has("a\b")`,
+			want: &HasQuery{Key: "ab"},
 		}, {
 			expr: `contains("x,y")`,
 			want: &ContainsQuery{Value: "x,y"},
 		}, {
-			expr: `sort(".""b c""")`,
+			expr: `has('x')`,
+			want: &HasQuery{Key: "x"},
+		}, {
+			expr: `has(isbn)`,
+			want: &HasQuery{Key: "isbn"},
+		}, {
+			expr: `has( a )`,
+			want: &HasQuery{Key: "a"},
+		}, {
+			expr: "has(\n\"a\"\r\n)",
+			want: &HasQuery{Key: "a"},
+		}, {
+			expr: "has(\"a\r\nb\")",
+			want: &HasQuery{Key: "a\r\nb"},
+		}, {
+			expr: `has("a)b")`,
+			want: &HasQuery{Key: "a)b"},
+		}, {
+			expr: `has("a]b")`,
+			want: &HasQuery{Key: "a]b"},
+		}, {
+			expr: `has(a(b[c]))`,
+			want: &HasQuery{Key: "a(b[c])"},
+		}, {
+			expr: `sort((.a[0]))`,
+			want: &SortQuery{Expr: "(.a[0])", Query: FilterQuery{MapQuery("a"), ArrayQuery(0)}},
+		}, {
+			expr: `count( )`,
+			want: &CountQuery{},
+		}, {
+			expr: `sort(.a.count())`,
+			want: &SortQuery{Expr: ".a.count()", Query: FilterQuery{MapQuery("a"), NopQuery{}, &CountQuery{}}},
+		}, {
+			expr: `sort(.["b c"])`,
+			want: &SortQuery{Expr: `.["b c"]`, Query: FilterQuery{NopQuery{}, MapQuery("b c")}},
+		}, {
+			expr: `sort(."b c")`,
 			want: &SortQuery{Expr: `."b c"`, Query: MapQuery("b c")},
 		}, {
-			expr: `rsort(".""b\""c""")`,
+			expr: `rsort(."b\"c")`,
 			want: &RSortQuery{Expr: `."b\"c"`, Query: MapQuery(`b"c`)},
 		}, {
 			expr: `sort("count()")`,
 			want: &SortQuery{Expr: "count()", Query: &CountQuery{}},
 		}, {
-			expr: `rsort("has(""a"")")`,
+			expr: `rsort(has("a"))`,
 			want: &RSortQuery{Expr: `has("a")`, Query: &HasQuery{Key: "a"}},
 		}, {
 			expr: `sort("(.foo)")`,
@@ -564,11 +603,53 @@ func TestParseQueryErrors(t *testing.T) {
 			expr:   `[foo-bar]`,
 			errstr: `syntax error: invalid token -: "[foo-bar]"`,
 		}, {
-			expr:   `has("a\"b")`,
-			errstr: `failed to parse args: parse error on line 1, column 4: extraneous or missing " in quoted-field`,
+			expr:   `has("a""b")`,
+			errstr: `syntax error: unexpected character "\"" at offset 7: "has(\"a\"\"b\")"`,
 		}, {
 			expr:   `[has("abc]`,
-			errstr: `failed to parse args: parse error on line 1, column 6: extraneous or missing " in quoted-field`,
+			errstr: `syntax error: unterminated string at offset 5: "[has(\"abc]"`,
+		}, {
+			expr:   `has(it's)`,
+			errstr: `syntax error: unterminated string at offset 6: "has(it's)"`,
+		}, {
+			expr:   `has("a" b)`,
+			errstr: `syntax error: unexpected character "b" at offset 8: "has(\"a\" b)"`,
+		}, {
+			expr:   `has(,)`,
+			errstr: `syntax error: empty argument at offset 4: "has(,)"`,
+		}, {
+			expr:   `has(a, )`,
+			errstr: `syntax error: empty argument at offset 7: "has(a, )"`,
+		}, {
+			expr:   `has("a", "b")`,
+			errstr: `has() requires exactly 1 argument, got 2`,
+		}, {
+			expr:   `.a.sort(".b"`,
+			errstr: `syntax error: no right brackets: ".a.sort(\".b\""`,
+		}, {
+			expr:   `sort(.a`,
+			errstr: `syntax error: no right brackets: "sort(.a"`,
+		}, {
+			expr:   `has(a[b)`,
+			errstr: `syntax error: unexpected character ")" at offset 7: "has(a[b)"`,
+		}, {
+			expr:   `has(a(b])`,
+			errstr: `syntax error: unexpected character "]" at offset 7: "has(a(b])"`,
+		}, {
+			expr:   `has(a[b))`,
+			errstr: `syntax error: unexpected character ")" at offset 7: "has(a[b))"`,
+		}, {
+			expr:   `has(a]b)`,
+			errstr: `syntax error: unexpected character "]" at offset 5: "has(a]b)"`,
+		}, {
+			expr:   `sort(.a[0)`,
+			errstr: `syntax error: unexpected character ")" at offset 9: "sort(.a[0)"`,
+		}, {
+			expr:   `[has(a]`,
+			errstr: `syntax error: unexpected character "]" at offset 6: "[has(a]"`,
+		}, {
+			expr:   `sort(.a[0`,
+			errstr: `syntax error: no right brackets: "sort(.a[0"`,
 		}, {
 			expr:   `.foo!!!`,
 			errstr: `syntax error: unexpected character "!" at offset 4: ".foo!!!"`,
