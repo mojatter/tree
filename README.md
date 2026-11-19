@@ -353,7 +353,7 @@ node.Find(".store.book.rsort(\".price\")")  // Books ordered by descending price
 
 ## Edit
 
-An edit expression is `<query> = <value>` (set), `<query> += <value>` (append) or `<query> ^?` (delete). It is split at the first operator outside quotes and parentheses, and `<value>` is parsed as YAML, so `.url = "http://x?a=1"` sets the whole URL. `.a = null` stores null and keeps the key, while `.a ^?` removes it. Comparison operators (`==`, `!=`, `<=`, `>=`, `~=`) are never read as an assignment, so `.a ==1` is a syntax error; write `.a = "=1"` to set that string.
+An edit expression is `<query> = <value>` (set), `<query> += <value>` (append) or `<query> ^?` (delete). It is split at the first operator outside quotes, parentheses, brackets and method arguments (an operator inside parentheses or brackets is a syntax error), and `<value>` is parsed as YAML, so `.url = "http://x?a=1"` sets the whole URL. `.a = null` stores null and keeps the key, while `.a ^?` removes it. Comparison operators (`==`, `!=`, `<=`, `>=`, `~=`) are never read as an assignment, so `.a ==1` is a syntax error; write `.a = "=1"` to set that string.
 
 An edit writes through keys, indexes, `first()`, `last()`, `[]`, selects, slices and `..key`, creates missing objects and arrays on the way (`.a.b = 1` on `{}` gives `{"a": {"b": 1}}`), and fails on a step it cannot write, such as a key on a number. See [docs/query.md](docs/query.md#edits) for the full rules and the Go call each edit corresponds to.
 
