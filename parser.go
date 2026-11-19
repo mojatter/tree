@@ -96,6 +96,8 @@ type token struct {
 type lexer struct {
 	expr string
 	pos  int
+	edit bool   // stop at the first edit operator, as lex describes
+	op   string // the edit operator lex stopped at, at pos
 }
 
 // scanQuoted parses the quoted string at l.pos and advances past its closing quote; ok is false when it is unterminated.
@@ -251,29 +253,44 @@ const blanks = " \t\n\r"
 
 // lex returns the source as a flat slice of tokens terminated by tkEOF.
 // Whitespace is one of blanks; any other character that starts no token is a syntax error.
+// In edit mode it stops at the first edit operator outside parentheses and brackets, or anywhere after a closer without an opener, leaving it in l.op with l.pos at it.
 func (l *lexer) lex() ([]token, error) {
 	var out []token
+	depth, stray := 0, false // stray: a closer had no opener
 	for l.pos < len(l.expr) {
-		c := l.expr[l.pos]
-		switch c {
+		start := l.pos
+		switch l.expr[start] {
 		case ' ', '\t', '\n', '\r':
 			l.pos++
 			continue
 		case '"', '\'':
 			tok, ok := l.scanQuoted()
 			if !ok {
-				return nil, l.unterminated(l.pos)
+				return nil, l.unterminated(start)
 			}
 			out = append(out, tok)
 			continue
 		}
-		if op := matchOp(l.expr, l.pos); op != "" {
+		if op := matchOp(l.expr, start); op != "" {
+			switch op {
+			case "(", "[":
+				depth++
+			case ")", "]":
+				if depth--; depth < 0 {
+					stray = true
+				}
+			}
 			out = append(out, token{kind: cmdKind(op), text: op})
 			l.pos += len(op)
 			continue
 		}
-		if r, _ := utf8.DecodeRuneInString(l.expr[l.pos:]); !isWordRune(r) {
-			return nil, l.unexpected(l.pos)
+		if l.edit && (depth == 0 || stray) {
+			if l.op = matchEditOp(l.expr[start:]); l.op != "" {
+				break
+			}
+		}
+		if r, _ := utf8.DecodeRuneInString(l.expr[start:]); !isWordRune(r) {
+			return nil, l.unexpected(start)
 		}
 		tok, err := l.scanWord(prevIsPathDot(out))
 		if err != nil {
@@ -285,24 +302,17 @@ func (l *lexer) lex() ([]token, error) {
 	return out, nil
 }
 
-// skipQuoted returns the position past a quoted string literal at expr[p]
-// (where expr[p] is the opening quote). Recognizes the same backslash
-// escape rules as scanQuoted so embedded `\"` / `\'` don't false-terminate.
-// Returns len(expr) for an unterminated literal.
-func skipQuoted(expr string, p int) int {
-	quote := expr[p]
-	p++
-	for p < len(expr) && expr[p] != quote {
-		if expr[p] == '\\' && p+1 < len(expr) {
-			p += 2
-			continue
+// editOps lists the edit operators.
+var editOps = []string{"+=", "^?", "="}
+
+// matchEditOp returns the edit operator s starts with, or "".
+func matchEditOp(s string) string {
+	for _, op := range editOps {
+		if strings.HasPrefix(s, op) {
+			return op
 		}
-		p++
 	}
-	if p < len(expr) {
-		return p + 1
-	}
-	return p
+	return ""
 }
 
 // matchOp returns the operator or punctuation token starting at expr[i], or "" if none matches.

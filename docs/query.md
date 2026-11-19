@@ -158,7 +158,7 @@ A step never fails because of the data it reads.
 
 ## Edits
 
-`Edit(&n, expr)` and tq `-e` take `<query> = <value>` (set), `<query> += <value>` (append) or `<query> ^?` (delete), where only spaces, tabs and line breaks may follow `^?`. The expression is split at the first `=`, `+=` or `^?` outside quotes, parentheses and method arguments, and `<value>` is parsed as a single YAML document, so `.url = "http://x?a=1"` sets the whole URL and `.a = [1, 2]` sets an array. Comparison operators (`==`, `!=`, `<=`, `>=`, `~=`) are never read as an assignment, so `.a[.b == 1].c = 2` splits after `]` and `.a ==1` is a syntax error; write `.a = "=1"` to set that string.
+`Edit(&n, expr)` and tq `-e` take `<query> = <value>` (set), `<query> += <value>` (append) or `<query> ^?` (delete), where only spaces, tabs and line breaks may follow `^?`. The expression is read as a query up to the first `=`, `+=` or `^?` outside quotes, parentheses, brackets and method arguments, and the rest is `<value>`, parsed as a single YAML document, so `.url = "http://x?a=1"` sets the whole URL and `.a = [1, 2]` sets an array. Comparison operators (`==`, `!=`, `<=`, `>=`, `~=`) are never read as an assignment, so `.a[.b == 1].c = 2` sets `c` on the matching elements and `.a ==1` is a syntax error; write `.a = "=1"` to set that string. An edit operator inside parentheses or brackets is a syntax error: `.a[.b = 1].c = 2` fails with `syntax error: unexpected character "=" at offset 6: ".a[.b = 1].c = 2"`. Inside a method argument it is part of the argument and not an edit operator, so `[has(a=b)].v = 1` sets `v` where the key `a=b` exists, and `.a.sort(.k = 1) = 1` fails on the `sort()` expression alone: `syntax error: unexpected character "=" at offset 3: ".k = 1"`.
 
 ### Go equivalents
 
@@ -210,7 +210,7 @@ An array whose `Array()` is nil, such as a pointer to a nil `Array`, edits as an
 
 ### Edit errors
 
-An edit fails for a syntax error, an unsupported step (see [Paths](#paths)), more than one YAML document in the value (`syntax error: multiple YAML documents in edit value ...`), and for these conditions, reported when the edit reaches them:
+An edit fails for a syntax error, an unknown method or a wrong number of method arguments, and a comparison side that yields more than one value (see [Errors](#errors)), an expression without a query, an operator, a value after `=` or `+=`, or with anything after `^?` (`syntax error: invalid edit expression "..."`), an unsupported step (see [Paths](#paths)), a value that is not valid YAML (the YAML parser's own message, `yaml: ...`), more than one YAML document in the value (`syntax error: multiple YAML documents in edit value ...`), and for these conditions, reported when the edit reaches them:
 
 | Condition | Example | Message |
 | - | - | - |
@@ -222,6 +222,8 @@ An edit fails for a syntax error, an unsupported step (see [Paths](#paths)), mor
 | `+=` on a value that is not an array or `null`, however the edit reaches it | `.a += 1` on `{"a": 1}`, `. += 1` on `1`, `.a[] += 1` on `{"a": [1]}` | `cannot append to number` |
 | An index of `1<<24` or more | `.a[16777216] = 1` | `array index 16777216 exceeds maximum 16777215` |
 | `^?` on the root itself | `. ^?` | `cannot delete .` |
+
+A syntax error found while reading the query quotes the whole edit expression, value included, and an offset in it counts bytes from the start of that expression: `.foo! = 9` fails with `syntax error: unexpected character "!" at offset 4: ".foo! = 9"`. As in a query, an error inside the expression of `sort()` or `rsort()` quotes that expression alone, and an unknown method or a wrong number of arguments quotes nothing. An unsupported step is found once the query is read and shows only that step (see [Paths](#paths)). Any of these errors in the query is reported before an error in the value: `.a] = [` fails with `syntax error: no left bracket: ".a] = ["`, and `.a.sort()[0] = [` with `syntax error: unsupported edit query: sort()`. A missing value is not such an error: `.a.sort()[0] =` fails with `syntax error: invalid edit expression ".a.sort()[0] ="`.
 
 Each message names the receiver's type as `type()` does, whatever the operator and whether an array is an `Array`, a `*Array` or inside an `Any`: `.a.b += 1` and `.a.b ^?` on `{"a": []}` fail like `.a.b = 1`. A key, a method or a slice is shown as the query prints it, a key always quoted and an index as a number (`.a[ 1 : ] = 1` says `[1:]`), except that `last()` on an empty array fails as the index `-1` it resolves to. A custom `EditorNode` reports its own `Set` and `Delete` errors.
 

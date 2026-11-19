@@ -781,3 +781,39 @@ func BenchmarkQueryParse(b *testing.B) {
 		})
 	}
 }
+
+func TestLexEdit(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		expr     string
+		tokens   int // including tkEOF
+		pos      int
+		op       string
+	}{
+		{caseName: "edit stops at the operator", expr: `.a[.b == 1] += 2`, tokens: 9, pos: 12, op: "+="},
+		{caseName: "edit skips method arguments and quotes", expr: `.a.has(x=1)."=" ^? `, tokens: 7, pos: 16, op: "^?"},
+		{caseName: "edit reads == as a comparison, not an operator", expr: `.a ==1`, tokens: 5, pos: 6},
+		{caseName: "edit without an operator", expr: `.a `, tokens: 3, pos: 3},
+		{caseName: "edit operator after an unopened bracket", expr: `.a] = 1`, tokens: 4, pos: 4, op: "="},
+		{caseName: "edit operator in a group after an unopened parenthesis", expr: `.a)(.b = 1`, tokens: 7, pos: 7, op: "="},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			l := &lexer{expr: tc.expr, edit: true}
+			tokens, err := l.lex()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(tokens) != tc.tokens || l.pos != tc.pos || l.op != tc.op {
+				t.Errorf("got %d tokens, pos %d, op %q; want %d, %d, %q", len(tokens), l.pos, l.op, tc.tokens, tc.pos, tc.op)
+			}
+			want, err := (&lexer{expr: tc.expr[:l.pos]}).lex()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(tokens, want) {
+				t.Errorf("got tokens %v; want %v", tokens, want)
+			}
+		})
+	}
+}

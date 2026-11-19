@@ -11,33 +11,23 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// editOps lists the edit operators.
-var editOps = []string{"+=", "^?", "="}
-
 // Edit parses the edit expression and applies it to the node tree.
 // The RHS after "=" or "+=" is parsed as YAML; on error, matches edited before the failing one stay edited.
 // A step the edit cannot write through, such as a method other than first() and last(), is a syntax error, and so is a single step other than ..key after a pipe.
 func Edit(pn *Node, expr string) error {
-	left, op, right, ok := splitEdit(expr)
-	if !ok {
-		return fmt.Errorf("syntax error: invalid edit expression %q", expr)
-	}
-
-	var v Node
-	if op != "^?" {
-		var err error
-		v, err = parseEditValue(right)
-		if err != nil {
-			return err
-		}
-	}
-	q, err := ParseQuery(left)
+	q, op, right, err := parseEdit(expr)
 	if err != nil {
 		return err
 	}
 	fq, err := editPath(q)
 	if err != nil {
 		return err
+	}
+	var v Node
+	if op != "^?" {
+		if v, err = parseEditValue(right); err != nil {
+			return err
+		}
 	}
 	if isNullLike(*pn) { // a null root is replaced like a null reached by key
 		// Probe with "=" so that ^? stops only a query = would create containers for; others leave the root as under a key.
@@ -166,79 +156,29 @@ func parseEditValue(right string) (Node, error) {
 	return v, nil
 }
 
-// splitEdit splits expr at its first edit operator outside quotes and method arguments.
-func splitEdit(expr string) (left, op, right string, ok bool) {
-	for i := 0; i < len(expr); {
-		switch expr[i] {
-		case '"', '\'':
-			i = skipQuoted(expr, i)
-			continue
-		case '(':
-			i = skipParen(expr, i)
-			continue
-		case '+':
-			if i+1 >= len(expr) || expr[i+1] != '=' {
-				return "", "", "", false // bare '+' on the LHS is a mistyped append, not a key
-			}
-		case '=', '<', '>', '!', '~':
-			if i+1 < len(expr) && expr[i+1] == '=' {
-				i += 2 // comparison operator, not an assignment
-				continue
-			}
-		default:
-			if startsWord(expr[i:]) {
-				i = skipWord(expr, i)
-				continue
-			}
-		}
-		for _, o := range editOps {
-			if strings.HasPrefix(expr[i:], o) {
-				// Keep the RHS verbatim apart from leading blanks so YAML block scalars survive.
-				left, right = strings.Trim(expr[:i], blanks), strings.TrimLeft(expr[i+len(o):], " \t")
-				blank := strings.TrimSpace(right) == ""
-				if o == "^?" {
-					blank = strings.Trim(right, blanks) == "" // only the lexer's blanks may follow ^?
-				}
-				if blank {
-					right = ""
-				}
-				if left == "" || (o == "^?") != (right == "") {
-					return "", "", "", false
-				}
-				return left, o, right, true
-			}
-		}
-		i++
+// parseEdit parses expr up to its first edit operator and returns the query before it, the operator and the value after it.
+func parseEdit(expr string) (q Query, op, right string, err error) {
+	l := &lexer{expr: expr, edit: true}
+	tokens, err := l.lex()
+	if err != nil {
+		return nil, "", "", err
 	}
-	return "", "", "", false
-}
-
-// skipParen returns the position past the first unquoted ')' after the grouping '(' at expr[p], or p+1 when unterminated, so '=' inside parentheses never splits the edit.
-func skipParen(expr string, p int) int {
-	for i := p + 1; i < len(expr); {
-		switch expr[i] {
-		case '"', '\'':
-			i = skipQuoted(expr, i)
-			continue
-		case ')':
-			return i + 1
-		}
-		if startsWord(expr[i:]) {
-			i = skipWord(expr, i)
-			continue
-		}
-		i++
+	// Keep the RHS verbatim apart from leading blanks so YAML block scalars survive.
+	op, right = l.op, strings.TrimLeft(expr[l.pos+len(l.op):], " \t")
+	blank := strings.TrimSpace(right) == ""
+	if op == "^?" {
+		blank = strings.Trim(right, blanks) == "" // only the lexer's blanks may follow ^?
 	}
-	return p + 1
-}
-
-// skipWord returns the position past the keyword, method call or identifier the lexer reads at expr[p] (a word rune).
-func skipWord(expr string, p int) int {
-	l := lexer{expr: expr, pos: p}
-	if _, err := l.scanWord(p > 0 && expr[p-1] == '.'); err != nil {
-		return wordEnd(expr, p) // ParseQuery reports it, unless an unterminated quote hides the operator: invalid edit expression
+	if blank {
+		right = ""
 	}
-	return l.pos
+	if op == "" || len(tokens) == 1 || (op == "^?") != (right == "") {
+		return nil, "", "", fmt.Errorf("syntax error: invalid edit expression %q", expr)
+	}
+	if q, err = parseTokens(expr, tokens); err != nil {
+		return nil, "", "", err
+	}
+	return q, op, right, nil
 }
 
 // editQuery applies an edit operation to a node using the specified query.
