@@ -2,6 +2,7 @@ package tree
 
 import (
 	"bytes"
+	"fmt"
 	"maps"
 
 	"go.yaml.in/yaml/v3"
@@ -29,6 +30,7 @@ func MarshalYAML(n Node) ([]byte, error) {
 }
 
 // DecodeYAML decodes YAML as a node using the provided decoder, reading a timestamp as its source text and a null key as "null".
+// Any other non-string scalar key is read as its string form (e.g. 1.0 as "1"), and two keys of one mapping with the same string form are a duplicate-key error.
 func DecodeYAML(dec *yaml.Decoder) (Node, error) {
 	var yn yaml.Node
 	if err := dec.Decode(&yn); err != nil {
@@ -38,6 +40,7 @@ func DecodeYAML(dec *yaml.Decoder) (Node, error) {
 }
 
 // UnmarshalYAML decodes YAML data as a node, reading a timestamp as its source text and a null key as "null".
+// Any other non-string scalar key is read as its string form (e.g. 1.0 as "1"), and two keys of one mapping with the same string form are a duplicate-key error.
 func UnmarshalYAML(data []byte) (Node, error) {
 	var yn yaml.Node
 	if err := yaml.Unmarshal(data, &yn); err != nil {
@@ -47,6 +50,7 @@ func UnmarshalYAML(data []byte) (Node, error) {
 }
 
 // decodeYAMLNode decodes yn as a node without changing it, reading a timestamp as its source text and a null key as "null".
+// Any other non-string scalar key is read as its string form (e.g. 1.0 as "1"), and two keys of one mapping with the same string form are a duplicate-key error.
 func decodeYAMLNode(yn *yaml.Node) (Node, error) {
 	if yn.Kind == 0 {
 		return Nil, nil // empty document
@@ -58,7 +62,7 @@ func decodeYAMLNode(yn *yaml.Node) (Node, error) {
 	return ToNode(v), nil
 }
 
-// sourceTextYAML returns a copy of yn with timestamps and null keys tagged as strings, sharing copies via seen.
+// sourceTextYAML returns a copy of yn with timestamps and non-string scalar keys tagged as strings, sharing copies via seen.
 // A scalar that does not decode as written keeps its tag, so the decode reports it in yaml.v3's order.
 func sourceTextYAML(yn *yaml.Node, seen map[*yaml.Node]*yaml.Node) *yaml.Node {
 	if yn == nil {
@@ -85,9 +89,28 @@ func sourceTextYAML(yn *yaml.Node, seen map[*yaml.Node]*yaml.Node) *yaml.Node {
 		if k.Kind == yaml.AliasNode && k.Alias != nil {
 			k = k.Alias
 		}
-		if k.Kind == yaml.ScalarNode && k.ShortTag() == "!!null" && k.Decode(&v) == nil {
-			c.Content[i] = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "null", Line: cn.Line, Column: cn.Column}
+		if k.Kind != yaml.ScalarNode {
+			continue
 		}
+		if k.ShortTag() == "!!null" {
+			var v any
+			if k.Decode(&v) != nil {
+				continue
+			}
+			c.Content[i] = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "null", Line: cn.Line, Column: cn.Column}
+			continue
+		}
+		switch k.ShortTag() {
+		case "!!merge", "!!str", "!!timestamp":
+			continue // merge key untouched; strings and timestamps already carry their text
+		}
+		var v any
+		if k.Decode(&v) != nil {
+			continue
+		}
+		// A non-string scalar key is read as fmt.Sprintf("%v", k) by ToNode. Retag it
+		// as a string with that value so yaml.v3 reports collisions as duplicate keys.
+		c.Content[i] = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: fmt.Sprintf("%v", v), Line: cn.Line, Column: cn.Column}
 	}
 	return &c
 }
