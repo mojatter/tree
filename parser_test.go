@@ -406,9 +406,6 @@ func TestParseQuery(t *testing.T) {
 			expr: `..null`,
 			want: WalkQuery("null"),
 		}, {
-			expr: `1.or`,
-			want: FilterQuery{ValueQuery{NumberValue(1)}, MapQuery("or")},
-		}, {
 			expr: `(.a | .[0].b).c`,
 			want: FilterQuery{FilterQuery{MapQuery("a"), SlurpQuery{}, NopQuery{}, ArrayQuery(0), MapQuery("b")}, MapQuery("c")},
 		}, {
@@ -439,51 +436,33 @@ func TestParseQuery(t *testing.T) {
 			want:      FilterQuery{FilterQuery{MapQuery("a"), NopQuery{}}, MapQuery("b")},
 			roundTrip: FilterQuery{MapQuery("a"), MapQuery("b")},
 		}, {
-			expr: `true (.a | .b)`,
-			want: FilterQuery{ValueQuery{BoolValue(true)}, FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")}},
-		}, {
-			expr: `.x true`,
-			want: FilterQuery{MapQuery("x"), ValueQuery{BoolValue(true)}},
-		}, {
-			expr: `.x null`,
-			want: FilterQuery{MapQuery("x"), ValueQuery{Nil}},
-		}, {
-			expr: `.x 1.5`,
-			want: FilterQuery{MapQuery("x"), ValueQuery{NumberValue(1.5)}},
-		}, {
 			expr: `.x count()`,
 			want: FilterQuery{MapQuery("x"), &CountQuery{}},
 		}, {
 			expr: `.x .count()`,
 			want: FilterQuery{MapQuery("x"), NopQuery{}, &CountQuery{}},
 		}, {
-			expr: `1 1`,
-			want: FilterQuery{ValueQuery{NumberValue(1)}, ValueQuery{NumberValue(1)}},
+			expr: `x`,
+			want: ValueQuery{StringValue("x")},
 		}, {
-			expr: `1 .5`,
-			want: FilterQuery{ValueQuery{NumberValue(1)}, MapQuery("5")},
+			expr:      `(x)`,
+			want:      ValueQuery{StringValue("x")},
+			roundTrip: ValueQuery{StringValue("x")},
 		}, {
-			expr: `1.x .5`,
-			want: FilterQuery{ValueQuery{NumberValue(1)}, MapQuery("x"), MapQuery("5")},
+			expr: `.a .b`,
+			want: FilterQuery{MapQuery("a"), MapQuery("b")},
 		}, {
-			expr: `1.5.5`,
-			want: FilterQuery{ValueQuery{NumberValue(1.5)}, MapQuery("5")},
+			expr: `.a [0]`,
+			want: FilterQuery{MapQuery("a"), ArrayQuery(0)},
 		}, {
-			expr:      `1 . .5`,
-			want:      FilterQuery{ValueQuery{NumberValue(1)}, NopQuery{}, MapQuery("5")},
-			roundTrip: FilterQuery{ValueQuery{NumberValue(1)}, MapQuery("5")},
+			expr: `.a |`,
+			want: FilterQuery{MapQuery("a"), SlurpQuery{}},
 		}, {
-			expr:      `.a.("x")`,
-			want:      FilterQuery{MapQuery("a"), NopQuery{}, ValueQuery{StringValue("x")}},
-			roundTrip: FilterQuery{MapQuery("a"), ValueQuery{StringValue("x")}},
+			expr: `.a . count()`,
+			want: FilterQuery{MapQuery("a"), NopQuery{}, &CountQuery{}},
 		}, {
-			expr:      `.x.(1)`,
-			want:      FilterQuery{MapQuery("x"), NopQuery{}, ValueQuery{NumberValue(1)}},
-			roundTrip: FilterQuery{MapQuery("x"), ValueQuery{NumberValue(1)}},
-		}, {
-			expr:      `.(true)`,
-			want:      FilterQuery{NopQuery{}, ValueQuery{BoolValue(true)}},
-			roundTrip: ValueQuery{BoolValue(true)},
+			expr: `[. and .b]`,
+			want: SelectQuery{And{Evaluator{NopQuery{}}, Evaluator{MapQuery("b")}}},
 		}, {
 			expr: `.名前`,
 			want: MapQuery("名前"),
@@ -707,6 +686,93 @@ func TestParseQueryErrors(t *testing.T) {
 		}, {
 			expr:   `.a['b]`,
 			errstr: `syntax error: unterminated string at offset 3: ".a['b]"`,
+		}, {
+			expr:   `1.or`,
+			errstr: `syntax error: unexpected literal 1: "1.or"`,
+		}, {
+			expr:   `true (.a | .b)`,
+			errstr: `syntax error: unexpected literal true: "true (.a | .b)"`,
+		}, {
+			expr:   `.x true`,
+			errstr: `syntax error: unexpected literal true: ".x true"`,
+		}, {
+			expr:   `.x null`,
+			errstr: `syntax error: unexpected literal null: ".x null"`,
+		}, {
+			expr:   `.x 1.5`,
+			errstr: `syntax error: unexpected literal 1.5: ".x 1.5"`,
+		}, {
+			expr:   `1 1`,
+			errstr: `syntax error: unexpected literal 1: "1 1"`,
+		}, {
+			expr:   `1.5.5`,
+			errstr: `syntax error: unexpected literal 1.5: "1.5.5"`,
+		}, {
+			expr:   `.a.("x")`,
+			errstr: `syntax error: unexpected literal "x": ".a.(\"x\")"`,
+		}, {
+			expr:   `.(true)`,
+			errstr: `syntax error: unexpected literal true: ".(true)"`,
+		}, {
+			expr:   `.a x`,
+			errstr: `syntax error: unexpected literal "x": ".a x"`,
+		}, {
+			expr:   `x.count()`,
+			errstr: `syntax error: unexpected literal "x": "x.count()"`,
+		}, {
+			expr:   `.a | length`,
+			errstr: `syntax error: unexpected literal "length": ".a | length"`,
+		}, {
+			expr:   `[.a == x.y]`,
+			errstr: `syntax error: unexpected literal "x": "[.a == x.y]"`,
+		}, {
+			expr:   `[.host == example.com]`,
+			errstr: `syntax error: unexpected literal "example": "[.host == example.com]"`,
+		}, {
+			expr:   `[.x == 1 or 2]`,
+			errstr: `syntax error: unexpected literal 2: "[.x == 1 or 2]"`,
+		}, {
+			expr:   `[not .x]`,
+			errstr: `syntax error: unexpected literal "not": "[not .x]"`,
+		}, {
+			expr:   `[(x)]`,
+			errstr: `syntax error: unexpected literal "x": "[(x)]"`,
+		}, {
+			expr:   `[.a == -1 .b]`,
+			errstr: `syntax error: unexpected literal -1: "[.a == -1 .b]"`,
+		}, {
+			expr:   `[.a == -1 | .b]`,
+			errstr: `syntax error: unexpected literal -1: "[.a == -1 | .b]"`,
+		}, {
+			expr:   `. a`,
+			errstr: `syntax error: unexpected blank at offset 1: ". a"`,
+		}, {
+			expr:   `.a . b`,
+			errstr: `syntax error: unexpected blank at offset 4: ".a . b"`,
+		}, {
+			expr:   `.. a`,
+			errstr: `syntax error: unexpected blank at offset 2: ".. a"`,
+		}, {
+			expr:   ".a.\t\"b\"",
+			errstr: `syntax error: unexpected blank at offset 3: ".a.\t\"b\""`,
+		}, {
+			expr:   `. 1.5`,
+			errstr: `syntax error: unexpected blank at offset 1: ". 1.5"`,
+		}, {
+			expr:   `| .a`,
+			errstr: `syntax error: empty expression: "| .a"`,
+		}, {
+			expr:   `|`,
+			errstr: `syntax error: empty expression: "|"`,
+		}, {
+			expr:   `||`,
+			errstr: `syntax error: empty expression: "||"`,
+		}, {
+			expr:   `.a || .b`,
+			errstr: `syntax error: empty expression: ".a || .b"`,
+		}, {
+			expr:   `(| .a)`,
+			errstr: `syntax error: empty expression: "(| .a)"`,
 		},
 	}
 	for _, tc := range testCases {

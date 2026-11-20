@@ -111,7 +111,7 @@ func flattenGroups(q Query) FilterQuery {
 // lastPipe returns the index of the last pipe in fq, or -1.
 func lastPipe(fq FilterQuery) int {
 	for i, q := range slices.Backward(fq) {
-		if _, ok := q.(SlurpQuery); ok {
+		if isSlurpQuery(q) {
 			return i
 		}
 	}
@@ -211,19 +211,13 @@ func execForEdit(pn *Node, fq FilterQuery, op string, v Node) error {
 	}
 	// Split at SlurpQuery (pipe) if present among intermediate steps; pipes first, so a lone . next to one is kept.
 	for i, q := range fq[:l-1] {
-		if _, ok := q.(SlurpQuery); ok {
+		if isSlurpQuery(q) {
 			left := FilterQuery(fq[:i])
 			right := FilterQuery(fq[i+1:])
 
-			var results []Node
-			if len(left) > 0 {
-				var err error
-				results, err = left.Exec(*pn)
-				if err != nil {
-					return err
-				}
-			} else {
-				results = []Node{*pn}
+			results, err := left.Exec(*pn)
+			if err != nil {
+				return err
 			}
 
 			var slurped Node = Array(results)

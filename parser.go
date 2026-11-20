@@ -268,6 +268,9 @@ func (l *lexer) lex() ([]token, error) {
 			if !ok {
 				return nil, l.unterminated(start)
 			}
+			if err := l.checkKeyAfterBlank(out, start); err != nil {
+				return nil, err
+			}
 			out = append(out, tok)
 			continue
 		}
@@ -296,10 +299,27 @@ func (l *lexer) lex() ([]token, error) {
 		if err != nil {
 			return nil, err
 		}
+		if tok.kind == tkIdent {
+			if err := l.checkKeyAfterBlank(out, start); err != nil {
+				return nil, err
+			}
+		}
 		out = append(out, tok)
 	}
 	out = append(out, token{kind: tkEOF})
 	return out, nil
+}
+
+// checkKeyAfterBlank rejects a key at start that a blank separates from the . or .. before it.
+func (l *lexer) checkKeyAfterBlank(out []token, start int) error {
+	if !prevIsPathDot(out) {
+		return nil
+	}
+	i := len(strings.TrimRight(l.expr[:start], blanks))
+	if i == start {
+		return nil
+	}
+	return fmt.Errorf("syntax error: unexpected blank at offset %d: %q", i, l.expr)
 }
 
 // editOps lists the edit operators.
@@ -398,18 +418,6 @@ func endsWord(s string) bool {
 	return isWordRune(r)
 }
 
-// wordStart returns the index of the run of word runes in s ending at j.
-func wordStart(s string, j int) int {
-	for j > 0 {
-		r, size := utf8.DecodeLastRuneInString(s[:j])
-		if !isWordRune(r) {
-			break
-		}
-		j -= size
-	}
-	return j
-}
-
 // wordEnd returns the index past the run of word runes in s starting at i.
 func wordEnd(s string, i int) int {
 	for i < len(s) {
@@ -458,9 +466,8 @@ func (p *parser) skip(n int) {
 	p.pos += n
 }
 
-// parseSequence consumes 0 or more steps until tkEOF or one of stops is seen.
-// 0 steps are a syntax error, 1 step is returned bare, multiple steps are
-// wrapped in a FilterQuery.
+// parseSequence parses steps until tkEOF or one of stops: one step is returned bare, more as a FilterQuery.
+// No steps, an empty left side of a pipe and a literal next to a step are syntax errors.
 func (p *parser) parseSequence(stops ...tokenKind) (Query, error) {
 	var steps []Query
 	for {
@@ -468,11 +475,21 @@ func (p *parser) parseSequence(stops ...tokenKind) (Query, error) {
 		if k == tkEOF || slices.Contains(stops, k) {
 			break
 		}
+		if k == tkPipe && (len(steps) == 0 || isSlurpQuery(steps[len(steps)-1])) {
+			return nil, fmt.Errorf("syntax error: empty expression: %q", p.expr)
+		}
 		step, err := p.parseStep()
 		if err != nil {
 			return nil, err
 		}
 		steps = append(steps, step)
+	}
+	if len(steps) > 1 {
+		for _, s := range steps {
+			if v, ok := s.(ValueQuery); ok {
+				return nil, p.errLiteral(v)
+			}
+		}
 	}
 	if len(steps) == 0 {
 		if p.peek().kind == tkEOF && !slices.Contains(stops, tkEOF) {
@@ -484,6 +501,11 @@ func (p *parser) parseSequence(stops ...tokenKind) (Query, error) {
 		return steps[0], nil
 	}
 	return FilterQuery(steps), nil
+}
+
+// errLiteral returns the syntax error for a literal that is neither a whole query nor a comparison side.
+func (p *parser) errLiteral(v ValueQuery) error {
+	return fmt.Errorf("syntax error: unexpected literal %s: %q", v, p.expr)
 }
 
 // parseStep parses a single path step.
@@ -728,6 +750,9 @@ func (p *parser) parseCompExpr() (Selector, error) {
 	}
 	op := p.peek().kind.operator()
 	if op == "" {
+		if v, ok := left.(ValueQuery); ok {
+			return nil, p.errLiteral(v)
+		}
 		return Evaluator{Query: left}, nil
 	}
 	p.skip(1)
@@ -748,14 +773,20 @@ func (p *parser) parseSelectorOperand() (Query, error) {
 		v := wordValue("-" + p.tokens[p.pos+1].text)
 		if _, ok := v.(NumberValue); ok {
 			p.skip(2)
+			if k := p.peek().kind; k != tkEOF && !slices.Contains(selectorStops, k) {
+				return nil, p.errLiteral(ValueQuery{v})
+			}
 			return ValueQuery{v}, nil
 		}
 	}
-	return p.parseSequence(
-		tkAnd, tkOr,
-		tkEQ, tkNE, tkLT, tkLE, tkGT, tkGE, tkRE,
-		tkRParen, tkRBrack,
-	)
+	return p.parseSequence(selectorStops...)
+}
+
+// selectorStops are the tokens that end a comparison side.
+var selectorStops = []tokenKind{
+	tkAnd, tkOr,
+	tkEQ, tkNE, tkLT, tkLE, tkGT, tkGE, tkRE,
+	tkRParen, tkRBrack,
 }
 
 // wordValue parses an unquoted bare word into a literal Node.
