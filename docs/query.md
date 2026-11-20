@@ -43,7 +43,7 @@ A query is a sequence of steps, written without separators: `.store.book[0].titl
 A literal is a whole query, alone or in parentheses, which yields it, or one side of a comparison. Anywhere else, next to a step or as a selector without an operator, it is a syntax error: `.a x`, `x.a`, `.a | x` and `[.a == 1 or 2]` fail, the first with `syntax error: unexpected literal "x": ".a x"`. The literals are:
 
 - `null`, `true` and `false`.
-- Numbers, any word `strconv.ParseFloat` reads as a finite value, such as `1`, `1.5`, `1e3`, `01` and `0x1p4`, read as `float64`. A negative number such as `-1` is a literal only as one side of a comparison (`[.a == -1]`), not as a query, so `-1`, `(-1)` and `[.a == (-1)]` are syntax errors, the last with `syntax error: invalid token -: "[.a == (-1)]"`. After a `.` a number is a key, so `.5` reads the key `"5"`.
+- Numbers, any word `strconv.ParseFloat` reads as a finite value, such as `1`, `1.5`, `1e3`, `01` and `0x1p4`, read as `float64`. A negative number such as `-1` is a literal only as one side of a comparison (`[.a == -1]`), not as a query, so `-1`, `(-1)`, `[(-1) == .a]` and `[.a == (-1)]` are syntax errors, the last with `syntax error: invalid token -: "[.a == (-1)]"`. After a `.` a number is a key, so `.5` reads the key `"5"`.
 - Strings in double or single quotes; a backslash escapes the next byte (`"a\"b"`).
 - Any other bare word is a string, so `[.a == x]` compares with `"x"`. Quote strings to keep them apart from `null`, `true`, `false` and numbers: `"null"` is a string. `and` and `or` are keywords unless they directly follow a `.` or `..`, so `.and` is a key and `[.a == and]` is a syntax error.
 
@@ -127,9 +127,9 @@ Each of these methods fails to parse when given a number of arguments it does no
 
 A select `[selector]` runs the selector on each element of an array or value of an object. A selector is:
 
-- `left op right`, a comparison, where each side is a query or a literal and `op` is `==`, `!=`, `<`, `<=`, `>`, `>=` or `~=`. The left side cannot start with a parenthesis, which opens a group of selectors there: `[(.a) == 1]` fails with `syntax error: no right brackets: "[(.a) == 1]"` and `[(1) == .a]` with `syntax error: unexpected literal 1: "[(1) == .a]"`, while `[1 == (.a)]` works.
+- `left op right`, a comparison, where each side is a query or a literal and `op` is `==`, `!=`, `<`, `<=`, `>`, `>=` or `~=`. Either side can be in parentheses, except a negative number: `[(.a) == 1]`, `[(1) == .a]` and `[1 == (.a)]` compare `.a` with 1, while `[(-1) == .a]` and `[.a == (-1)]` are syntax errors.
 - A query alone, other than a literal, which matches when any of its results is truthy.
-- Selectors joined by `and` and `or`, where `and` binds tighter, and grouped with parentheses.
+- Selectors joined by `and` and `or`, where `and` binds tighter, and grouped with parentheses. A `(` at the start of a selector opens a group when a comparison operator, `and` or `or` comes before its `)`, outside any `[...]`; otherwise it starts the left side of a comparison or a query, so `[(.a == 1) and .b]` is a group and `[(.a).b == 1]` compares `.a.b`.
 
 Each side of a comparison yields at most one value; a side that yields more fails with `<side> returns more than one value [...]`. To match when any element matches, use a nested select: `[.tags[.x == 1]]`, not `[.tags[].x == 1]`. A side that yields nothing, such as `.tags[]` on an empty array, never matches, with any operator.
 

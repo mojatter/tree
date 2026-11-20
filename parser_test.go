@@ -2,10 +2,15 @@ package tree
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
 func TestParseQuery(t *testing.T) {
+	nested := Query(MapQuery("a"))
+	for range 40 {
+		nested = SelectQuery{And{Comparator{nested, EQ, ValueQuery{NumberValue(1)}}}}
+	}
 	testCases := []struct {
 		expr      string
 		want      Query
@@ -137,6 +142,36 @@ func TestParseQuery(t *testing.T) {
 		}, {
 			expr: `[.x == ""]`,
 			want: SelectQuery{And{Comparator{MapQuery("x"), EQ, ValueQuery{StringValue("")}}}},
+		}, {
+			expr: `[(.x) == 1]`,
+			want: SelectQuery{And{Comparator{MapQuery("x"), EQ, ValueQuery{NumberValue(1)}}}},
+		}, {
+			expr: `[(1) == .x]`,
+			want: SelectQuery{And{Comparator{ValueQuery{NumberValue(1)}, EQ, MapQuery("x")}}},
+		}, {
+			expr: `[(.x | count()) == 1]`,
+			want: SelectQuery{And{Comparator{FilterQuery{MapQuery("x"), SlurpQuery{}, &CountQuery{}}, EQ, ValueQuery{NumberValue(1)}}}},
+		}, {
+			expr: `[(.x).y == 1]`,
+			want: SelectQuery{And{Comparator{FilterQuery{MapQuery("x"), MapQuery("y")}, EQ, ValueQuery{NumberValue(1)}}}},
+		}, {
+			expr: `[(.y[.z == 1]) == 1]`,
+			want: SelectQuery{And{Comparator{FilterQuery{MapQuery("y"), SelectQuery{And{Comparator{MapQuery("z"), EQ, ValueQuery{NumberValue(1)}}}}}, EQ, ValueQuery{NumberValue(1)}}}},
+		}, {
+			expr: strings.Repeat("[(", 40) + ".a" + strings.Repeat(") == 1]", 40),
+			want: nested,
+		}, {
+			expr: `[(.x) .y]`,
+			want: SelectQuery{And{Evaluator{FilterQuery{MapQuery("x"), MapQuery("y")}}}},
+		}, {
+			expr: `[(.a | .b).c == 1]`,
+			want: SelectQuery{And{Comparator{FilterQuery{FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")}, MapQuery("c")}, EQ, ValueQuery{NumberValue(1)}}}},
+		}, {
+			expr: `[(.a | .b).c]`,
+			want: SelectQuery{And{Evaluator{FilterQuery{FilterQuery{MapQuery("a"), SlurpQuery{}, MapQuery("b")}, MapQuery("c")}}}},
+		}, {
+			expr: `[(.x == 1) and (.y) == 2]`,
+			want: SelectQuery{And{Comparator{MapQuery("x"), EQ, ValueQuery{NumberValue(1)}}, Comparator{MapQuery("y"), EQ, ValueQuery{NumberValue(2)}}}},
 		}, {
 			expr: "[.k == \"a\nb\"]",
 			want: SelectQuery{And{Comparator{MapQuery("k"), EQ, ValueQuery{StringValue("a\nb")}}}},
@@ -737,6 +772,42 @@ func TestParseQueryErrors(t *testing.T) {
 		}, {
 			expr:   `[(x)]`,
 			errstr: `syntax error: unexpected literal "x": "[(x)]"`,
+		}, {
+			expr:   `[(1)]`,
+			errstr: `syntax error: unexpected literal 1: "[(1)]"`,
+		}, {
+			expr:   `[(.x]`,
+			errstr: `syntax error: no right brackets: "[(.x]"`,
+		}, {
+			expr:   `[(.x) ==]`,
+			errstr: `syntax error: empty expression: "[(.x) ==]"`,
+		}, {
+			expr:   `[(.x == 1) == true]`,
+			errstr: `syntax error: no right brackets: "[(.x == 1) == true]"`,
+		}, {
+			expr:   `[(.a or .b) == 1]`,
+			errstr: `syntax error: no right brackets: "[(.a or .b) == 1]"`,
+		}, {
+			expr:   `[(-1)]`,
+			errstr: `syntax error: invalid token -: "[(-1)]"`,
+		}, {
+			expr:   `[(-1) == .a]`,
+			errstr: `syntax error: invalid token -: "[(-1) == .a]"`,
+		}, {
+			expr:   `[(.x`,
+			errstr: `syntax error: no right brackets: "[(.x"`,
+		}, {
+			expr:   `[(1) .x == 1]`,
+			errstr: `syntax error: unexpected literal 1: "[(1) .x == 1]"`,
+		}, {
+			expr:   `[(.a) x]`,
+			errstr: `syntax error: unexpected literal "x": "[(.a) x]"`,
+		}, {
+			expr:   `[(.a)(.b == 1)]`,
+			errstr: `syntax error: invalid token ==: "[(.a)(.b == 1)]"`,
+		}, {
+			expr:   `[(.a) - 1]`,
+			errstr: `syntax error: invalid token -: "[(.a) - 1]"`,
 		}, {
 			expr:   `[.a == -1 .b]`,
 			errstr: `syntax error: unexpected literal -1: "[.a == -1 .b]"`,
