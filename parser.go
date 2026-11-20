@@ -732,17 +732,8 @@ func (p *parser) parseAndExpr() (Selector, error) {
 }
 
 func (p *parser) parseCompExpr() (Selector, error) {
-	if p.peek().kind == tkLParen {
-		p.skip(1)
-		inner, err := p.parseOrExpr()
-		if err != nil {
-			return nil, err
-		}
-		if p.peek().kind != tkRParen {
-			return nil, errNoRightBrackets(p.expr)
-		}
-		p.skip(1)
-		return inner, nil
+	if p.peek().kind == tkLParen && p.isGroup() {
+		return p.parseGroup()
 	}
 	left, err := p.parseSelectorOperand()
 	if err != nil {
@@ -761,6 +752,48 @@ func (p *parser) parseCompExpr() (Selector, error) {
 		return nil, err
 	}
 	return Comparator{Left: left, Op: op, Right: right}, nil
+}
+
+// parseGroup parses a parenthesised group of selectors.
+func (p *parser) parseGroup() (Selector, error) {
+	p.skip(1)
+	inner, err := p.parseOrExpr()
+	if err != nil {
+		return nil, err
+	}
+	if p.peek().kind != tkRParen {
+		return nil, errNoRightBrackets(p.expr)
+	}
+	p.skip(1)
+	return inner, nil
+}
+
+// isGroup reports whether the ( at p.pos opens a group of selectors: its ) is missing, or a comparison operator, "and" or "or" comes before it outside any [ ].
+func (p *parser) isGroup() bool {
+	parens, bracks := 0, 0
+	for i := p.pos; ; i++ {
+		switch k := p.tokens[i].kind; {
+		case k == tkEOF:
+			return true
+		case k == tkLBrack:
+			bracks++
+		case k == tkRBrack:
+			if bracks == 0 {
+				return true
+			}
+			bracks--
+		case bracks > 0:
+		case k == tkLParen:
+			parens++
+		case k == tkRParen:
+			parens--
+			if parens == 0 {
+				return false
+			}
+		case k == tkAnd, k == tkOr, k.operator() != "":
+			return true
+		}
+	}
 }
 
 // parseSelectorOperand parses the LHS or RHS of a comparator: a sequence of

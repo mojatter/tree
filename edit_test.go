@@ -697,6 +697,11 @@ func TestEdit(t *testing.T) {
 			expr:     `.a = {~: 2001-12-14}`,
 			want:     Map{"a": Map{"null": StringValue("2001-12-14")}},
 		}, {
+			caseName: "set through a select with a parenthesised left side",
+			n:        Map{"k": Array{Map{"x": NumberValue(1)}, Map{"x": NumberValue(2)}}},
+			expr:     `.k[(.x) == 1].y = 2`,
+			want:     Map{"k": Array{Map{"x": NumberValue(1), "y": NumberValue(2)}, Map{"x": NumberValue(2)}}},
+		}, {
 			caseName: "set through a null literal select",
 			n:        Map{"a": Array{Map{"x": Nil}, Map{"x": NumberValue(1)}, Map{}}},
 			expr:     `.a[.x == null].y = 1`,
