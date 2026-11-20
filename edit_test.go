@@ -687,6 +687,16 @@ func TestEdit(t *testing.T) {
 			expr:     `.a = null`,
 			want:     Map{"a": Nil},
 		}, {
+			caseName: "set timestamp as its source text",
+			n:        Map{},
+			expr:     `.d = 2001-12-14`,
+			want:     Map{"d": StringValue("2001-12-14")},
+		}, {
+			caseName: "set null key as null",
+			n:        Map{},
+			expr:     `.a = {~: 2001-12-14}`,
+			want:     Map{"a": Map{"null": StringValue("2001-12-14")}},
+		}, {
 			caseName: "set through a null literal select",
 			n:        Map{"a": Array{Map{"x": Nil}, Map{"x": NumberValue(1)}, Map{}}},
 			expr:     `.a[.x == null].y = 1`,

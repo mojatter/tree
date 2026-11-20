@@ -2,6 +2,7 @@ package tree
 
 import (
 	"bytes"
+	"maps"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -27,46 +28,90 @@ func MarshalYAML(n Node) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// DecodeYAML decodes YAML as a node using the provided decoder.
+// DecodeYAML decodes YAML as a node using the provided decoder, reading a timestamp as its source text and a null key as "null".
 func DecodeYAML(dec *yaml.Decoder) (Node, error) {
+	var yn yaml.Node
+	if err := dec.Decode(&yn); err != nil {
+		return nil, err
+	}
+	return decodeYAMLNode(&yn)
+}
+
+// UnmarshalYAML decodes YAML data as a node, reading a timestamp as its source text and a null key as "null".
+func UnmarshalYAML(data []byte) (Node, error) {
+	var yn yaml.Node
+	if err := yaml.Unmarshal(data, &yn); err != nil {
+		return nil, err
+	}
+	return decodeYAMLNode(&yn)
+}
+
+// decodeYAMLNode decodes yn as a node without changing it, reading a timestamp as its source text and a null key as "null".
+func decodeYAMLNode(yn *yaml.Node) (Node, error) {
+	if yn.Kind == 0 {
+		return Nil, nil // empty document
+	}
 	var v any
-	if err := dec.Decode(&v); err != nil {
+	if err := sourceTextYAML(yn, map[*yaml.Node]*yaml.Node{}).Decode(&v); err != nil {
 		return nil, err
 	}
 	return ToNode(v), nil
 }
 
-// UnmarshalYAML returns the YAML encoding of the specified node.
-func UnmarshalYAML(data []byte) (Node, error) {
-	var v any
-	if err := yaml.Unmarshal(data, &v); err != nil {
-		return nil, err
+// sourceTextYAML returns a copy of yn with timestamps and null keys tagged as strings, sharing copies via seen.
+// A scalar that does not decode as written keeps its tag, so the decode reports it in yaml.v3's order.
+func sourceTextYAML(yn *yaml.Node, seen map[*yaml.Node]*yaml.Node) *yaml.Node {
+	if yn == nil {
+		return nil
 	}
-	return ToNode(v), nil
+	if c, ok := seen[yn]; ok {
+		return c
+	}
+	c := *yn
+	seen[yn] = &c
+	var v any
+	if c.Kind == yaml.ScalarNode && c.ShortTag() == "!!timestamp" && yn.Decode(&v) == nil {
+		c.Tag = "!!str"
+	}
+	c.Alias = sourceTextYAML(yn.Alias, seen)
+	isMap := c.Kind == yaml.MappingNode
+	c.Content = make([]*yaml.Node, len(yn.Content))
+	for i, cn := range yn.Content {
+		c.Content[i] = sourceTextYAML(cn, seen)
+		if !isMap || i%2 != 0 {
+			continue
+		}
+		k := cn
+		if k.Kind == yaml.AliasNode && k.Alias != nil {
+			k = k.Alias
+		}
+		if k.Kind == yaml.ScalarNode && k.ShortTag() == "!!null" && k.Decode(&v) == nil {
+			c.Content[i] = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "null", Line: cn.Line, Column: cn.Column}
+		}
+	}
+	return &c
 }
 
 // UnmarshalYAML is an implementation of yaml.Unmarshaler (yaml.v3).
 func (n *Map) UnmarshalYAML(value *yaml.Node) error {
-	var v any
-	if err := value.Decode(&v); err != nil {
+	v, err := decodeYAMLNode(value)
+	if err != nil {
 		return err
 	}
 	if *n == nil {
 		*n = make(Map)
 	}
-	for k, v := range ToNode(v).Map() {
-		(*n)[k] = v
-	}
+	maps.Copy(*n, v.Map())
 	return nil
 }
 
 // UnmarshalYAML is an implementation of yaml.Unmarshaler (yaml.v3).
 func (n *Array) UnmarshalYAML(value *yaml.Node) error {
-	var v any
-	if err := value.Decode(&v); err != nil {
+	v, err := decodeYAMLNode(value)
+	if err != nil {
 		return err
 	}
-	_ = ToNode(v).Array().Each(func(key any, v Node) error {
+	_ = v.Array().Each(func(key any, v Node) error {
 		*n = append(*n, v)
 		return nil
 	})
@@ -75,11 +120,11 @@ func (n *Array) UnmarshalYAML(value *yaml.Node) error {
 
 // UnmarshalYAML implements yaml.Unmarshaler (yaml.v3), leaving n as it is on error or null (yaml.v3 skips it for null).
 func (n *Any) UnmarshalYAML(value *yaml.Node) error {
-	var v any
-	if err := value.Decode(&v); err != nil {
+	v, err := decodeYAMLNode(value)
+	if err != nil {
 		return err
 	}
-	n.Node = ToNode(v)
+	n.Node = v
 	return nil
 }
 
