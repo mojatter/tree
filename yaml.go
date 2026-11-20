@@ -2,6 +2,7 @@ package tree
 
 import (
 	"bytes"
+	"fmt"
 	"maps"
 
 	"go.yaml.in/yaml/v3"
@@ -85,9 +86,28 @@ func sourceTextYAML(yn *yaml.Node, seen map[*yaml.Node]*yaml.Node) *yaml.Node {
 		if k.Kind == yaml.AliasNode && k.Alias != nil {
 			k = k.Alias
 		}
-		if k.Kind == yaml.ScalarNode && k.ShortTag() == "!!null" && k.Decode(&v) == nil {
-			c.Content[i] = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "null", Line: cn.Line, Column: cn.Column}
+		if k.Kind != yaml.ScalarNode {
+			continue
 		}
+		if k.ShortTag() == "!!null" {
+			var v any
+			if k.Decode(&v) != nil {
+				continue
+			}
+			c.Content[i] = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "null", Line: cn.Line, Column: cn.Column}
+			continue
+		}
+		switch k.ShortTag() {
+		case "!!merge", "!!str", "!!timestamp":
+			continue // merge key untouched; strings and timestamps already carry their text
+		}
+		var v any
+		if k.Decode(&v) != nil {
+			continue
+		}
+		// A non-string scalar key is read as fmt.Sprintf("%v", k) by ToNode. Retag it
+		// as a string with that value so yaml.v3 reports collisions as duplicate keys.
+		c.Content[i] = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: fmt.Sprintf("%v", v), Line: cn.Line, Column: cn.Column}
 	}
 	return &c
 }
