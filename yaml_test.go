@@ -2,9 +2,12 @@ package tree
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -116,11 +119,52 @@ func TestDecodeYAMLErrors(t *testing.T) {
 	}
 }
 
+func TestDecodeYAML(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		data     string
+		want     []Node
+	}{
+		{
+			caseName: "documents with a timestamp, a null key and an empty document",
+			data:     "---\na: 2001-12-14\n---\n~: b\n---\n---\n- 1\n",
+			want:     []Node{Map{"a": StringValue("2001-12-14")}, Map{"null": StringValue("b")}, Nil, Array{NumberValue(1)}},
+		},
+		{caseName: "trailing empty document", data: "a: 1\n---\n", want: []Node{Map{"a": NumberValue(1)}, Nil}},
+		{caseName: "comment only", data: "# only comment\n"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			dec := yaml.NewDecoder(strings.NewReader(tc.data))
+			var got []Node
+			for {
+				n, err := DecodeYAML(dec)
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				got = append(got, n)
+			}
+			if len(got) != len(tc.want) {
+				t.Fatalf("got %#v; want %#v", got, tc.want)
+			}
+			for i := range got {
+				if !Equal(got[i], tc.want[i]) {
+					t.Errorf("document %d: got %#v; want %#v", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestUnmarshalYAML(t *testing.T) {
 	testCases := []struct {
 		caseName string
 		data     []byte
 		want     Node
+		errstr   string
 	}{
 		{
 			caseName: "Map with nested Array and Map",
@@ -167,10 +211,36 @@ e: {"x":"x"}
 				},
 			},
 		},
+		{caseName: "date as its source text", data: []byte("d: 2001-12-14\n"), want: Map{"d": StringValue("2001-12-14")}},
+		{caseName: "timestamp as its source text", data: []byte("t: 2001-12-14T21:59:43.10-05:00\n"), want: Map{"t": StringValue("2001-12-14T21:59:43.10-05:00")}},
+		{caseName: "tagged timestamp as its source text", data: []byte("t: !!timestamp 2001-12-14\n"), want: Map{"t": StringValue("2001-12-14")}},
+		{caseName: "timestamp key as its source text", data: []byte("2001-12-14: x\n"), want: Map{"2001-12-14": StringValue("x")}},
+		{caseName: "timestamp alias as its source text", data: []byte("a: &x 2001-12-14\nb: *x\n"), want: Map{"a": StringValue("2001-12-14"), "b": StringValue("2001-12-14")}},
+		{caseName: "null key as null", data: []byte("null: n\n"), want: Map{"null": StringValue("n")}},
+		{caseName: "tilde key as null", data: []byte("~: n\n"), want: Map{"null": StringValue("n")}},
+		{caseName: "null alias key as null", data: []byte("a: &x null\n*x : n\n"), want: Map{"a": Nil, "null": StringValue("n")}},
+		{caseName: "empty document", data: []byte(""), want: Nil},
+		{caseName: "tilde and null keys are duplicates", data: []byte("~: a\nnull: b\n"), errstr: `line 2: mapping key "null" already defined at line 1`},
+		{caseName: "null and quoted null keys are duplicates", data: []byte("~: a\n\"null\": b\n"), errstr: `line 2: mapping key "null" already defined at line 1`},
+		{caseName: "tilde and quoted tilde keys are distinct", data: []byte("~: a\n\"~\": b\n"), want: Map{"null": StringValue("a"), "~": StringValue("b")}},
+		{caseName: "empty and quoted empty keys are distinct", data: []byte("? ''\n: a\n? \n: b\n"), want: Map{"": StringValue("a"), "null": StringValue("b")}},
+		{caseName: "malformed tagged timestamp", data: []byte("t: !!timestamp foo\n"), errstr: "cannot decode !!str `foo` as a !!timestamp"},
+		{caseName: "malformed tagged timestamp key", data: []byte("!!timestamp foo: x\n"), errstr: "cannot decode !!str `foo` as a !!timestamp"},
+		{caseName: "malformed tagged null key", data: []byte("? !!null x\n: a\n"), errstr: "cannot decode !!str `x` as a !!null"},
+		{caseName: "earlier error before malformed timestamp", data: []byte("a: !!int x\nb: !!timestamp foo\n"), errstr: "cannot decode !!str `x` as a !!int"},
+		{caseName: "duplicate key before malformed timestamp", data: []byte("a: 1\na: 2\nb: !!timestamp foo\n"), errstr: `mapping key "a" already defined at line 1`},
+		{caseName: "earlier error before malformed null key", data: []byte("a: !!int x\n? !!null x\n: y\n"), errstr: "cannot decode !!str `x` as a !!int"},
+		{caseName: "duplicate key before malformed null key", data: []byte("a: 1\na: 2\n? !!null x\n: y\n"), errstr: `mapping key "a" already defined at line 1`},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
 			got, err := UnmarshalYAML(tc.data)
+			if tc.errstr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.errstr) {
+					t.Errorf("got %v; want error containing %q", err, tc.errstr)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -183,13 +253,17 @@ e: {"x":"x"}
 
 func TestMapUnmarshalYAML(t *testing.T) {
 	want := Map{
-		"a": NumberValue(1),
-		"b": BoolValue(true),
-		"c": Nil,
+		"a":    NumberValue(1),
+		"b":    BoolValue(true),
+		"c":    Nil,
+		"d":    StringValue("2001-12-14"),
+		"null": StringValue("n"),
 	}
 	data := []byte(`a: 1
 b: true
 c: null
+d: 2001-12-14
+~: n
 `)
 	var got Map
 	if err := yaml.Unmarshal(data, &got); err != nil {
@@ -205,10 +279,14 @@ func TestArrayUnmarshalYAML(t *testing.T) {
 		StringValue("1"),
 		NumberValue(2),
 		BoolValue(true),
+		StringValue("2001-12-14"),
+		StringValue("2001-12-15"),
 	}
 	data := []byte(`- "1"
 - 2
 - true
+- 2001-12-14
+- !!timestamp 2001-12-15
 `)
 	got := Array{}
 	if err := yaml.Unmarshal(data, &got); err != nil {
@@ -229,6 +307,8 @@ func TestAnyUnmarshalYAML(t *testing.T) {
 		{caseName: "map", data: "k: 1\n", want: Map{"k": NumberValue(1)}},
 		{caseName: "array with null", data: "- 1\n- null\n", want: Array{NumberValue(1), Nil}},
 		{caseName: "null leaves the node as it is", data: "null\n", want: NumberValue(1)},
+		{caseName: "timestamp and null key", data: "null: 2001-12-14\n", want: Map{"null": StringValue("2001-12-14")}},
+		{caseName: "malformed tagged timestamp leaves the node as it is", data: "!!timestamp foo\n", want: NumberValue(1), errstr: "cannot decode !!str `foo` as a !!timestamp"},
 		{caseName: "error leaves the node as it is", data: "!!int x\n", want: NumberValue(1), errstr: "cannot decode !!str `x` as a !!int"},
 	}
 	for _, tc := range testCases {
@@ -243,6 +323,35 @@ func TestAnyUnmarshalYAML(t *testing.T) {
 			}
 			if !reflect.DeepEqual(a.Node, tc.want) {
 				t.Errorf("got %#v; want %#v", a.Node, tc.want)
+			}
+		})
+	}
+}
+
+func TestUnmarshalYAMLKeepsNode(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		data     string
+	}{
+		{caseName: "timestamp, alias and null key", data: "a: &x 2001-12-14\nb: *x\n~: n\n"},
+		{caseName: "tagged timestamp and nested null key", data: "- !!timestamp 2001-12-14\n- {~: 1}\n"},
+		{caseName: "malformed tagged timestamp", data: "t: !!timestamp foo\n"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			var yn, want yaml.Node
+			if err := yaml.Unmarshal([]byte(tc.data), &yn); err != nil {
+				t.Fatal(err)
+			}
+			if err := yaml.Unmarshal([]byte(tc.data), &want); err != nil {
+				t.Fatal(err)
+			}
+			// Errors are ignored: only the node is checked.
+			_ = (&Map{}).UnmarshalYAML(&yn)
+			_ = (&Array{}).UnmarshalYAML(&yn)
+			_ = (&Any{}).UnmarshalYAML(&yn)
+			if !reflect.DeepEqual(&yn, &want) {
+				t.Errorf("got %#v; want %#v", yn, want)
 			}
 		})
 	}
@@ -276,6 +385,7 @@ func TestMarshalViaYAML(t *testing.T) {
 		{caseName: "int", v: 1, want: NumberValue(1)},
 		{caseName: "nil", v: nil, want: Nil},
 		{caseName: "BoolValue passthrough", v: BoolValue(true), want: BoolValue(true)},
+		{caseName: "time", v: map[string]time.Time{"t": time.Date(2001, 12, 14, 21, 59, 43, 0, time.UTC)}, want: Map{"t": StringValue("2001-12-14T21:59:43Z")}},
 		{
 			caseName: "struct with Any field",
 			v: struct {
