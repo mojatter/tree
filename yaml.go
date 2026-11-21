@@ -2,7 +2,6 @@ package tree
 
 import (
 	"bytes"
-	"fmt"
 	"maps"
 
 	"go.yaml.in/yaml/v3"
@@ -100,13 +99,10 @@ func sourceTextYAML(yn *yaml.Node, seen map[*yaml.Node]*yaml.Node) *yaml.Node {
 		if k.Decode(&kv) != nil {
 			continue
 		}
-		// Retag as the text ToNode reads, so yaml.v3 also reports an alias key that collides.
-		s := fmt.Sprintf("%v", kv)
-		switch tag {
-		case "!!null":
-			s = "null"
-		case "!!timestamp":
-			s = k.Value
+		// Retag as the text ToNode reads, so yaml.v3 also reports an alias key that collides; a timestamp alias keeps its source text.
+		s := k.Value
+		if tag != "!!timestamp" {
+			s = mapKey(kv)
 		}
 		c.Content[i] = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: s, Line: cn.Line, Column: cn.Column}
 	}
