@@ -1,9 +1,11 @@
 package tree
 
 import (
+	"encoding/json"
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestV(t *testing.T) {
@@ -55,13 +57,66 @@ func TestToValue(t *testing.T) {
 		{caseName: "uint64", v: uint64(6), want: NumberValue(uint64(6))},
 		{caseName: "uint32", v: uint32(7), want: NumberValue(uint32(7))},
 		{caseName: "BoolValue passthrough", v: BoolValue(true), want: BoolValue(true)},
-		{caseName: "unknown struct fallback", v: struct{}{}, want: StringValue("struct {}{}")},
+		{caseName: "int8", v: int8(-8), want: NumberValue(-8)},
+		{caseName: "int16", v: int16(16), want: NumberValue(16)},
+		{caseName: "uint", v: uint(3), want: NumberValue(3)},
+		{caseName: "uint8", v: uint8(255), want: NumberValue(255)},
+		{caseName: "uint16", v: uint16(16), want: NumberValue(16)},
+		{caseName: "named string", v: namedString("s"), want: StringValue("s")},
+		{caseName: "named bool", v: namedBool(true), want: BoolValue(true)},
+		{caseName: "named int", v: namedInt(9), want: NumberValue(9)},
+		{caseName: "named float", v: namedFloat(1.5), want: NumberValue(1.5)},
+		{caseName: "nil pointer node passthrough", v: (*Map)(nil), want: (*Map)(nil)},
+		{caseName: "json.Number", v: json.Number("1.5"), want: NumberValue(1.5)},
+		{caseName: "json.Number with sign and exponent", v: json.Number("-1E2"), want: NumberValue(-100)},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
 			if got := ToValue(tc.v); !Equal(got, tc.want) {
 				t.Errorf("for %v; got %#v; want %#v", tc.v, got, tc.want)
 			}
+		})
+	}
+}
+
+type (
+	namedString string
+	namedBool   bool
+	namedInt    int8
+	namedFloat  float32
+)
+
+func TestToValuePanics(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		v        any
+		want     string
+	}{
+		{caseName: "struct", v: struct{}{}, want: "unsupported type struct {}"},
+		{caseName: "string slice", v: []string{"a"}, want: "unsupported type []string"},
+		{caseName: "string map", v: map[string]string{"a": "b"}, want: "unsupported type map[string]string"},
+		{caseName: "node slice", v: []Node{StringValue("a")}, want: "unsupported type []tree.Node"},
+		{caseName: "nil int pointer", v: (*int)(nil), want: "unsupported type *int"},
+		{caseName: "complex", v: complex(1, 2), want: "unsupported type complex128"},
+		{caseName: "uintptr", v: uintptr(1), want: "unsupported type uintptr"},
+		{caseName: "invalid json.Number", v: json.Number("x"), want: `invalid number "x"`},
+		{caseName: "json.Number NaN", v: json.Number("NaN"), want: `invalid number "NaN"`},
+		{caseName: "json.Number hex", v: json.Number("0x1p4"), want: `invalid number "0x1p4"`},
+		{caseName: "json.Number leading zero", v: json.Number("01"), want: `invalid number "01"`},
+		{caseName: "json.Number leading plus", v: json.Number("+1"), want: `invalid number "+1"`},
+		{caseName: "json.Number bare dot", v: json.Number(".5"), want: `invalid number ".5"`},
+		{caseName: "json.Number leading blank", v: json.Number(" 1"), want: `invalid number " 1"`},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			defer func() {
+				err, _ := recover().(error)
+				if err == nil || err.Error() != tc.want {
+					t.Errorf("for %#v; got panic %v; want %q", tc.v, err, tc.want)
+				}
+			}()
+
+			ToValue(tc.v)
 		})
 	}
 }
@@ -84,12 +139,47 @@ func TestToNode(t *testing.T) {
 			v:        []any{"a", true, 1},
 			want:     Array{StringValue("a"), BoolValue(true), NumberValue(1)},
 		},
+		{
+			caseName: "uint in a slice",
+			v:        []any{uint8(1), map[string]any{"a": uint16(2)}},
+			want:     Array{NumberValue(1), Map{"a": NumberValue(2)}},
+		},
+		{
+			caseName: "json.Number in a map",
+			v:        map[string]any{"n": json.Number("1")},
+			want:     Map{"n": NumberValue(1)},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
 			if got := ToNode(tc.v); !Equal(got, tc.want) {
 				t.Errorf("for %v; got %v; want %v", tc.v, got, tc.want)
 			}
+		})
+	}
+}
+
+func TestToNodePanics(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		v        any
+		want     string
+	}{
+		{caseName: "time in a map", v: map[string]any{"d": time.Date(2001, 12, 14, 0, 0, 0, 0, time.UTC)}, want: "unsupported type time.Time"},
+		{caseName: "string slice in a map", v: map[string]any{"tags": []string{"a", "b"}}, want: "unsupported type []string"},
+		{caseName: "slice of maps", v: []map[string]any{{"a": 1}}, want: "unsupported type []map[string]interface {}"},
+		{caseName: "bytes", v: []byte("ab"), want: "unsupported type []uint8"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			defer func() {
+				err, _ := recover().(error)
+				if err == nil || err.Error() != tc.want {
+					t.Errorf("for %#v; got panic %v; want %q", tc.v, err, tc.want)
+				}
+			}()
+
+			ToNode(tc.v)
 		})
 	}
 }

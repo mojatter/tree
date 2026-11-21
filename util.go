@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -13,6 +14,8 @@ import (
 // composite-literal construction of [Map] / [Array] concise:
 //
 //	tree.Map{"Name": tree.V("Alice"), "Age": tree.V(30)}
+//
+// It panics on an unsupported type, like ToValue; use [MarshalViaJSON] for a value whose type is not known in advance.
 func V(v any) Node {
 	return ToValue(v)
 }
@@ -38,36 +41,35 @@ func A(vs ...any) Array {
 	return ToArrayValues(vs...)
 }
 
-// ToValue converts the specified v to a Value as Node.
-// Node.Value() returns converted value.
+// ToValue converts v, a node, a json.Number or a value whose kind is string, bool, an integer or a float, to a node.
+// It panics on any other type or an invalid json.Number; use [MarshalViaJSON] for a value whose type is not known in advance.
 func ToValue(v any) Node {
-	if v == nil {
-		return Nil
-	}
 	switch tv := v.(type) {
-	case string:
-		return StringValue(tv)
-	case bool:
-		return BoolValue(tv)
-	case int:
-		return NumberValue(int64(tv))
-	case int64:
-		return NumberValue(tv)
-	case int32:
-		return NumberValue(int64(tv))
-	case float64:
-		return NumberValue(tv)
-	case float32:
-		return NumberValue(float64(tv))
-	case uint64:
-		return NumberValue(float64(tv))
-	case uint32:
-		return NumberValue(float64(tv))
+	case nil:
+		return Nil
 	case Node:
-		return v.(Node)
+		return tv
+	case json.Number:
+		f, err := tv.Float64()
+		if err != nil || !json.Valid([]byte(tv)) {
+			panic(fmt.Errorf("invalid number %q", string(tv)))
+		}
+		return NumberValue(f)
 	}
-	// NOTE: Unsupported type.
-	return StringValue(fmt.Sprintf("%#v", v))
+	rv := reflect.ValueOf(v)
+	switch rv.Kind() {
+	case reflect.String:
+		return StringValue(rv.String())
+	case reflect.Bool:
+		return BoolValue(rv.Bool())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return NumberValue(rv.Int())
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return NumberValue(rv.Uint())
+	case reflect.Float32, reflect.Float64:
+		return NumberValue(rv.Float())
+	}
+	panic(fmt.Errorf("unsupported type %T", v))
 }
 
 // ToArrayValues calls ToValue for each provided vs and returns them as an Array.
@@ -178,7 +180,8 @@ func isNull(n Node) bool {
 	return isGoNil(n) || n.Type().IsNilValue()
 }
 
-// ToNode converts the specified v to an Node.
+// ToNode converts v to a node: a []any, map[string]any or map[any]any element by element, and anything else with [ToValue].
+// It panics where ToValue does, e.g. on a []string or time.Time inside v; use [MarshalViaJSON] for a value whose type is not known in advance.
 func ToNode(v any) Node {
 	if v == nil {
 		return Nil
