@@ -185,7 +185,7 @@ So, like `Map.Set` and `(*Array).Set`:
 
 - On an object, `[i]` writes the key `"i"`, including a negative `i`: `.m[-1] = 1` sets `"-1"`.
 - On an array, `.key` writes the index `key` when it is a non-negative integer, and fails otherwise.
-- Writing past the end of an array grows it, filling the gap with `null`; an index of `1<<24` or more fails.
+- Writing past the end of an array grows it, filling the gap with `null`; an index of `1<<24` or more that `=` or `+=` writes to or through fails.
 - Deleting a missing key or an index past the end changes nothing, while a negative index before the start fails, as it does for `=` and `+=`.
 - `^?` on a plain `Array` shifts its elements in place, as `(*Array).Delete` does, so another slice sharing its backing array sees the shift; copy the array first, or use a `*Array`.
 - `=` on a key with a `null` value stores `null` and keeps the key, while `^?` removes it: `.a = null` and `.a ^?` differ.
@@ -234,7 +234,7 @@ It also fails for these conditions, reported when the edit reaches them:
 | `first()`, `last()` or a slice on an object | `.a.first() = 1`, `.a[1:] = 1` on `{"a": {}}` | `cannot index object with first()`, `cannot index object with [1:]` |
 | `[]` or a select on a scalar | `.a[] = 1` on `{"a": 1}` | `cannot iterate over number` |
 | `+=` on a value that is not an array or `null`, however the edit reaches it | `.a += 1` on `{"a": 1}`, `. += 1` on `1`, `.a[] += 1` on `{"a": [1]}` | `cannot append to number` |
-| An index of `1<<24` or more | `.a[16777216] = 1` | `array index 16777216 exceeds maximum 16777215` |
+| An array index of `1<<24` or more that `=` or `+=` writes to or through | `.a[16777216] = 1` or `.a[16777216].b = 1` on `{}` | `array index 16777216 exceeds maximum 16777215` |
 | `^?` on the root itself | `. ^?` | `cannot delete .` |
 | A comparison side that yields more than one value | `.a[.b[] == 1].c = 1` on `{"a": [{"b": [1, 2]}]}` | `.b[] returns more than one value [1 2]` |
 

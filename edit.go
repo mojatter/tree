@@ -367,17 +367,20 @@ func resolveMapStep(pn *Node, n Node, key string, fq FilterQuery, step int, op s
 		if i < 0 {
 			return errIndex(n, key)
 		}
-		if i >= len(a) {
-			var err error
-			if a, err = growArray(a, i); err != nil {
-				return err
-			}
+		var child Node
+		if i < len(a) {
+			child = a[i]
 		}
-		child := a[i]
 		if isNullLike(child) {
 			child = emptyIntermediate(op, fq[step+1:])
 			if child == nil {
 				return nil
+			}
+		}
+		if i >= len(a) {
+			var err error
+			if a, err = growArray(a, i); err != nil {
+				return err
 			}
 		}
 
@@ -415,17 +418,20 @@ func resolveArrayStep(pn *Node, n Node, index int, fq FilterQuery, step int, op 
 	}
 
 	if a := n.Array(); a != nil {
-		if index >= len(a) {
-			var err error
-			if a, err = growArray(a, index); err != nil {
-				return err
-			}
+		var child Node
+		if index < len(a) {
+			child = a[index]
 		}
-		child := a[index]
 		if isNullLike(child) {
 			child = emptyIntermediate(op, fq[step+1:])
 			if child == nil {
 				return nil
+			}
+		}
+		if index >= len(a) {
+			var err error
+			if a, err = growArray(a, index); err != nil {
+				return err
 			}
 		}
 
