@@ -489,7 +489,9 @@ Examples:
 
   # Using built-in methods
   % echo '{"books": [{"author": "Tolkien"}, {"author": "Hemingway"}]}' | tq '.books[.author.contains("Tol")]'
-  [{"author": "Tolkien"}]
+  {
+    "author": "Tolkien"
+  }
 
 ```
 
