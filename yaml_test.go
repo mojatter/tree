@@ -230,6 +230,8 @@ e: {"x":"x"}
 		{caseName: "float and string keys are duplicates", data: []byte("1.0: a\n\"1\": b\n"), errstr: `mapping key "1" already defined at line 1`},
 		{caseName: "hex and decimal keys are duplicates", data: []byte("0x10: a\n16: b\n"), errstr: `mapping key "16" already defined at line 1`},
 		{caseName: "int and float keys are duplicates", data: []byte("1: a\n1.0: b\n"), errstr: `mapping key "1" already defined at line 1`},
+		{caseName: "large float key in plain decimal", data: []byte("1e6: a\n"), want: Map{"1000000": StringValue("a")}},
+		{caseName: "large int and float keys are duplicates", data: []byte("1e6: a\n1000000: b\n"), errstr: `mapping key "1000000" already defined at line 1`},
 		{caseName: "explicit key wins over a merged key", data: []byte("1: a\n<<: {\"1\": b}\n"), want: Map{"1": StringValue("a")}},
 		{caseName: "bool keys differing in case are duplicates", data: []byte("true: a\nTrue: b\n"), errstr: `mapping key "true" already defined at line 1`},
 		{caseName: "negative zero key stays distinct", data: []byte("0.0: a\n-0.0: b\n"), want: Map{"0": StringValue("a"), "-0": StringValue("b")}},

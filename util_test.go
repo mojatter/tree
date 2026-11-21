@@ -3,6 +3,7 @@ package tree
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"reflect"
 	"testing"
 	"time"
@@ -79,6 +80,10 @@ func TestToValue(t *testing.T) {
 	}
 }
 
+type stringerKey string
+
+func (k stringerKey) String() string { return "stringer" }
+
 type (
 	namedString string
 	namedBool   bool
@@ -149,6 +154,51 @@ func TestToNode(t *testing.T) {
 			v:        map[string]any{"n": json.Number("1")},
 			want:     Map{"n": NumberValue(1)},
 		},
+		{
+			caseName: "non-string keys",
+			v:        map[any]any{1: "a", true: "b", "c": 3},
+			want:     Map{"1": StringValue("a"), "true": StringValue("b"), "c": NumberValue(3)},
+		},
+		{
+			caseName: "nil key",
+			v:        map[any]any{nil: 1},
+			want:     Map{"null": NumberValue(1)},
+		},
+		{
+			caseName: "key kinds",
+			v:        map[any]any{int8(-1): 1, uint16(2): 2, float32(0.1): 3, 1.5: 4, namedString("s"): 5, stringerKey("k"): 6},
+			want:     Map{"-1": NumberValue(1), "2": NumberValue(2), "0.10000000149011612": NumberValue(3), "1.5": NumberValue(4), "s": NumberValue(5), "k": NumberValue(6)},
+		},
+		{
+			caseName: "Nil key",
+			v:        map[any]any{Nil: 1},
+			want:     Map{"null": NumberValue(1)},
+		},
+		{
+			caseName: "Any keys",
+			v:        map[any]any{Any{Node: StringValue("s")}: 1, Any{}: 2},
+			want:     Map{"s": NumberValue(1), "null": NumberValue(2)},
+		},
+		{
+			caseName: "value node keys",
+			v:        map[any]any{StringValue("s"): 1, BoolValue(true): 2, NumberValue(1.5): 3, NumberValue(1e21): 4},
+			want:     Map{"s": NumberValue(1), "true": NumberValue(2), "1.5": NumberValue(3), "1000000000000000000000": NumberValue(4)},
+		},
+		{
+			caseName: "float keys in plain decimal",
+			v:        map[any]any{1e6: 1, 1e-7: 2, float32(0.5): 3},
+			want:     Map{"1000000": NumberValue(1), "0.0000001": NumberValue(2), "0.5": NumberValue(3)},
+		},
+		{
+			caseName: "float32 and float64 keys of different numbers",
+			v:        map[any]any{float32(0.1): 1, 0.1: 2},
+			want:     Map{"0.10000000149011612": NumberValue(1), "0.1": NumberValue(2)},
+		},
+		{
+			caseName: "NaN key keeps its value",
+			v:        map[any]any{math.NaN(): 1},
+			want:     Map{"NaN": NumberValue(1)},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
@@ -169,6 +219,20 @@ func TestToNodePanics(t *testing.T) {
 		{caseName: "string slice in a map", v: map[string]any{"tags": []string{"a", "b"}}, want: "unsupported type []string"},
 		{caseName: "slice of maps", v: []map[string]any{{"a": 1}}, want: "unsupported type []map[string]interface {}"},
 		{caseName: "bytes", v: []byte("ab"), want: "unsupported type []uint8"},
+		{caseName: "keys with the same text", v: map[any]any{1: "a", "1": "b"}, want: `duplicate key "1"`},
+		{caseName: "nil and null keys", v: map[any]any{nil: 1, "null": 2}, want: `duplicate key "null"`},
+		{caseName: "nil and Nil keys", v: map[any]any{nil: 1, Nil: 2}, want: `duplicate key "null"`},
+		{caseName: "NumberValue and float keys", v: map[any]any{NumberValue(1e21): 1, 1e21: 2}, want: `duplicate key "1000000000000000000000"`},
+		{caseName: "float32 and NumberValue keys", v: map[any]any{float32(0.1): 1, NumberValue(float32(0.1)): 2}, want: `duplicate key "0.10000000149011612"`},
+		{caseName: "int and float keys", v: map[any]any{1000000: 1, 1e6: 2}, want: `duplicate key "1000000"`},
+		{caseName: "NumberValue and int keys", v: map[any]any{NumberValue(1e6): 1, 1000000: 2}, want: `duplicate key "1000000"`},
+		{caseName: "pointer map key", v: map[any]any{&Map{}: 1}, want: "unsupported key type *tree.Map"},
+		{caseName: "pointer key", v: map[any]any{new(int): 1}, want: "unsupported key type *int"},
+		{caseName: "nil pointer key", v: map[any]any{(*int)(nil): 1}, want: "unsupported key type *int"},
+		{caseName: "time key", v: map[any]any{time.Time{}: 1}, want: "unsupported key type time.Time"},
+		{caseName: "array key", v: map[any]any{[2]int{1, 2}: 1}, want: "unsupported key type [2]int"},
+		{caseName: "uintptr key", v: map[any]any{uintptr(1): 1}, want: "unsupported key type uintptr"},
+		{caseName: "nested keys with the same text", v: []any{map[any]any{true: 1, "true": 2}}, want: `duplicate key "true"`},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
