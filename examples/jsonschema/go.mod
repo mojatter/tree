@@ -10,6 +10,6 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
 )
 
-require go.yaml.in/yaml/v3 v3.0.4 // indirect
+require go.yaml.in/yaml/v3 v3.0.6 // indirect
 
 replace github.com/mojatter/tree => ../../
