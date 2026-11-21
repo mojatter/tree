@@ -394,6 +394,11 @@ func TestRun(t *testing.T) {
 			args:     []string{"."},
 			errstr:   `failed to evaluate STDIN: invalid character '}' in literal null (expecting 'l')`,
 		}, {
+			caseName: "json with a repeated name is not read as yaml",
+			stdin:    "testdata/repeated-name.json",
+			args:     []string{"."},
+			errstr:   `failed to evaluate STDIN: duplicate object member name "a"`,
+		}, {
 			caseName: "truncated json container is not read as yaml",
 			args:     []string{".", "testdata/truncated-json"},
 			errstr:   "failed to evaluate testdata/truncated-json: unexpected EOF",
