@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"sync"
 )
 
@@ -181,7 +182,8 @@ func isNull(n Node) bool {
 }
 
 // ToNode converts v to a node: a []any, map[string]any or map[any]any element by element, and anything else with [ToValue].
-// It panics where ToValue does, e.g. on a []string or time.Time inside v, and on map[any]any keys with the same text, a nil key reading as "null"; use [MarshalViaJSON] for a value whose type is not known in advance.
+// A map[any]any key becomes its text: a string, bool, integer or float kind by its value, nil or a null node as "null"; any other key type, or two keys with the same text, panics.
+// It panics where ToValue does, e.g. on a []string or time.Time inside v; use [MarshalViaJSON] for a value whose type is not known in advance.
 func ToNode(v any) Node {
 	if v == nil {
 		return Nil
@@ -203,19 +205,43 @@ func ToNode(v any) Node {
 		return m
 	case map[any]any:
 		m := Map{}
-		for k := range tv {
-			sk := "null"
-			if k != nil {
-				sk = fmt.Sprintf("%v", k)
-			}
+		for k, vv := range tv {
+			sk := mapKey(k)
 			if _, ok := m[sk]; ok {
 				panic(fmt.Errorf("duplicate key %q", sk))
 			}
-			m[sk] = ToNode(tv[k])
+			m[sk] = ToNode(vv)
 		}
 		return m
 	}
 	return ToValue(v)
+}
+
+// mapKey returns the text of a map[any]any key, "null" for nil or a null node, panicking on a type with no text.
+func mapKey(k any) string {
+	if n, ok := k.(Node); ok {
+		if n = unwrapAny(n); isNull(n) {
+			return "null"
+		}
+		k = n
+	}
+	if k == nil {
+		return "null"
+	}
+	rv := reflect.ValueOf(k)
+	switch rv.Kind() {
+	case reflect.String:
+		return rv.String()
+	case reflect.Bool:
+		return strconv.FormatBool(rv.Bool())
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return strconv.FormatInt(rv.Int(), 10)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return strconv.FormatUint(rv.Uint(), 10)
+	case reflect.Float32, reflect.Float64:
+		return strconv.FormatFloat(rv.Float(), 'f', -1, 64)
+	}
+	panic(fmt.Errorf("unsupported key type %T", k))
 }
 
 // ToAny converts a Node back to a native Go any value.
