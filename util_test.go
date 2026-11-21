@@ -149,6 +149,16 @@ func TestToNode(t *testing.T) {
 			v:        map[string]any{"n": json.Number("1")},
 			want:     Map{"n": NumberValue(1)},
 		},
+		{
+			caseName: "non-string keys",
+			v:        map[any]any{1: "a", true: "b", "c": 3},
+			want:     Map{"1": StringValue("a"), "true": StringValue("b"), "c": NumberValue(3)},
+		},
+		{
+			caseName: "nil key",
+			v:        map[any]any{nil: 1},
+			want:     Map{"null": NumberValue(1)},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
@@ -169,6 +179,9 @@ func TestToNodePanics(t *testing.T) {
 		{caseName: "string slice in a map", v: map[string]any{"tags": []string{"a", "b"}}, want: "unsupported type []string"},
 		{caseName: "slice of maps", v: []map[string]any{{"a": 1}}, want: "unsupported type []map[string]interface {}"},
 		{caseName: "bytes", v: []byte("ab"), want: "unsupported type []uint8"},
+		{caseName: "keys with the same text", v: map[any]any{1: "a", "1": "b"}, want: `duplicate key "1"`},
+		{caseName: "nil and null keys", v: map[any]any{nil: 1, "null": 2}, want: `duplicate key "null"`},
+		{caseName: "nested keys with the same text", v: []any{map[any]any{true: 1, "true": 2}}, want: `duplicate key "true"`},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {

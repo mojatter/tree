@@ -181,7 +181,7 @@ func isNull(n Node) bool {
 }
 
 // ToNode converts v to a node: a []any, map[string]any or map[any]any element by element, and anything else with [ToValue].
-// It panics where ToValue does, e.g. on a []string or time.Time inside v; use [MarshalViaJSON] for a value whose type is not known in advance.
+// It panics where ToValue does, e.g. on a []string or time.Time inside v, and on map[any]any keys with the same text, a nil key reading as "null"; use [MarshalViaJSON] for a value whose type is not known in advance.
 func ToNode(v any) Node {
 	if v == nil {
 		return Nil
@@ -204,7 +204,14 @@ func ToNode(v any) Node {
 	case map[any]any:
 		m := Map{}
 		for k := range tv {
-			m[fmt.Sprintf("%v", k)] = ToNode(tv[k])
+			sk := "null"
+			if k != nil {
+				sk = fmt.Sprintf("%v", k)
+			}
+			if _, ok := m[sk]; ok {
+				panic(fmt.Errorf("duplicate key %q", sk))
+			}
+			m[sk] = ToNode(tv[k])
 		}
 		return m
 	}
