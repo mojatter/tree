@@ -16,6 +16,7 @@ func MarshalJSON(n Node) ([]byte, error) {
 
 // DecodeJSON decodes the next JSON value from dec; io.EOF means the input ended before a top-level value, io.ErrUnexpectedEOF inside one.
 // Inside a container the caller opened with dec.Token, a cut between its elements is also io.EOF, so read the closing delimiter to detect it; tree caps nesting at 10,000 levels from the value, json/v2 from the stream root.
+// A name repeated in one object is an error, as in json/v2.
 // With dec.UseNumber, numbers still become float64 NumberValues, so integers beyond 2^53 lose precision.
 func DecodeJSON(dec *json.Decoder) (Node, error) {
 	t, err := dec.Token()
@@ -33,7 +34,7 @@ func unexpectedEOF(err error) error {
 	return err
 }
 
-// UnmarshalJSON parses the JSON-encoded data to a Node, rejecting trailing data as json.Unmarshal does.
+// UnmarshalJSON parses the JSON-encoded data to a Node, rejecting trailing data as json.Unmarshal does and a name repeated in one object as json/v2 does.
 func UnmarshalJSON(data []byte) (Node, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	n, err := DecodeJSON(dec)
@@ -65,7 +66,7 @@ func (n *Any) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// UnmarshalJSON implements json.Unmarshaler: it sets each key of the object in n, keeping n's other keys, and leaves n as it is on null.
+// UnmarshalJSON implements json.Unmarshaler: it sets each key of the object in n, keeping n's other keys, rejects a name the object repeats (a key n already holds is not one), and leaves n as it is on null.
 // Like encoding/json, it decodes in place, so on error n may hold some of the new keys.
 func (n *Map) UnmarshalJSON(data []byte) error {
 	dec := json.NewDecoder(bytes.NewReader(data))
@@ -221,8 +222,12 @@ func (n NilValue) MarshalJSON() ([]byte, error) {
 	return []byte("null"), nil
 }
 
-// jsonMap decodes the members of a JSON object into m, after its opening brace has been read.
+// jsonMap decodes the members of a JSON object into m, after its opening brace has been read, rejecting a name the object repeats.
 func jsonMap(dec *json.Decoder, m *Map, depth int) error {
+	var seen map[string]struct{} // names of this object when m already holds keys
+	if len(*m) > 0 {
+		seen = map[string]struct{}{}
+	}
 	for {
 		t, err := dec.Token()
 		if err != nil {
@@ -237,6 +242,14 @@ func jsonMap(dec *json.Decoder, m *Map, depth int) error {
 		key, ok := t.(string)
 		if !ok {
 			return fmt.Errorf("unknown token %#v", t)
+		}
+		if seen != nil {
+			if _, ok := seen[key]; ok {
+				return fmt.Errorf("duplicate object member name %q", key)
+			}
+			seen[key] = struct{}{}
+		} else if _, ok := (*m)[key]; ok {
+			return fmt.Errorf("duplicate object member name %q", key)
 		}
 
 		t, err = dec.Token()
@@ -322,7 +335,7 @@ func jsonValue(dec *json.Decoder, t json.Token) (Node, error) {
 	return nil, fmt.Errorf("unknown token %#v", t)
 }
 
-// MarshalViaJSON returns the node encoding of v via "encoding/json".
+// MarshalViaJSON returns the node encoding of v via "encoding/json"; an encoding that repeats a name in one object is an error, e.g. map keys of v that encode to the same JSON name.
 func MarshalViaJSON(v any) (Node, error) {
 	if v == nil {
 		return Nil, nil

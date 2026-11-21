@@ -202,6 +202,7 @@ func TestDecodeJSONErrors(t *testing.T) {
 		caseName string
 		data     []byte
 		wantErr  error
+		wantMsg  string
 	}{
 		{
 			caseName: "empty input",
@@ -253,6 +254,22 @@ func TestDecodeJSONErrors(t *testing.T) {
 		}, {
 			caseName: "invalid character after open brace",
 			data:     []byte("{\n1"),
+		}, {
+			caseName: "repeated name",
+			data:     []byte(`{"a":1,"a":2}`),
+			wantMsg:  `duplicate object member name "a"`,
+		}, {
+			caseName: "repeated name in a nested object",
+			data:     []byte(`{"a":{"b":1,"c":2,"b":3}}`),
+			wantMsg:  `duplicate object member name "b"`,
+		}, {
+			caseName: "repeated name spelled with an escape",
+			data:     []byte(`{"a":1,"\u0061":2}`),
+			wantMsg:  `duplicate object member name "a"`,
+		}, {
+			caseName: "repeated name in an array",
+			data:     []byte(`[{"a":1,"a":2}]`),
+			wantMsg:  `duplicate object member name "a"`,
 		},
 	}
 	for _, tc := range testCases {
@@ -262,16 +279,27 @@ func TestDecodeJSONErrors(t *testing.T) {
 			if err == nil {
 				t.Fatal("no error")
 			}
+			unmarshalers := []json.Unmarshaler{new(Any)}
+			switch {
+			case bytes.HasPrefix(tc.data, []byte("{")):
+				unmarshalers = append(unmarshalers, new(Map))
+			case bytes.HasPrefix(tc.data, []byte("[")):
+				unmarshalers = append(unmarshalers, new(Array))
+			}
+			if tc.wantMsg != "" {
+				if err.Error() != tc.wantMsg {
+					t.Errorf("got %v; want %s", err, tc.wantMsg)
+				}
+				for _, u := range unmarshalers {
+					if err := u.UnmarshalJSON(tc.data); err == nil || err.Error() != tc.wantMsg {
+						t.Errorf("%T.UnmarshalJSON: got %v; want %s", u, err, tc.wantMsg)
+					}
+				}
+				return
+			}
 			if tc.wantErr != nil {
 				if !errors.Is(err, tc.wantErr) {
 					t.Errorf("got %v; want %v", err, tc.wantErr)
-				}
-				unmarshalers := []json.Unmarshaler{new(Any)}
-				switch {
-				case bytes.HasPrefix(tc.data, []byte("{")):
-					unmarshalers = append(unmarshalers, new(Map))
-				case bytes.HasPrefix(tc.data, []byte("[")):
-					unmarshalers = append(unmarshalers, new(Array))
 				}
 				for _, u := range unmarshalers {
 					if err := u.UnmarshalJSON(tc.data); !errors.Is(err, tc.wantErr) {
@@ -580,6 +608,17 @@ func TestMapUnmarshalJSON(t *testing.T) {
 			caseName: "nil map stays nil on a syntax error",
 			data:     `{"a":`,
 			wantErr:  true,
+		}, {
+			caseName: "a name the map already holds is not a repeat",
+			init:     Map{"a": NumberValue(0)},
+			data:     `{"b":1,"a":2}`,
+			want:     Map{"a": NumberValue(2), "b": NumberValue(1)},
+		}, {
+			caseName: "reused map rejects a name repeated in the input",
+			init:     Map{"a": NumberValue(0)},
+			data:     `{"a":1,"a":2}`,
+			want:     Map{"a": NumberValue(1)},
+			wantErr:  true,
 		},
 	}
 	for _, tc := range testCases {
@@ -767,6 +806,7 @@ func TestMarshalViaJSON(t *testing.T) {
 		caseName string
 		v        any
 		want     Node
+		wantErr  string
 	}{
 		{
 			caseName: "struct",
@@ -797,10 +837,18 @@ func TestMarshalViaJSON(t *testing.T) {
 			}{Extra: Any{Node: Map{"k": NumberValue(1)}}},
 			want: Map{"extra": Map{"k": NumberValue(1)}},
 		},
+		{caseName: "repeated name", v: json.RawMessage(`{"a":1,"a":2}`), wantErr: `duplicate object member name "a"`},
+		{caseName: "map keys with the same JSON name", v: map[string]int{"\xff": 1, "\xfe": 2}, wantErr: "duplicate object member name \"\ufffd\""},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
 			got, err := MarshalViaJSON(tc.v)
+			if tc.wantErr != "" {
+				if err == nil || err.Error() != tc.wantErr {
+					t.Fatalf("got %v; want %s", err, tc.wantErr)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -857,13 +905,14 @@ func FuzzUnmarshalJSON(f *testing.F) {
 		[]byte(`[1] x`),
 		[]byte(`[1] [2]`),
 		[]byte(`{"a":1}}`),
+		[]byte(`{"a":1,"a":2}`),
 	}
 	for _, s := range seeds {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, data []byte) {
 		if _, err := UnmarshalJSON(data); err == nil && !json.Valid(data) {
-			t.Errorf("accepted invalid JSON %q", data) // the reverse does not hold: 1e400 is valid but overflows float64
+			t.Errorf("accepted invalid JSON %q", data) // the reverse does not hold: 1e400 overflows float64 and {"a":1,"a":2} repeats a name, yet both are valid
 		}
 	})
 }
