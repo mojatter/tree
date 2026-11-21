@@ -1821,6 +1821,21 @@ func TestEdit(t *testing.T) {
 			expr:     `.a[16777216] += 1`,
 			errstr:   `array index 16777216 exceeds maximum 16777215`,
 		}, {
+			caseName: "delete through index beyond array limit changes nothing",
+			n:        Map{"a": Array{NumberValue(0)}},
+			expr:     `.a[16777216].b ^?`,
+			want:     Map{"a": Array{NumberValue(0)}},
+		}, {
+			caseName: "delete through numeric key beyond array limit changes nothing",
+			n:        Map{"a": Array{NumberValue(0)}},
+			expr:     `.a.16777216[0] ^?`,
+			want:     Map{"a": Array{NumberValue(0)}},
+		}, {
+			caseName: "set through index beyond array limit that writes nothing changes nothing",
+			n:        Map{"a": Array{NumberValue(0)}},
+			expr:     `.a[16777216][] = 1`,
+			want:     Map{"a": Array{NumberValue(0)}},
+		}, {
 			caseName: "walk intermediate set with value containing the same path",
 			n:        Map{"b": Map{"c": NumberValue(1)}},
 			expr:     `..b.c = {"b": {"c": 1}}`,
@@ -3682,6 +3697,9 @@ func TestEditDocExamples(t *testing.T) {
 		{caseName: "slice on a scalar", input: `{"a": 1}`, expr: `.a[1:] = 1`, errstr: `cannot index number with [1:]`},
 		{caseName: "index too large", input: `{}`, expr: `.a[16777216] = 1`, want: `{}`, errstr: `array index 16777216 exceeds maximum 16777215`},
 		{caseName: "index too large on a null root", input: `null`, expr: `.a[16777216] = 1`, want: `null`, errstr: `array index 16777216 exceeds maximum 16777215`},
+		{caseName: "index too large before the last step", input: `{}`, expr: `.a[16777216].b = 1`, want: `{}`, errstr: `array index 16777216 exceeds maximum 16777215`},
+		{caseName: "index too large with ^?", input: `{"a": [0]}`, expr: `.a[16777216] ^?`, want: `{"a": [0]}`},
+		{caseName: "index too large before the last step with ^?", input: `{"a": [0]}`, expr: `.a[16777216].b ^?`, want: `{"a": [0]}`},
 		{caseName: "= keeps the matches edited before the one whose selector fails", input: `{"a": [{"t": [1]}, {"t": [1, 2]}]}`, expr: `.a[.t[] == 1] = 9`, want: `{"a": [9, {"t": [1, 2]}]}`, errstr: `.t[] returns more than one value [1 2]`},
 		{caseName: "last select deletes from the containers before the one whose selector fails", input: `{"x": {"a": [{"t": [1]}]}, "y": {"a": [{"t": [1, 2]}]}}`, expr: `..a[.t[] == 1] ^?`, want: `{"x": {"a": []}, "y": {"a": [{"t": [1, 2]}]}}`, errstr: `.t[] returns more than one value [1 2]`},
 		{caseName: "append to a scalar root", input: `1`, expr: `. += 1`, errstr: `cannot append to number`},
