@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/mojatter/tree/internal/testdata"
 )
@@ -40,7 +41,7 @@ func TestMarshalJSON(t *testing.T) {
 func TestNodeMarshalJSON(t *testing.T) {
 	testCases := []struct {
 		caseName string
-		n        Node
+		n        any
 		want     string
 	}{
 		{
@@ -82,6 +83,10 @@ func TestNodeMarshalJSON(t *testing.T) {
 		{caseName: "nested String with HTML", n: Array{Map{"a": StringValue("<x>")}}, want: `[{"a":"\u003cx\u003e"}]`},
 		{caseName: "pointers and Any inside", n: Map{"a": &Map{"b": &Array{NumberValue(1)}}, "c": &Any{Node: Array(nil)}, "d": Any{Node: &Map{}}}, want: `{"a":{"b":[1]},"c":[],"d":{}}`},
 		{caseName: "nil pointer Any inside", n: Array{(*Any)(nil), &Any{}, &Any{Node: (*Map)(nil)}}, want: `[null,null,null]`},
+		{caseName: "String with HTML", n: StringValue("<x>"), want: `"\u003cx\u003e"`},
+		{caseName: "String field with ,string", n: struct {
+			A StringValue `json:",string"`
+		}{A: "x"}, want: `{"A":"\"x\""}`},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
@@ -889,6 +894,70 @@ func TestUnmarshalViaJSON(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %#v; want %#v", got, want)
 	}
+}
+
+// marshalJSONNoHTML encodes v as encoding/json does with HTML escaping off, without the trailing newline.
+func marshalJSONNoHTML(t *testing.T, v any) string {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(v); err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSuffix(buf.String(), "\n")
+}
+
+func TestNodeMarshalJSONStrings(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		s        string
+		want     string // encoding/json's output when empty
+	}{
+		{caseName: "empty", s: ""},
+		{caseName: "plain", s: "abc"},
+		{caseName: "quote and backslash", s: `a"b\c`},
+		{caseName: "short escapes", s: "\b\f\n\r\t"},
+		{caseName: "other control chars", s: "\x00\x01\x1f"},
+		{caseName: "DEL", s: "\x7f"},
+		{caseName: "HTML", s: "<a&b>"},
+		{caseName: "multi-byte", s: "日本語 ✓"},
+		{caseName: "line and paragraph separators", s: "a\u2028b\u2029c"},
+		{caseName: "invalid UTF-8 as on Go 1.24", s: "a\xffb\xc3", want: `{"a\ufffdb\ufffd":"a\ufffdb\ufffd"}`}, // Go 1.27 writes a raw U+FFFD
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := marshalJSONNode(Map{tc.s: StringValue(tc.s)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := tc.want
+			if want == "" {
+				want = marshalJSONNoHTML(t, map[string]any{tc.s: tc.s})
+			}
+			if string(got) != want {
+				t.Errorf("got %s; want %s", got, want)
+			}
+		})
+	}
+}
+
+// FuzzMarshalJSONString checks that keys and string values encode without error, and in valid UTF-8 as encoding/json encodes them.
+func FuzzMarshalJSONString(f *testing.F) {
+	for _, s := range []string{"", "a", "\b\f\x00\x7f", "<&>", "\u2028", "\xff"} {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		got, err := marshalJSONNode(Map{s: Array{StringValue(s)}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !utf8.ValidString(s) {
+			t.Skip("encoding/json writes invalid UTF-8 as \\ufffd before Go 1.27 and as a raw U+FFFD since")
+		}
+		if want := marshalJSONNoHTML(t, map[string]any{s: []any{s}}); string(got) != want {
+			t.Errorf("got %s; want %s", got, want)
+		}
+	})
 }
 
 // FuzzUnmarshalJSON exercises the JSON unmarshaler with arbitrary

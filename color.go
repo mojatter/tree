@@ -8,10 +8,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 )
-
-const hex = "0123456789abcdef"
 
 type color string
 
@@ -37,6 +34,7 @@ type ColorEncoder struct {
 	IndentSize int
 	NoColor    bool
 	indent     []byte
+	buf        []byte
 	err        error
 }
 
@@ -96,76 +94,9 @@ func (e *ColorEncoder) writeNull() {
 	e.endColor()
 }
 
-var jsonSafeRunes = []byte{
-	' ', '!', '#', '$', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', '/',
-	'0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-	':', ';', '<', '=', '>', '?', '@',
-	'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
-	'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-	'[', ']', '^', '_', '`',
-	'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p',
-	'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
-	'{', '|', '}', '~', '\u007f',
-}
-
-// NOTE: Copy logics from encoding/json/encode.go
 func (e *ColorEncoder) writeQuotedJSON(s string) {
-	e.write('"')
-	start := 0
-	for i := 0; i < len(s); {
-		if b := s[i]; b < utf8.RuneSelf {
-			if bytes.ContainsRune(jsonSafeRunes, rune(b)) {
-				i++
-				continue
-			}
-			if start < i {
-				e.writeStr(s[start:i])
-			}
-			e.write('\\')
-			switch b {
-			case '\\', '"':
-				e.write(b)
-			case '\n':
-				e.write('n')
-			case '\r':
-				e.write('r')
-			case '\t':
-				e.write('t')
-			default:
-				e.writeStr(`u00`)
-				e.write(hex[b>>4])
-				e.write(hex[b&0xF])
-			}
-			i++
-			start = i
-			continue
-		}
-		c, size := utf8.DecodeRuneInString(s[i:])
-		if c == utf8.RuneError && size == 1 {
-			if start < i {
-				e.writeStr(s[start:i])
-			}
-			e.writeStr(`\ufffd`)
-			i += size
-			start = i
-			continue
-		}
-		if c == '\u2028' || c == '\u2029' {
-			if start < i {
-				e.writeStr(s[start:i])
-			}
-			e.writeStr(`\u202`)
-			e.write(hex[c&0xF])
-			i += size
-			start = i
-			continue
-		}
-		i += size
-	}
-	if start < len(s) {
-		e.writeStr(s[start:])
-	}
-	e.write('"')
+	e.buf = appendQuotedJSON(e.buf[:0], s)
+	e.write(e.buf...)
 }
 
 var yamlNoNeedQuotePattern = regexp.MustCompile(`^[a-zA-Z][0-9a-zA-Z._\-]*$`)

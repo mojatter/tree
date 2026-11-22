@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"unicode/utf8"
 )
 
 // MarshalJSON returns the JSON encoding of the specified node.
@@ -155,7 +156,7 @@ func marshalJSONNode(n Node) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// encodeJSONNode writes a Go nil node as null, Maps and Arrays at nesting depth itself, through Any and pointers, and anything else with enc.
+// encodeJSONNode writes a Go nil node as null, Maps and Arrays at nesting depth, through Any and pointers, and StringValues itself, and anything else with enc.
 func encodeJSONNode(buf *bytes.Buffer, enc *json.Encoder, n Node, depth int) error {
 	if isGoNil(n) {
 		buf.WriteString("null")
@@ -179,9 +180,7 @@ func encodeJSONNode(buf *bytes.Buffer, enc *json.Encoder, n Node, depth int) err
 			if i > 0 {
 				buf.WriteByte(',')
 			}
-			if err := encodeJSONValue(buf, enc, k); err != nil {
-				return err
-			}
+			buf.Write(appendQuotedJSON(buf.AvailableBuffer(), k))
 			buf.WriteByte(':')
 			if err := encodeJSONNode(buf, enc, tn[k], depth+1); err != nil {
 				return err
@@ -204,6 +203,9 @@ func encodeJSONNode(buf *bytes.Buffer, enc *json.Encoder, n Node, depth int) err
 		}
 		buf.WriteByte(']')
 		return nil
+	case StringValue:
+		buf.Write(appendQuotedJSON(buf.AvailableBuffer(), string(tn)))
+		return nil
 	}
 	return encodeJSONValue(buf, enc, n)
 }
@@ -215,6 +217,57 @@ func encodeJSONValue(buf *bytes.Buffer, enc *json.Encoder, v any) error {
 	}
 	buf.Truncate(buf.Len() - 1)
 	return nil
+}
+
+const hex = "0123456789abcdef"
+
+// appendQuotedJSON appends s as a JSON string, escaped as encoding/json does with HTML escaping off, and invalid UTF-8 as \ufffd as it does before Go 1.27.
+func appendQuotedJSON(dst []byte, s string) []byte {
+	dst = append(dst, '"')
+	start := 0
+	for i := 0; i < len(s); {
+		b := s[i]
+		if b < utf8.RuneSelf {
+			if b >= ' ' && b != '"' && b != '\\' {
+				i++
+				continue
+			}
+			dst = append(dst, s[start:i]...)
+			switch b {
+			case '\\', '"':
+				dst = append(dst, '\\', b)
+			case '\b':
+				dst = append(dst, '\\', 'b')
+			case '\f':
+				dst = append(dst, '\\', 'f')
+			case '\n':
+				dst = append(dst, '\\', 'n')
+			case '\r':
+				dst = append(dst, '\\', 'r')
+			case '\t':
+				dst = append(dst, '\\', 't')
+			default:
+				dst = append(dst, '\\', 'u', '0', '0', hex[b>>4], hex[b&0xF])
+			}
+			i++
+			start = i
+			continue
+		}
+		c, size := utf8.DecodeRuneInString(s[i:])
+		switch {
+		case c == utf8.RuneError && size == 1:
+			dst = append(dst, s[start:i]...)
+			dst = append(dst, `\ufffd`...)
+			start = i + size
+		case c == '\u2028' || c == '\u2029':
+			dst = append(dst, s[start:i]...)
+			dst = append(dst, '\\', 'u', '2', '0', '2', hex[c&0xF])
+			start = i + size
+		}
+		i += size
+	}
+	dst = append(dst, s[start:]...)
+	return append(dst, '"')
 }
 
 // MarshalJSON is an implementation of json.Marshaler.
