@@ -1,9 +1,17 @@
 version: 2
 updates:
   - package-ecosystem: gomod
-    directory: /
+    directories:
+      - /
+      - /examples
+      - /examples/jsonschema
     schedule:
       interval: weekly
+    allow:
+      - dependency-type: direct
+      # examples/jsonschema requires yaml/v3 only indirectly.
+      - dependency-name: "go.yaml.in/yaml/*"
+        dependency-type: all
     ignore:
       # golang.org/x/term and x/sys started requiring go 1.25 from
       # v0.41 / v0.42; pin to the last 1.24-compatible line and only
@@ -12,11 +20,11 @@ updates:
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
       - dependency-name: "golang.org/x/sys"
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
-
-  - package-ecosystem: gomod
-    directory: /examples
-    schedule:
-      interval: weekly
+    groups:
+      # The examples modules replace tree with a local path, so they must move with the root's yaml/v3.
+      yaml:
+        patterns: ["go.yaml.in/yaml/*"]
+        group-by: dependency-name
 
   - package-ecosystem: github-actions
     directory: /
