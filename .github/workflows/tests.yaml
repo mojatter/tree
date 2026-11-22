@@ -31,8 +31,12 @@ jobs:
           go-version: ${{ matrix.go-version }}
           go-version-file: ${{ matrix.go-version-file }}
       -
+        name: Check go.mod and go.sum are tidy
+        if: matrix.go-version-file == 'go.mod'
+        run: make tidy-check
+      -
         name: Run go test
-        run: go test -race ./...
+        run: make test-race
       -
         name: Run golangci-lint
         if: matrix.go-version-file == 'go.mod'

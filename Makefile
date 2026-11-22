@@ -1,4 +1,4 @@
-.PHONY: help test test-race cover lint fuzz bench update-golden tidy vuln all
+.PHONY: help test test-race cover lint fuzz bench update-golden tidy tidy-check vuln all
 
 GO ?= go
 GOLANGCI_LINT ?= golangci-lint
@@ -6,17 +6,18 @@ FUZZTIME ?= 30s
 BENCHTIME ?= 3s
 BENCHCOUNT ?= 5
 COVER_PROFILE ?= coverage.out
+MODULES := . examples examples/jsonschema
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-all: test lint vuln ## Run tests, lint, and vulnerability scan
+all: test lint tidy-check vuln ## Run tests, lint, tidy check, and vulnerability scan
 
-test: ## Run all tests
-	$(GO) test ./...
+test: ## Run all tests in all modules
+	for m in $(MODULES); do (cd $$m && $(GO) test ./...) || exit 1; done
 
-test-race: ## Run all tests with the race detector
-	$(GO) test -race ./...
+test-race: ## Run all tests in all modules with the race detector
+	for m in $(MODULES); do (cd $$m && $(GO) test -race ./...) || exit 1; done
 
 cover: ## Run tests with coverage profile
 	$(GO) test -race -coverprofile=$(COVER_PROFILE) -covermode=atomic ./...
@@ -38,8 +39,10 @@ update-golden: ## Refresh cmd/tq golden files from current output
 	$(GO) test ./cmd/tq -update
 
 tidy: ## Run go mod tidy in all modules
-	$(GO) mod tidy
-	cd examples && $(GO) mod tidy
+	for m in $(MODULES); do (cd $$m && $(GO) mod tidy) || exit 1; done
+
+tidy-check: ## Fail if go mod tidy would change any module
+	for m in $(MODULES); do (cd $$m && $(GO) mod tidy -diff) || exit 1; done
 
 vuln: ## Run govulncheck against the module
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@latest ./...
