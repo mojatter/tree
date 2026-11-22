@@ -33,7 +33,8 @@ make lint       # run golangci-lint
 | Run fuzz targets (default 30s each) | `make fuzz` |
 | Run benchmarks | `make bench` |
 | Refresh `cmd/tq` golden files after intentional output changes | `make update-golden` |
-| `go mod tidy` for the root and `examples/` modules | `make tidy` |
+| `go mod tidy` in every module (root, `examples/`, `examples/jsonschema/`) | `make tidy` |
+| Check that every module is tidy | `make tidy-check` |
 | Run `govulncheck` | `make vuln` |
 | Everything CI cares about | `make all` |
 
@@ -83,7 +84,7 @@ make bench BENCHTIME=10s BENCHCOUNT=3
 These run automatically in CI:
 
 - `tests` workflow — `go test -race` on Ubuntu on the `toolchain` version
-  in `go.mod` and on `stable`, plus `golangci-lint` on the `go.mod` leg.
+  in `go.mod` and on `stable`, plus `golangci-lint` and the tidy check on the `go.mod` leg.
 - `release` workflow — runs the same `tests` workflow (both Go legs) on
   tag pushes, then `goreleaser`; a failure on `stable` blocks the release.
 - `govulncheck` workflow — weekly schedule plus PR runs that touch
