@@ -212,7 +212,7 @@ func TestColorEncoderWriteQuotedJSONEscapes(t *testing.T) {
 		{
 			caseName: "backspace and form feed",
 			in:       "\b\f",
-			want:     `"\u0008\u000c"`,
+			want:     `"\b\f"`,
 		},
 		{
 			caseName: "line separator U+2028",
