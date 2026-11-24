@@ -209,7 +209,10 @@ func TestNodeMarshalJSONError(t *testing.T) {
 			if !errors.As(err, new(*json.UnsupportedValueError)) {
 				t.Errorf("got %v; want a *json.UnsupportedValueError", err)
 			}
-
+			var buf bytes.Buffer
+			if err := (&ColorEncoder{Out: &buf, NoColor: true}).EncodeJSON(tc.n); !errors.As(err, new(*json.UnsupportedValueError)) || buf.Len() != 0 {
+				t.Errorf("EncodeJSON: got %v and %q; want a *json.UnsupportedValueError and no output", err, buf.String())
+			}
 		})
 	}
 }
@@ -982,28 +985,41 @@ func TestNodeMarshalJSONScalars(t *testing.T) {
 			if string(got) != want {
 				t.Errorf("got %s; want %s", got, want)
 			}
+			var buf bytes.Buffer
+			if err := (&ColorEncoder{Out: &buf, NoColor: true}).EncodeJSON(tc.n); err != nil {
+				t.Fatal(err)
+			}
+			if got, want := buf.String(), want[1:len(want)-1]+"\n"; got != want {
+				t.Errorf("EncodeJSON: got %q; want %q", got, want)
+			}
 		})
 	}
 }
 
-// FuzzMarshalJSONNumber checks that numbers encode as encoding/json encodes a float64.
+// FuzzMarshalJSONNumber checks that numbers encode as encoding/json encodes a float64, in MarshalJSON and EncodeJSON alike.
 func FuzzMarshalJSONNumber(f *testing.F) {
 	for _, v := range []float64{0, 1, -1.5, 1e20, 1e21, 1e-6, 1e-7, math.MaxFloat64, math.SmallestNonzeroFloat64, math.NaN(), math.Inf(1)} {
 		f.Add(v)
 	}
 	f.Fuzz(func(t *testing.T, v float64) {
 		got, err := marshalJSONNode(Array{NumberValue(v)})
+		var buf bytes.Buffer
+		colorErr := (&ColorEncoder{Out: &buf, NoColor: true}).EncodeJSON(NumberValue(v))
 		if math.IsNaN(v) || math.IsInf(v, 0) {
-			if !errors.As(err, new(*json.UnsupportedValueError)) {
-				t.Errorf("got %v; want *json.UnsupportedValueError", err)
+			if !errors.As(err, new(*json.UnsupportedValueError)) || !errors.As(colorErr, new(*json.UnsupportedValueError)) {
+				t.Errorf("got %v and %v; want *json.UnsupportedValueError", err, colorErr)
 			}
 			return
 		}
-		if err != nil {
-			t.Fatal(err)
+		if err != nil || colorErr != nil {
+			t.Fatal(err, colorErr)
 		}
-		if want := marshalJSONNoHTML(t, []any{v}); string(got) != want {
+		want := marshalJSONNoHTML(t, []any{v})
+		if string(got) != want {
 			t.Errorf("got %s; want %s", got, want)
+		}
+		if got, want := buf.String(), want[1:len(want)-1]+"\n"; got != want {
+			t.Errorf("EncodeJSON: got %q; want %q", got, want)
 		}
 	})
 }

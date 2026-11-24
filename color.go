@@ -133,9 +133,9 @@ func (e *ColorEncoder) writeQuotedYAMLIfNeed(s string, multiline bool) bool {
 }
 
 // EncodeJSON writes JSON values with color to an output stream.
-// A map key that is not valid UTF-8 or nesting past 10,000 levels is an error, before anything is written.
+// It fails as MarshalJSON does, on a map key that is not valid UTF-8, a NaN or infinite number or nesting past 10,000 levels, before anything is written.
 func (e *ColorEncoder) EncodeJSON(n Node) error {
-	if err := checkJSONKeys(n, 1); err != nil {
+	if err := checkJSONNode(n, 1); err != nil {
 		return err
 	}
 	e.encodeJSON(n, false)
@@ -191,9 +191,13 @@ func (e *ColorEncoder) encodeJSON(n Node, indent bool) {
 		e.startColor(colorValueStr)
 		e.writeQuotedJSON(n.Value().String())
 		e.endColor()
-	case TypeBoolValue, TypeNumberValue:
+	case TypeBoolValue:
 		e.writeIndent(indent)
 		e.writeStr(n.Value().String())
+	case TypeNumberValue:
+		e.writeIndent(indent)
+		e.buf, _ = appendJSONNumber(e.buf[:0], NumberValue(n.Value().Float64())) // EncodeJSON has rejected NaN and infinities
+		e.write(e.buf...)
 	default:
 		panic(fmt.Errorf("unknown type %b", t))
 	}
@@ -269,7 +273,7 @@ func (e *ColorEncoder) encodeYAML(n Node, noIndentFirstKey bool) {
 	}
 }
 
-// OutputColorJSON writes JSON values with color to out.
+// OutputColorJSON writes JSON values with color to out, failing as EncodeJSON does.
 func OutputColorJSON(out io.Writer, n Node) error {
 	e := &ColorEncoder{
 		Out:        out,

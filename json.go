@@ -250,18 +250,20 @@ func checkJSONKey(k string) error {
 	return nil
 }
 
-// checkJSONKeys runs checkJSONKey on every map key in n, failing past maxJSONDepth as encodeJSONNode does.
-func checkJSONKeys(n Node, depth int) error {
+// checkJSONNode fails on what encodeJSONNode fails on: a map key that is not valid UTF-8, a NaN or infinite number, and nesting past maxJSONDepth.
+func checkJSONNode(n Node, depth int) error {
 	if isGoNil(n) {
 		return nil
 	}
 	switch n.Type() {
+	case TypeNumberValue:
+		return checkJSONNumber(NumberValue(n.Value().Float64()))
 	case TypeArray:
 		if depth > maxJSONDepth {
 			return errMaxDepth
 		}
 		for _, v := range n.Array() {
-			if err := checkJSONKeys(v, depth+1); err != nil {
+			if err := checkJSONNode(v, depth+1); err != nil {
 				return err
 			}
 		}
@@ -274,7 +276,7 @@ func checkJSONKeys(n Node, depth int) error {
 			if err := checkJSONKey(k); err != nil {
 				return err
 			}
-			if err := checkJSONKeys(m[k], depth+1); err != nil {
+			if err := checkJSONNode(m[k], depth+1); err != nil {
 				return err
 			}
 		}
