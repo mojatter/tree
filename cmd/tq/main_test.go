@@ -216,6 +216,10 @@ func TestRun(t *testing.T) {
 			args:     []string{"-c", "."},
 			golden:   "testdata/store-color.json",
 		}, {
+			caseName: "color json writes numbers as plain json does",
+			args:     []string{"-c", "-o", "json", ".", "testdata/numbers.json"},
+			want:     "[\n  1e+21,\n  1e-7,\n  0.5\n]\n",
+		}, {
 			caseName: "output yaml with color",
 			stdin:    "testdata/store.yaml",
 			args:     []string{"-c", "."},
@@ -320,6 +324,14 @@ func TestRun(t *testing.T) {
 			caseName:  "json output rejects a yaml binary key in invalid UTF-8",
 			args:      []string{"-o", "json", ".", "testdata/binary-key.yaml"},
 			errSuffix: `: invalid UTF-8 in object member name "\xff"`, // the type in encoding/json's wrapper differs by Go version
+		}, {
+			caseName: "color json output rejects a yaml NaN",
+			args:     []string{"-c", "-o", "json", ".", "testdata/non-finite.yaml"},
+			errstr:   `failed to evaluate testdata/non-finite.yaml: json: unsupported value: NaN`,
+		}, {
+			caseName:  "json output rejects a yaml NaN",
+			args:      []string{"-o", "json", ".", "testdata/non-finite.yaml"},
+			errSuffix: `: json: unsupported value: NaN`, // the type in encoding/json's wrapper differs by Go version
 		}, {
 			caseName: "yaml output keeps a yaml binary key",
 			args:     []string{".", "testdata/binary-key.yaml"},

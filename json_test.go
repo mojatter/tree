@@ -193,6 +193,8 @@ func TestNodeMarshalJSONError(t *testing.T) {
 		{caseName: "Map", n: Map{"a": nan}},
 		{caseName: "Any wrapping Map", n: Any{Node: Map{"a": nan}}},
 		{caseName: "Array holding Any", n: Array{Any{Node: nan}}},
+		{caseName: "+Inf", n: Array{NumberValue(math.Inf(1))}},
+		{caseName: "-Inf", n: Map{"a": NumberValue(math.Inf(-1))}},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
@@ -206,6 +208,10 @@ func TestNodeMarshalJSONError(t *testing.T) {
 			}
 			if !errors.As(err, new(*json.UnsupportedValueError)) {
 				t.Errorf("got %v; want a *json.UnsupportedValueError", err)
+			}
+			var buf bytes.Buffer
+			if err := (&ColorEncoder{Out: &buf, NoColor: true}).EncodeJSON(tc.n); !errors.As(err, new(*json.UnsupportedValueError)) || buf.Len() != 0 {
+				t.Errorf("EncodeJSON: got %v and %q; want a *json.UnsupportedValueError and no output", err, buf.String())
 			}
 		})
 	}
@@ -945,6 +951,77 @@ func marshalJSONNoHTML(t *testing.T, v any) string {
 		t.Fatal(err)
 	}
 	return strings.TrimSuffix(buf.String(), "\n")
+}
+
+func TestNodeMarshalJSONScalars(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		n        Node
+		v        any // the encoding/json equivalent of n
+	}{
+		{caseName: "zero", n: NumberValue(0), v: 0.0},
+		{caseName: "negative zero", n: NumberValue(math.Copysign(0, -1)), v: math.Copysign(0, -1)},
+		{caseName: "integer", n: NumberValue(42), v: 42.0},
+		{caseName: "fraction", n: NumberValue(-123.456), v: -123.456},
+		{caseName: "below 1e21", n: NumberValue(1e20), v: 1e20},
+		{caseName: "1e21", n: NumberValue(1e21), v: 1e21},
+		{caseName: "-1e21", n: NumberValue(-1e21), v: -1e21},
+		{caseName: "1e-6", n: NumberValue(1e-6), v: 1e-6},
+		{caseName: "below 1e-6", n: NumberValue(1e-7), v: 1e-7},
+		{caseName: "largest", n: NumberValue(math.MaxFloat64), v: math.MaxFloat64},
+		{caseName: "smallest", n: NumberValue(math.SmallestNonzeroFloat64), v: math.SmallestNonzeroFloat64},
+		{caseName: "2^53+1", n: NumberValue(1<<53 + 1), v: float64(1<<53 + 1)},
+		{caseName: "true", n: BoolValue(true), v: true},
+		{caseName: "false", n: BoolValue(false), v: false},
+		{caseName: "null", n: Nil, v: nil},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			want := marshalJSONNoHTML(t, []any{tc.v})
+			got, err := marshalJSONNode(Array{tc.n})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != want {
+				t.Errorf("got %s; want %s", got, want)
+			}
+			var buf bytes.Buffer
+			if err := (&ColorEncoder{Out: &buf, NoColor: true}).EncodeJSON(tc.n); err != nil {
+				t.Fatal(err)
+			}
+			if got, want := buf.String(), want[1:len(want)-1]+"\n"; got != want {
+				t.Errorf("EncodeJSON: got %q; want %q", got, want)
+			}
+		})
+	}
+}
+
+// FuzzMarshalJSONNumber checks that numbers encode as encoding/json encodes a float64, in MarshalJSON and EncodeJSON alike.
+func FuzzMarshalJSONNumber(f *testing.F) {
+	for _, v := range []float64{0, 1, -1.5, 1e20, 1e21, 1e-6, 1e-7, math.MaxFloat64, math.SmallestNonzeroFloat64, math.NaN(), math.Inf(1)} {
+		f.Add(v)
+	}
+	f.Fuzz(func(t *testing.T, v float64) {
+		got, err := marshalJSONNode(Array{NumberValue(v)})
+		var buf bytes.Buffer
+		colorErr := (&ColorEncoder{Out: &buf, NoColor: true}).EncodeJSON(NumberValue(v))
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			if !errors.As(err, new(*json.UnsupportedValueError)) || !errors.As(colorErr, new(*json.UnsupportedValueError)) {
+				t.Errorf("got %v and %v; want *json.UnsupportedValueError", err, colorErr)
+			}
+			return
+		}
+		if err != nil || colorErr != nil {
+			t.Fatal(err, colorErr)
+		}
+		want := marshalJSONNoHTML(t, []any{v})
+		if string(got) != want {
+			t.Errorf("got %s; want %s", got, want)
+		}
+		if got, want := buf.String(), want[1:len(want)-1]+"\n"; got != want {
+			t.Errorf("EncodeJSON: got %q; want %q", got, want)
+		}
+	})
 }
 
 func TestNodeMarshalJSONStrings(t *testing.T) {

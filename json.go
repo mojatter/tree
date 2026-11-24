@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"reflect"
+	"strconv"
 	"unicode/utf8"
 )
 
-// MarshalJSON returns the JSON encoding of the specified node; a map key that is not valid UTF-8 is an error.
+// MarshalJSON returns the JSON encoding of the specified node; a map key that is not valid UTF-8 or a NaN or infinite number is an error.
 func MarshalJSON(n Node) ([]byte, error) {
 	return json.Marshal(n)
 }
@@ -129,7 +131,7 @@ func (n *Array) UnmarshalJSON(data []byte) error {
 // MarshalJSON implements json.Marshaler by encoding the wrapped node, or null when it is a Go nil node.
 // It leaves HTML escaping to the caller's encoder and fails past 10,000 levels of nesting, so a cycle errors
 // when its nodes are Maps, Arrays or Any wrapping them, and overflows the stack otherwise.
-// A map key that is not valid UTF-8 is an error; invalid UTF-8 in a string value becomes U+FFFD.
+// A map key that is not valid UTF-8 or a NaN or infinite number is an error; invalid UTF-8 in a string value becomes U+FFFD.
 func (n Any) MarshalJSON() ([]byte, error) {
 	return marshalJSONNode(n)
 }
@@ -157,7 +159,7 @@ func marshalJSONNode(n Node) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// encodeJSONNode writes a Go nil node as null, Maps and Arrays at nesting depth, through Any and pointers, and StringValues itself, and anything else with enc.
+// encodeJSONNode writes a Go nil node as null, Maps and Arrays at nesting depth, through Any and pointers, and String, Number, Bool and Nil values itself, and anything else with enc.
 func encodeJSONNode(buf *bytes.Buffer, enc *json.Encoder, n Node, depth int) error {
 	if isGoNil(n) {
 		buf.WriteString("null")
@@ -184,6 +186,7 @@ func encodeJSONNode(buf *bytes.Buffer, enc *json.Encoder, n Node, depth int) err
 			if err := checkJSONKey(k); err != nil {
 				return err
 			}
+			buf.Grow(len(k) + 2)
 			buf.Write(appendQuotedJSON(buf.AvailableBuffer(), k))
 			buf.WriteByte(':')
 			if err := encodeJSONNode(buf, enc, tn[k], depth+1); err != nil {
@@ -208,7 +211,21 @@ func encodeJSONNode(buf *bytes.Buffer, enc *json.Encoder, n Node, depth int) err
 		buf.WriteByte(']')
 		return nil
 	case StringValue:
+		buf.Grow(len(tn) + 2)
 		buf.Write(appendQuotedJSON(buf.AvailableBuffer(), string(tn)))
+		return nil
+	case NumberValue:
+		b, err := appendJSONNumber(buf.AvailableBuffer(), tn)
+		if err != nil {
+			return err
+		}
+		buf.Write(b)
+		return nil
+	case BoolValue:
+		buf.WriteString(strconv.FormatBool(bool(tn)))
+		return nil
+	case NilValue:
+		buf.WriteString("null")
 		return nil
 	}
 	return encodeJSONValue(buf, enc, n)
@@ -233,18 +250,20 @@ func checkJSONKey(k string) error {
 	return nil
 }
 
-// checkJSONKeys runs checkJSONKey on every map key in n, failing past maxJSONDepth as encodeJSONNode does.
-func checkJSONKeys(n Node, depth int) error {
+// checkJSONNode fails on what encodeJSONNode fails on: a map key that is not valid UTF-8, a NaN or infinite number, and nesting past maxJSONDepth.
+func checkJSONNode(n Node, depth int) error {
 	if isGoNil(n) {
 		return nil
 	}
 	switch n.Type() {
+	case TypeNumberValue:
+		return checkJSONNumber(NumberValue(n.Value().Float64()))
 	case TypeArray:
 		if depth > maxJSONDepth {
 			return errMaxDepth
 		}
 		for _, v := range n.Array() {
-			if err := checkJSONKeys(v, depth+1); err != nil {
+			if err := checkJSONNode(v, depth+1); err != nil {
 				return err
 			}
 		}
@@ -257,12 +276,41 @@ func checkJSONKeys(n Node, depth int) error {
 			if err := checkJSONKey(k); err != nil {
 				return err
 			}
-			if err := checkJSONKeys(m[k], depth+1); err != nil {
+			if err := checkJSONNode(m[k], depth+1); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// checkJSONNumber rejects NaN and infinities with the error encoding/json returns for them.
+func checkJSONNumber(n NumberValue) error {
+	f := float64(n)
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return &json.UnsupportedValueError{Value: reflect.ValueOf(n), Str: strconv.FormatFloat(f, 'g', -1, 64)}
+	}
+	return nil
+}
+
+// appendJSONNumber appends n as encoding/json writes a float64: in exponent form below 1e-6 and from 1e21, with no leading zero in the exponent.
+func appendJSONNumber(dst []byte, n NumberValue) ([]byte, error) {
+	if err := checkJSONNumber(n); err != nil {
+		return dst, err
+	}
+	f := float64(n)
+	format := byte('f')
+	if abs := math.Abs(f); abs != 0 && (abs < 1e-6 || abs >= 1e21) {
+		format = 'e'
+	}
+	dst = strconv.AppendFloat(dst, f, format, -1, 64)
+	if format == 'e' {
+		if l := len(dst); l >= 4 && dst[l-4] == 'e' && dst[l-3] == '-' && dst[l-2] == '0' {
+			dst[l-2] = dst[l-1]
+			dst = dst[:l-1]
+		}
+	}
+	return dst, nil
 }
 
 // appendQuotedJSON appends s as a JSON string, escaped as encoding/json does with HTML escaping off, and invalid UTF-8 as \ufffd as it does before Go 1.27.
@@ -447,7 +495,7 @@ func MarshalViaJSON(v any) (Node, error) {
 	return UnmarshalJSON(data)
 }
 
-// UnmarshalViaJSON stores the node in the value pointed to by v via "encoding/json"; a map key of n that is not valid UTF-8 is an error.
+// UnmarshalViaJSON stores the node in the value pointed to by v via "encoding/json"; it fails as MarshalJSON does, on a map key of n that is not valid UTF-8 or a NaN or infinite number.
 func UnmarshalViaJSON(n Node, v any) error {
 	data, err := MarshalJSON(n)
 	if err != nil {
