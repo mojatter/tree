@@ -2,14 +2,13 @@ package tree
 
 import (
 	"bytes"
-	"encoding/base64"
 	"fmt"
 	"io"
-	"regexp"
 	"runtime"
-	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"go.yaml.in/yaml/v3"
 )
 
 type color string
@@ -33,7 +32,7 @@ func init() {
 // ColorEncoder writes JSON or YAML values with color to an output stream.
 type ColorEncoder struct {
 	Out        io.Writer
-	IndentSize int
+	IndentSize int // spaces per level in JSON; EncodeYAML always indents by 2
 	NoColor    bool
 	indent     []byte
 	buf        []byte
@@ -99,37 +98,6 @@ func (e *ColorEncoder) writeNull() {
 func (e *ColorEncoder) writeQuotedJSON(s string) {
 	e.buf = appendQuotedJSON(e.buf[:0], s)
 	e.write(e.buf...)
-}
-
-var yamlNoNeedQuotePattern = regexp.MustCompile(`^[a-zA-Z][0-9a-zA-Z._\-]*$`)
-
-// NOTE: Simple implementation; s that is not valid UTF-8 is written as a single-line !!binary.
-func (e *ColorEncoder) writeQuotedYAMLIfNeed(s string, multiline bool) bool {
-	if !utf8.ValidString(s) {
-		e.writeStr("!!binary " + base64.StdEncoding.EncodeToString([]byte(s)))
-		return false
-	}
-	if yamlNoNeedQuotePattern.MatchString(s) {
-		e.writeStr(s)
-		return false
-	}
-	if multiline && strings.Contains(s, "\n") {
-		if strings.HasSuffix(s, "\n") {
-			s = strings.TrimRight(s, "\n")
-			e.writeln('|')
-		} else {
-			e.writeln('|', '-')
-		}
-		e.tab()
-		for _, line := range strings.Split(s, "\n") {
-			e.writeIndent(true)
-			e.writeln([]byte(line)...)
-		}
-		e.untab()
-		return true
-	}
-	e.writeStr(strconv.Quote(s))
-	return false
 }
 
 // EncodeJSON writes JSON values with color to an output stream.
@@ -203,74 +171,94 @@ func (e *ColorEncoder) encodeJSON(n Node, indent bool) {
 	}
 }
 
-// EncodeYAML writes YAML values with color to an output stream.
+// EncodeYAML writes n as MarshalYAML does, with keys, strings and nulls colored; IndentSize applies to JSON only.
 func (e *ColorEncoder) EncodeYAML(n Node) error {
-	e.encodeYAML(n, true)
+	data, err := MarshalYAML(n)
+	if err != nil {
+		return err
+	}
+	if !e.NoColor && colorReset != "" {
+		data = colorYAML(data)
+	}
+	e.write(data...)
 	return e.err
 }
 
-func (e *ColorEncoder) encodeYAML(n Node, noIndentFirstKey bool) {
-	if isGoNil(n) {
-		e.writeNull()
-		e.writeln()
-		return
+// yamlBreaks are the line breaks yaml.v3 writes and counts in a node position.
+const yamlBreaks = "\n\u0085\u2028\u2029"
+
+// colorYAML returns data, which yaml.v3 wrote, with keys, strings and nulls colored, or data as it is if yaml.v3 cannot read it back or it has a flow collection.
+func colorYAML(data []byte) []byte {
+	var yn yaml.Node
+	if yaml.Unmarshal(data, &yn) != nil {
+		return data
 	}
-	t := n.Type()
-	switch t {
-	case TypeArray:
-		for _, v := range n.Array() {
-			e.writeIndent(true)
-			if isGoNil(v) || v.Type().IsValue() {
-				e.write('-', ' ')
-				e.encodeYAML(v, false)
-			} else if v.Type().IsMap() {
-				e.write('-', ' ')
-				e.tab()
-				e.encodeYAML(v, true)
-				e.untab()
-			} else {
-				e.writeln('-')
-				e.tab()
-				e.encodeYAML(v, false)
-				e.untab()
-			}
+	lines := []int{0}
+	for i := 0; i < len(data); {
+		r, size := utf8.DecodeRune(data[i:])
+		i += size
+		if strings.ContainsRune(yamlBreaks, r) {
+			lines = append(lines, i)
 		}
-	case TypeMap:
-		i := 0
-		m := n.Map()
-		for _, k := range m.Keys() {
-			v := m[k]
-			e.writeIndent(i != 0 || !noIndentFirstKey)
-			e.startColor(colorKey)
-			e.writeQuotedYAMLIfNeed(k, false)
-			e.endColor()
-			if isGoNil(v) || v.Type().IsValue() {
-				e.write(':', ' ')
-				e.encodeYAML(v, false)
-			} else {
-				e.writeln(':')
-				e.tab()
-				e.encodeYAML(v, false)
-				e.untab()
-			}
-			i++
-		}
-	case TypeNilValue:
-		e.writeNull()
-		e.writeln()
-	case TypeStringValue:
-		e.startColor(colorValueStr)
-		ln := e.writeQuotedYAMLIfNeed(n.Value().String(), true)
-		e.endColor()
-		if !ln {
-			e.writeln()
-		}
-	case TypeBoolValue, TypeNumberValue:
-		e.writeStr(n.Value().String())
-		e.writeln()
-	default:
-		panic(fmt.Errorf("unknown type %b", t))
 	}
+	type mark struct {
+		pos   int
+		color color
+	}
+	var marks []mark // every node in document order; color is empty for one written as it is
+	flow := false    // a non-empty flow collection, whose scalars do not end at a line break
+	var walk func(yn *yaml.Node, key bool)
+	walk = func(yn *yaml.Node, key bool) {
+		flow = flow || yn.Style&yaml.FlowStyle != 0 && len(yn.Content) > 0
+		if yn.Kind != yaml.DocumentNode {
+			m := mark{pos: lines[yn.Line-1]}
+			for c := 1; c < yn.Column; c++ {
+				_, size := utf8.DecodeRune(data[m.pos:])
+				m.pos += size
+			}
+			switch {
+			case yn.Kind != yaml.ScalarNode:
+			case key:
+				m.color = colorKey
+			case yn.Tag == "!!str" || yn.Tag == "!!binary":
+				m.color = colorValueStr
+			case yn.Tag == "!!null":
+				m.color = colorValueNull
+			}
+			marks = append(marks, m)
+		}
+		for i, c := range yn.Content {
+			walk(c, yn.Kind == yaml.MappingNode && i%2 == 0)
+		}
+	}
+	walk(&yn, false)
+	if flow {
+		return data
+	}
+	out := make([]byte, 0, len(data)+len(marks)*(len(colorKey)+len(colorReset)))
+	pos := 0
+	for i, m := range marks {
+		if m.color == "" {
+			continue
+		}
+		next := len(data)
+		if i+1 < len(marks) {
+			next = marks[i+1].pos
+		}
+		s := data[m.pos:next]
+		if m.color == colorKey {
+			// Up to the value, less the ": " or "\n: " before it and the "? " of an explicit key that starts it.
+			s = bytes.TrimRight(bytes.TrimSuffix(bytes.TrimRight(s, " ?"+yamlBreaks), []byte{':'}), " "+yamlBreaks)
+		} else if i := bytes.LastIndexAny(s, yamlBreaks); i >= 0 {
+			s = s[:i] // up to the line break that ends the scalar
+		}
+		out = append(out, data[pos:m.pos]...)
+		out = append(out, m.color...)
+		out = append(out, s...)
+		out = append(out, colorReset...)
+		pos = m.pos + len(s)
+	}
+	return append(out, data[pos:]...)
 }
 
 // OutputColorJSON writes JSON values with color to out, failing as EncodeJSON does.
