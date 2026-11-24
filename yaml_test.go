@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
@@ -71,6 +72,24 @@ func TestMarshalYAML(t *testing.T) {
 		{caseName: "Any wrapping nil pointer", n: Any{Node: (*Array)(nil)}, want: "null\n"},
 		{caseName: "nil pointer Any", n: (*Any)(nil), want: "null\n"},
 		{caseName: "Map with Any values", n: Map{"a": Any{Node: StringValue("x")}, "b": Any{}}, want: "a: x\nb: null\n"},
+		{
+			caseName: "numbers as JSON output writes them",
+			n: Array{
+				NumberValue(1000000), NumberValue(1234567.5), NumberValue(0.00001), NumberValue(1e-7), NumberValue(1e21),
+				NumberValue(math.NaN()), NumberValue(math.Inf(1)), NumberValue(math.Inf(-1)),
+			},
+			want: "- 1000000\n- 1234567.5\n- 0.00001\n- 1e-7\n- 1e+21\n- .nan\n- .inf\n- -.inf\n",
+		},
+		{caseName: "root number", n: NumberValue(1000000), want: "1000000\n"},
+		{caseName: "negative zero", n: NumberValue(math.Copysign(0, -1)), want: "-0.0\n"},
+		{
+			caseName: "Go nil pointer children",
+			n: Array{
+				(*Any)(nil), (*NilValue)(nil), (*NumberValue)(nil), (*StringValue)(nil), (*BoolValue)(nil),
+				(*Map)(nil), (*Array)(nil), &Any{Node: (*Map)(nil)}, Map{"a": (*NumberValue)(nil), "b": (*Any)(nil)},
+			},
+			want: "- null\n- null\n- null\n- null\n- null\n- null\n- null\n- null\n- a: null\n  b: null\n",
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
@@ -415,6 +434,13 @@ func TestMarshalViaYAML(t *testing.T) {
 			}{Extra: Any{Node: Map{"k": NumberValue(1)}}},
 			want: Map{"extra": Map{"k": NumberValue(1)}},
 		},
+		{
+			caseName: "struct with Any field holding a nil pointer",
+			v: struct {
+				Extra Any `yaml:"extra"`
+			}{Extra: Any{Node: (*Map)(nil)}},
+			want: Map{"extra": Nil},
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
@@ -528,5 +554,55 @@ func BenchmarkUnmarshalYAML(b *testing.B) {
 		if _, err := UnmarshalYAML(data); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+func TestNodeMarshalYAMLDirect(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		v        any
+		want     string
+	}{
+		{
+			caseName: "numbers in yaml.v3's own forms, integers as integers",
+			v:        Array{NumberValue(1), NumberValue(1000000), NumberValue(1.5), NumberValue(1e-7), NumberValue(math.NaN())},
+			want:     "- 1\n- 1000000\n- 1.5\n- 1e-07\n- .nan\n",
+		},
+		{
+			caseName: "negative zero in yaml.v3's own form (-0, read back as 0), negative integers stay integers",
+			v:        Array{NumberValue(math.Copysign(0, -1)), NumberValue(-1), NumberValue(-1000000)},
+			want:     "- -0\n- -1\n- -1000000\n",
+		},
+		{
+			caseName: "int64 bounds",
+			v:        Array{NumberValue(math.MinInt64), NumberValue(math.Nextafter(math.MinInt64, math.Inf(-1))), NumberValue(math.Nextafter(1<<63, 0)), NumberValue(1 << 63)},
+			want:     "- -9223372036854775808\n- -9.223372036854778e+18\n- 9223372036854774784\n- 9.223372036854776e+18\n",
+		},
+		{
+			caseName: "Go nil pointer children",
+			v:        Map{"a": (*Map)(nil), "b": Array{(*Array)(nil), (*StringValue)(nil), (*BoolValue)(nil)}},
+			want:     "a: null\nb:\n    - null\n    - null\n    - null\n",
+		},
+		{
+			caseName: "Go nil pointers in interface-typed slots",
+			v: struct {
+				N Node
+				M map[string]Node
+				S []Node
+				A any
+			}{(*Map)(nil), map[string]Node{"k": (*Array)(nil)}, []Node{(*Map)(nil), (*StringValue)(nil)}, (*Array)(nil)},
+			want: "\"n\": null\nm:\n    k: null\ns:\n    - null\n    - null\na: null\n",
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			got, err := yaml.Marshal(tc.v)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != tc.want {
+				t.Errorf("got %q; want %q", got, tc.want)
+			}
+		})
 	}
 }

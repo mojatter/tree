@@ -240,6 +240,11 @@ b:
   - null
 `,
 		}, {
+			caseName: "Go nil pointer children",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": (*NumberValue)(nil), "b": Array{(*StringValue)(nil), (*Any)(nil)}},
+			want:     "a: null\nb:\n  - null\n  - null\n",
+		}, {
 			caseName: "reserved scalars quoted",
 			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
 			n:        Map{"a": ToValue("True"), "b": ToValue("null"), "c": ToValue("yes")},
@@ -275,10 +280,20 @@ b:
 			n:        Map{"a": ToValue(math.NaN()), "b": ToValue(math.Inf(1)), "c": ToValue(math.Inf(-1))},
 			want:     "a: .nan\nb: .inf\nc: -.inf\n",
 		}, {
+			caseName: "numbers as JSON output writes them",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": ToValue(1000000), "b": ToValue(0.00001), "c": ToValue(1e-7), "d": ToValue(1e21)},
+			want:     "a: 1000000\nb: 0.00001\nc: 1e-7\nd: 1e+21\n",
+		}, {
 			caseName: "empty maps and arrays",
 			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
 			n:        Map{"a": Map{}, "b": Array{}, "c": Array{Array{ToValue(1), Array{}}, Map{}}, "d": ToValue(1)},
 			want:     "a: {}\nb: []\nc:\n  - - 1\n    - []\n  - {}\nd: 1\n",
+		}, {
+			caseName: "negative zero",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Array{NumberValue(math.Copysign(0, -1))},
+			want:     "- -0.0\n",
 		}, {
 			caseName: "empty root map",
 			e:        &ColorEncoder{IndentSize: 2, NoColor: true},

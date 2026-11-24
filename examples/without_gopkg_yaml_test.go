@@ -100,6 +100,6 @@ func Example_goYAMLMarshal() {
 	// - Red
 	// - Ruby
 	// - Maroon
-	// ID: 1.0
+	// ID: 1
 	// Name: Reds
 }

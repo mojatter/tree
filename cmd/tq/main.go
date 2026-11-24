@@ -631,12 +631,12 @@ func (r *runner) outputYAML(n tree.Node) error {
 	if r.isColor {
 		return tree.OutputColorYAML(r.out, n)
 	}
-	enc := yaml.NewEncoder(r.out)
-	enc.SetIndent(2)
-	if err := enc.Encode(n); err != nil {
+	b, err := tree.MarshalYAML(n)
+	if err != nil {
 		return err
 	}
-	return enc.Close()
+	_, err = r.out.Write(b)
+	return err
 }
 
 func (r *runner) outputJSON(n tree.Node) error {
