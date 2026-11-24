@@ -90,6 +90,14 @@ func TestMarshalYAML(t *testing.T) {
 			},
 			want: "- null\n- null\n- null\n- null\n- null\n- null\n- null\n- null\n- a: null\n  b: null\n",
 		},
+		{
+			caseName: "pointer nodes",
+			n: func() Node {
+				n, s := NumberValue(1e-7), StringValue("\tb\nc")
+				return Array{&n, &s, &Map{"\tk\nl": &Array{NumberValue(0.00001)}}, &Any{Node: Any{Node: &n}}}
+			}(),
+			want: "- 1e-7\n- \"\\tb\\nc\"\n- ? \"\\tk\\nl\"\n  : - 0.00001\n- 1e-7\n",
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {

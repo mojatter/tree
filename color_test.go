@@ -129,9 +129,9 @@ func TestOutputColorYAML(t *testing.T) {
 			n:        Map{"a": Map{}, "b": Array{}, "c": ToValue(false), "d": ToValue(1.5)},
 			want:     "\x1b[1;34ma\x1b[0m: {}\n\x1b[1;34mb\x1b[0m: []\n\x1b[1;34mc\x1b[0m: false\n\x1b[1;34md\x1b[0m: 1.5\n",
 		}, {
-			caseName: "output yaml.v3 cannot read back stays uncolored",
-			n:        Map{"a": ToValue("\tb\nc")},
-			want:     "a: |-\n  \tb\n  c\n",
+			caseName: "multi-line key starting with a tab double-quoted",
+			n:        Map{"\tb\nc": ToValue(1)},
+			want:     "? \x1b[1;34m\"\\tb\\nc\"\x1b[0m\n: 1\n",
 		},
 	}
 	for _, tc := range testCases {
@@ -240,6 +240,11 @@ b:
   - null
 `,
 		}, {
+			caseName: "multi-line keys starting with a tab double-quoted in key order",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a10": ToValue(1), "a9": ToValue(2), "\tb\nc": ToValue("\td\ne"), "x": Array{Map{"\t\n": Nil}}},
+			want:     "? \"\\tb\\nc\"\n: \"\\td\\ne\"\na9: 2\na10: 1\nx:\n  - ? \"\\t\\n\"\n    : null\n",
+		}, {
 			caseName: "Go nil pointer children",
 			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
 			n:        Map{"a": (*NumberValue)(nil), "b": Array{(*StringValue)(nil), (*Any)(nil)}},
@@ -284,6 +289,11 @@ b:
 			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
 			n:        Map{"a": ToValue(1000000), "b": ToValue(0.00001), "c": ToValue(1e-7), "d": ToValue(1e21)},
 			want:     "a: 1000000\nb: 0.00001\nc: 1e-7\nd: 1e+21\n",
+		}, {
+			caseName: "multi-line strings starting with a tab double-quoted",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": ToValue("\tb\nc"), "b": Array{ToValue("\t\n")}, "c": StringValue("\t\xff\nb")},
+			want:     "a: \"\\tb\\nc\"\nb:\n  - \"\\t\\n\"\nc: !!binary Cf8KYg==\n",
 		}, {
 			caseName: "empty maps and arrays",
 			e:        &ColorEncoder{IndentSize: 2, NoColor: true},

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"maps"
 	"math"
+	"strings"
+	"unicode/utf8"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -192,9 +194,9 @@ func (y yamlNode) MarshalYAML() (any, error) {
 	case *NumberValue:
 		return yamlNode{*tn}, nil
 	case Map:
-		m := make(map[string]yamlNode, len(tn))
+		m := make(map[yamlString]yamlNode, len(tn))
 		for k, v := range tn {
-			m[k] = yamlNode{v}
+			m[yamlString(k)] = yamlNode{v}
 		}
 		return m, nil
 	case Array:
@@ -203,6 +205,8 @@ func (y yamlNode) MarshalYAML() (any, error) {
 			a[i] = yamlNode{v}
 		}
 		return a, nil
+	case StringValue:
+		return yamlString(tn), nil
 	case NumberValue:
 		if tn == 0 && math.Signbit(float64(tn)) {
 			return &yaml.Node{Kind: yaml.ScalarNode, Value: "-0.0"}, nil // YAML reads -0 as the integer 0
@@ -212,6 +216,17 @@ func (y yamlNode) MarshalYAML() (any, error) {
 		}
 	}
 	return y.n, nil
+}
+
+// yamlString is a string, or a map key yaml.v3 still sorts as a string, that is double-quoted when multi-line and starting with a tab, which yaml.v3 cannot read back as a literal block.
+type yamlString string
+
+// MarshalYAML implements yaml.Marshaler.
+func (s yamlString) MarshalYAML() (any, error) {
+	if strings.HasPrefix(string(s), "\t") && strings.Contains(string(s), "\n") && utf8.ValidString(string(s)) {
+		return &yaml.Node{Kind: yaml.ScalarNode, Style: yaml.DoubleQuotedStyle, Value: string(s)}, nil
+	}
+	return string(s), nil
 }
 
 // MarshalViaYAML returns the node encoding of v via "go.yaml.in/yaml/v3".
