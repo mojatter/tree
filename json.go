@@ -10,7 +10,7 @@ import (
 	"unicode/utf8"
 )
 
-// MarshalJSON returns the JSON encoding of the specified node.
+// MarshalJSON returns the JSON encoding of the specified node; a map key that is not valid UTF-8 is an error.
 func MarshalJSON(n Node) ([]byte, error) {
 	return json.Marshal(n)
 }
@@ -129,6 +129,7 @@ func (n *Array) UnmarshalJSON(data []byte) error {
 // MarshalJSON implements json.Marshaler by encoding the wrapped node, or null when it is a Go nil node.
 // It leaves HTML escaping to the caller's encoder and fails past 10,000 levels of nesting, so a cycle errors
 // when its nodes are Maps, Arrays or Any wrapping them, and overflows the stack otherwise.
+// A map key that is not valid UTF-8 is an error; invalid UTF-8 in a string value becomes U+FFFD.
 func (n Any) MarshalJSON() ([]byte, error) {
 	return marshalJSONNode(n)
 }
@@ -180,6 +181,9 @@ func encodeJSONNode(buf *bytes.Buffer, enc *json.Encoder, n Node, depth int) err
 			if i > 0 {
 				buf.WriteByte(',')
 			}
+			if err := checkJSONKey(k); err != nil {
+				return err
+			}
 			buf.Write(appendQuotedJSON(buf.AvailableBuffer(), k))
 			buf.WriteByte(':')
 			if err := encodeJSONNode(buf, enc, tn[k], depth+1); err != nil {
@@ -220,6 +224,46 @@ func encodeJSONValue(buf *bytes.Buffer, enc *json.Encoder, v any) error {
 }
 
 const hex = "0123456789abcdef"
+
+// checkJSONKey rejects a map key that is not valid UTF-8, which would be written as U+FFFD and could repeat another key.
+func checkJSONKey(k string) error {
+	if !utf8.ValidString(k) {
+		return fmt.Errorf("invalid UTF-8 in object member name %q", k)
+	}
+	return nil
+}
+
+// checkJSONKeys runs checkJSONKey on every map key in n, failing past maxJSONDepth as encodeJSONNode does.
+func checkJSONKeys(n Node, depth int) error {
+	if isGoNil(n) {
+		return nil
+	}
+	switch n.Type() {
+	case TypeArray:
+		if depth > maxJSONDepth {
+			return errMaxDepth
+		}
+		for _, v := range n.Array() {
+			if err := checkJSONKeys(v, depth+1); err != nil {
+				return err
+			}
+		}
+	case TypeMap:
+		if depth > maxJSONDepth {
+			return errMaxDepth
+		}
+		m := n.Map()
+		for _, k := range m.Keys() {
+			if err := checkJSONKey(k); err != nil {
+				return err
+			}
+			if err := checkJSONKeys(m[k], depth+1); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 // appendQuotedJSON appends s as a JSON string, escaped as encoding/json does with HTML escaping off, and invalid UTF-8 as \ufffd as it does before Go 1.27.
 func appendQuotedJSON(dst []byte, s string) []byte {
@@ -403,7 +447,7 @@ func MarshalViaJSON(v any) (Node, error) {
 	return UnmarshalJSON(data)
 }
 
-// UnmarshalViaJSON stores the node in the value pointed to by v via "encoding/json".
+// UnmarshalViaJSON stores the node in the value pointed to by v via "encoding/json"; a map key of n that is not valid UTF-8 is an error.
 func UnmarshalViaJSON(n Node, v any) error {
 	data, err := MarshalJSON(n)
 	if err != nil {

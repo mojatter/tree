@@ -127,7 +127,11 @@ func (e *ColorEncoder) writeQuotedYAMLIfNeed(s string, multiline bool) bool {
 }
 
 // EncodeJSON writes JSON values with color to an output stream.
+// A map key that is not valid UTF-8 or nesting past 10,000 levels is an error, before anything is written.
 func (e *ColorEncoder) EncodeJSON(n Node) error {
+	if err := checkJSONKeys(n, 1); err != nil {
+		return err
+	}
 	e.encodeJSON(n, false)
 	e.writeln()
 	return e.err
