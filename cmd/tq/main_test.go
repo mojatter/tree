@@ -46,6 +46,8 @@ func TestRun(t *testing.T) {
 		golden string
 		want   string
 		errstr string
+		// errSuffix is matched against the end of the error, for text that differs by Go version.
+		errSuffix string
 		// pipe is fed through a pipe whose /dev/fd path is appended to args.
 		pipe string
 	}{
@@ -311,6 +313,18 @@ func TestRun(t *testing.T) {
 			args:     []string{"-i", "yaml", ".", "testdata/invalid-yaml"},
 			errstr:   `failed to evaluate testdata/invalid-yaml: yaml: found unexpected end of stream`,
 		}, {
+			caseName: "color json output rejects a yaml binary key in invalid UTF-8",
+			args:     []string{"-c", "-o", "json", ".", "testdata/binary-key.yaml"},
+			errstr:   `failed to evaluate testdata/binary-key.yaml: invalid UTF-8 in object member name "\xff"`,
+		}, {
+			caseName:  "json output rejects a yaml binary key in invalid UTF-8",
+			args:      []string{"-o", "json", ".", "testdata/binary-key.yaml"},
+			errSuffix: `: invalid UTF-8 in object member name "\xff"`, // the type in encoding/json's wrapper differs by Go version
+		}, {
+			caseName: "yaml output keeps a yaml binary key",
+			args:     []string{".", "testdata/binary-key.yaml"},
+			want:     "!!binary /w==: 1\n",
+		}, {
 			caseName: "yaml starting with a json scalar is not duplicated",
 			stdin:    "testdata/scalar-then-map.yaml",
 			args:     []string{"."},
@@ -528,6 +542,10 @@ func TestRun(t *testing.T) {
 				}
 				if err.Error() != errstr {
 					t.Errorf(`error %s; want %s`, err.Error(), errstr)
+				}
+			} else if tc.errSuffix != "" {
+				if err == nil || !strings.HasSuffix(err.Error(), tc.errSuffix) {
+					t.Errorf(`error %v; want suffix %s`, err, tc.errSuffix)
 				}
 			} else if err != nil {
 				t.Fatal(err)

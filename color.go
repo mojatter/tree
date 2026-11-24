@@ -2,12 +2,14 @@ package tree
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 type color string
@@ -101,8 +103,12 @@ func (e *ColorEncoder) writeQuotedJSON(s string) {
 
 var yamlNoNeedQuotePattern = regexp.MustCompile(`^[a-zA-Z][0-9a-zA-Z._\-]*$`)
 
-// NOTE: Simple implementation
+// NOTE: Simple implementation; s that is not valid UTF-8 is written as a single-line !!binary.
 func (e *ColorEncoder) writeQuotedYAMLIfNeed(s string, multiline bool) bool {
+	if !utf8.ValidString(s) {
+		e.writeStr("!!binary " + base64.StdEncoding.EncodeToString([]byte(s)))
+		return false
+	}
 	if yamlNoNeedQuotePattern.MatchString(s) {
 		e.writeStr(s)
 		return false
@@ -127,7 +133,11 @@ func (e *ColorEncoder) writeQuotedYAMLIfNeed(s string, multiline bool) bool {
 }
 
 // EncodeJSON writes JSON values with color to an output stream.
+// A map key that is not valid UTF-8 or nesting past 10,000 levels is an error, before anything is written.
 func (e *ColorEncoder) EncodeJSON(n Node) error {
+	if err := checkJSONKeys(n, 1); err != nil {
+		return err
+	}
 	e.encodeJSON(n, false)
 	e.writeln()
 	return e.err
@@ -189,7 +199,7 @@ func (e *ColorEncoder) encodeJSON(n Node, indent bool) {
 	}
 }
 
-// EncodeJSON writes JSON values with color to an output stream.
+// EncodeYAML writes YAML values with color to an output stream.
 func (e *ColorEncoder) EncodeYAML(n Node) error {
 	e.encodeYAML(n, true)
 	return e.err

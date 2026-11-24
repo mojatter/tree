@@ -84,6 +84,7 @@ func TestNodeMarshalJSON(t *testing.T) {
 		{caseName: "pointers and Any inside", n: Map{"a": &Map{"b": &Array{NumberValue(1)}}, "c": &Any{Node: Array(nil)}, "d": Any{Node: &Map{}}}, want: `{"a":{"b":[1]},"c":[],"d":{}}`},
 		{caseName: "nil pointer Any inside", n: Array{(*Any)(nil), &Any{}, &Any{Node: (*Map)(nil)}}, want: `[null,null,null]`},
 		{caseName: "String with HTML", n: StringValue("<x>"), want: `"\u003cx\u003e"`},
+		{caseName: "nested String with invalid UTF-8", n: Array{StringValue("a\xffb\xc3")}, want: `["a\ufffdb\ufffd"]`},
 		{caseName: "String field with ,string", n: struct {
 			A StringValue `json:",string"`
 		}{A: "x"}, want: `{"A":"\"x\""}`},
@@ -162,14 +163,22 @@ func TestNodeMarshalJSONDepth(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
 			_, err := json.Marshal(tc.n)
+			var buf bytes.Buffer
+			colorErr := (&ColorEncoder{Out: &buf, NoColor: true}).EncodeJSON(tc.n)
 			if !tc.wantErr {
 				if err != nil {
 					t.Fatal(err)
+				}
+				if colorErr != nil {
+					t.Fatalf("EncodeJSON: %v", colorErr)
 				}
 				return
 			}
 			if !errors.Is(err, errMaxDepth) {
 				t.Errorf("got %v; want %v", err, errMaxDepth)
+			}
+			if colorErr != errMaxDepth || buf.Len() != 0 {
+				t.Errorf("EncodeJSON: got %v and %d bytes; want %v and none", colorErr, buf.Len(), errMaxDepth)
 			}
 		})
 	}
@@ -197,6 +206,37 @@ func TestNodeMarshalJSONError(t *testing.T) {
 			}
 			if !errors.As(err, new(*json.UnsupportedValueError)) {
 				t.Errorf("got %v; want a *json.UnsupportedValueError", err)
+			}
+		})
+	}
+}
+
+func TestNodeMarshalJSONInvalidKey(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		n        Node
+		errstr   string
+	}{
+		{caseName: "Map", n: Map{"a\xff": NumberValue(1)}, errstr: `invalid UTF-8 in object member name "a\xff"`},
+		{caseName: "keys that would both become U+FFFD", n: Map{"\xfe": NumberValue(1), "\xff": NumberValue(2)}, errstr: `invalid UTF-8 in object member name "\xfe"`},
+		{caseName: "nested", n: Array{Map{"a": &Map{"\xc3": Nil}}}, errstr: `invalid UTF-8 in object member name "\xc3"`},
+		{caseName: "Any wrapping Map", n: Any{Node: Map{"\xff": StringValue("x")}}, errstr: `invalid UTF-8 in object member name "\xff"`},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			if _, err := MarshalJSON(tc.n); err == nil || !strings.HasSuffix(err.Error(), tc.errstr) {
+				t.Errorf("MarshalJSON: got %v; want %s", err, tc.errstr)
+			}
+			var buf bytes.Buffer
+			e := &ColorEncoder{Out: &buf, IndentSize: 2, NoColor: true}
+			if err := e.EncodeJSON(tc.n); err == nil || err.Error() != tc.errstr {
+				t.Errorf("EncodeJSON: got %v; want %s", err, tc.errstr)
+			}
+			if buf.Len() != 0 {
+				t.Errorf("EncodeJSON wrote %q before the error", buf.String())
+			}
+			if err := e.EncodeJSON(Map{"a": NumberValue(1)}); err != nil || buf.String() != "{\n  \"a\": 1\n}\n" {
+				t.Errorf("EncodeJSON after the error: got %q, %v", buf.String(), err)
 			}
 		})
 	}
@@ -911,7 +951,6 @@ func TestNodeMarshalJSONStrings(t *testing.T) {
 	testCases := []struct {
 		caseName string
 		s        string
-		want     string // encoding/json's output when empty
 	}{
 		{caseName: "empty", s: ""},
 		{caseName: "plain", s: "abc"},
@@ -922,7 +961,6 @@ func TestNodeMarshalJSONStrings(t *testing.T) {
 		{caseName: "HTML", s: "<a&b>"},
 		{caseName: "multi-byte", s: "日本語 ✓"},
 		{caseName: "line and paragraph separators", s: "a\u2028b\u2029c"},
-		{caseName: "invalid UTF-8 as on Go 1.24", s: "a\xffb\xc3", want: `{"a\ufffdb\ufffd":"a\ufffdb\ufffd"}`}, // Go 1.27 writes a raw U+FFFD
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
@@ -930,29 +968,35 @@ func TestNodeMarshalJSONStrings(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := tc.want
-			if want == "" {
-				want = marshalJSONNoHTML(t, map[string]any{tc.s: tc.s})
-			}
-			if string(got) != want {
+			if want := marshalJSONNoHTML(t, map[string]any{tc.s: tc.s}); string(got) != want {
 				t.Errorf("got %s; want %s", got, want)
 			}
 		})
 	}
 }
 
-// FuzzMarshalJSONString checks that keys and string values encode without error, and in valid UTF-8 as encoding/json encodes them.
+// FuzzMarshalJSONString checks that keys and string values in valid UTF-8 encode as encoding/json encodes them, that a key in invalid UTF-8 is an error and a value in it is not.
 func FuzzMarshalJSONString(f *testing.F) {
 	for _, s := range []string{"", "a", "\b\f\x00\x7f", "<&>", "\u2028", "\xff"} {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, s string) {
 		got, err := marshalJSONNode(Map{s: Array{StringValue(s)}})
+		if !utf8.ValidString(s) {
+			if err == nil {
+				t.Errorf("accepted the key %q", s)
+			}
+			got, err := marshalJSONNode(Array{StringValue(s)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := UnmarshalJSON(got); err != nil {
+				t.Errorf("cannot read back %s: %v", got, err)
+			}
+			return
+		}
 		if err != nil {
 			t.Fatal(err)
-		}
-		if !utf8.ValidString(s) {
-			t.Skip("encoding/json writes invalid UTF-8 as \\ufffd before Go 1.27 and as a raw U+FFFD since")
 		}
 		if want := marshalJSONNoHTML(t, map[string]any{s: []any{s}}); string(got) != want {
 			t.Errorf("got %s; want %s", got, want)

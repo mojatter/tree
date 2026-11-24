@@ -2,6 +2,7 @@ package tree
 
 import (
 	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -109,6 +110,7 @@ func TestEncodeYAML(t *testing.T) {
 		e        *ColorEncoder
 		n        Node
 		want     string
+		readBack bool // the output reads back as n
 	}{
 		{
 			caseName: "Map with Array, Nil and nil",
@@ -129,6 +131,18 @@ b:
 c: null
 d: null
 `,
+		}, {
+			caseName: "invalid UTF-8 as !!binary",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n: Map{
+				"\xff": StringValue("a\xfe\nb"),
+				"b":    Array{StringValue("\xff")},
+			},
+			want: `b:
+  - !!binary /w==
+!!binary /w==: !!binary Yf4KYg==
+`,
+			readBack: true,
 		}, {
 			caseName: "trailing newline triggers literal block",
 			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
@@ -189,6 +203,15 @@ b:
 			}
 			if got := out.String(); got != tc.want {
 				t.Errorf("got %q; want %q\n%s", got, tc.want, tc.want)
+			}
+			if tc.readBack {
+				n, err := UnmarshalYAML(out.Bytes())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(n, tc.n) {
+					t.Errorf("read back %#v; want %#v", n, tc.n)
+				}
 			}
 		})
 	}
