@@ -261,6 +261,11 @@ func TestRun(t *testing.T) {
 			args:     []string{"-r", ".a[]"},
 			want:     "1\nnull\n",
 		}, {
+			caseName: "raw numbers print in json number format, NaN and infinities as text",
+			stdin:    "testdata/raw-numbers.yaml",
+			args:     []string{"-r", ".[]"},
+			want:     "1e+21\n1e-7\n0.5\nNaN\n-Inf\n+Inf\n",
+		}, {
 			caseName: "expand an array grown by an edit",
 			stdin:    "testdata/empty-object.json",
 			args:     []string{"-e", ".a[2] = 1", "-x", ".a"},
