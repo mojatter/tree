@@ -584,8 +584,13 @@ func (r *runner) output(node tree.Node) error {
 	t := node.Type()
 	if r.isRaw && t.IsValue() {
 		s := node.Value().String()
-		if t.IsNilValue() {
+		switch {
+		case t.IsNilValue():
 			s = "null" // NilValue.String() is empty
+		case t.IsNumberValue():
+			if b, err := tree.MarshalJSON(node); err == nil { // NaN and infinities keep String()
+				s = string(b)
+			}
 		}
 		if _, err := fmt.Fprintln(r.out, s); err != nil {
 			return err
