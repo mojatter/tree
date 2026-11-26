@@ -121,9 +121,9 @@ func TestOutputColorYAML(t *testing.T) {
 			n:        Map{"\xff": StringValue("\xfe")},
 			want:     "\x1b[1;34m!!binary /w==\x1b[0m: \x1b[0;32m!!binary /g==\x1b[0m\n",
 		}, {
-			caseName: "literal block ending in a line separator",
+			caseName: "line separator double-quoted",
 			n:        Map{"a": ToValue("b\nc\u2028")},
-			want:     "\x1b[1;34ma\x1b[0m: \x1b[0;32m|\n  b\n  c\x1b[0m\u2028",
+			want:     "\x1b[1;34ma\x1b[0m: \x1b[0;32m\"b\\nc\\L\"\x1b[0m\n",
 		}, {
 			caseName: "empty collections, bools and numbers uncolored",
 			n:        Map{"a": Map{}, "b": Array{}, "c": ToValue(false), "d": ToValue(1.5)},
@@ -305,6 +305,11 @@ b:
 			n:        Array{NumberValue(math.Copysign(0, -1))},
 			want:     "- -0.0\n",
 		}, {
+			caseName: "line and paragraph separators double-quoted",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": ToValue("b\nc\u2028"), "b": ToValue("x\u2029y"), "c\u2028": Array{ToValue("\u2028"), StringValue("\xff\u2028")}},
+			want:     "a: \"b\\nc\\L\"\nb: \"x\\Py\"\n? \"c\\L\"\n: - \"\\L\"\n  - !!binary /+KAqA==\n",
+		}, {
 			caseName: "empty root map",
 			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
 			n:        Map{},
@@ -357,21 +362,24 @@ b:
 	}
 }
 
-func TestColorYAMLUncolored(t *testing.T) {
+func TestColorYAML(t *testing.T) {
 	testCases := []struct {
 		caseName string
 		data     string
+		want     string
 	}{
-		{caseName: "unreadable", data: "a: [\n"},
-		{caseName: "flow sequence before another key", data: "a: [x, y]\nb: z\n"},
-		{caseName: "flow sequence at the end", data: "a: [x, y]\n"},
-		{caseName: "flow mapping", data: "a: {b: c}\n"},
-		{caseName: "flow root", data: "{a: b}\n"},
+		{caseName: "unreadable uncolored", data: "a: [\n", want: "a: [\n"},
+		{caseName: "flow sequence before another key uncolored", data: "a: [x, y]\nb: z\n", want: "a: [x, y]\nb: z\n"},
+		{caseName: "flow sequence at the end uncolored", data: "a: [x, y]\n", want: "a: [x, y]\n"},
+		{caseName: "flow mapping uncolored", data: "a: {b: c}\n", want: "a: {b: c}\n"},
+		{caseName: "flow root uncolored", data: "{a: b}\n", want: "{a: b}\n"},
+		{caseName: "literal block ending in a line separator", data: "a: |\n  b\n  c\u2028", want: "\x1b[1;34ma\x1b[0m: \x1b[0;32m|\n  b\n  c\x1b[0m\u2028"},
+		{caseName: "no final line break", data: "a: b", want: "\x1b[1;34ma\x1b[0m: \x1b[0;32mb\x1b[0m"},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.caseName, func(t *testing.T) {
-			if got := colorYAML([]byte(tc.data)); string(got) != tc.data {
-				t.Errorf("got %q; want %q", got, tc.data)
+			if got := colorYAML([]byte(tc.data)); string(got) != tc.want {
+				t.Errorf("got %q; want %q", got, tc.want)
 			}
 		})
 	}

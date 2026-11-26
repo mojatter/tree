@@ -218,12 +218,13 @@ func (y yamlNode) MarshalYAML() (any, error) {
 	return y.n, nil
 }
 
-// yamlString is a string, or a map key yaml.v3 still sorts as a string, that is double-quoted when multi-line and starting with a tab, which yaml.v3 cannot read back as a literal block.
+// yamlString is a string, or a map key yaml.v3 still sorts as a string, that is double-quoted when it has U+2028 or U+2029, which yaml.v3 writes as line breaks,
+// or is multi-line and starts with a tab, which yaml.v3 cannot read back as a literal block.
 type yamlString string
 
 // MarshalYAML implements yaml.Marshaler.
 func (s yamlString) MarshalYAML() (any, error) {
-	if strings.HasPrefix(string(s), "\t") && strings.Contains(string(s), "\n") && utf8.ValidString(string(s)) {
+	if (strings.ContainsAny(string(s), "\u2028\u2029") || strings.HasPrefix(string(s), "\t") && strings.Contains(string(s), "\n")) && utf8.ValidString(string(s)) {
 		return &yaml.Node{Kind: yaml.ScalarNode, Style: yaml.DoubleQuotedStyle, Value: string(s)}, nil
 	}
 	return string(s), nil
