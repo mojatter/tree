@@ -3,6 +3,9 @@ package tree
 import (
 	"bytes"
 	"maps"
+	"math"
+	"strings"
+	"unicode/utf8"
 
 	"go.yaml.in/yaml/v3"
 )
@@ -14,11 +17,13 @@ const yamlIndent = 2
 
 // MarshalYAML returns the YAML encoding of the specified node using
 // tree's default 2-space indentation.
+// It writes finite numbers as MarshalJSON does, except negative zero as -0.0 (YAML reads -0 as the integer 0).
+// A YAML library given a node directly writes its own forms (e.g. 1e-07).
 func MarshalYAML(n Node) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(yamlIndent)
-	if err := enc.Encode(n); err != nil {
+	if err := enc.Encode(yamlNode{n}); err != nil {
 		_ = enc.Close()
 		return nil, err
 	}
@@ -156,6 +161,73 @@ func (n Any) MarshalYAML() (any, error) {
 // MarshalYAML is an implementation of yaml.Marshaler.
 func (n NilValue) MarshalYAML() (any, error) {
 	return nil, nil
+}
+
+// MarshalYAML implements the MarshalYAML convention go-yaml libraries share, writing an integer as one (1000000, not 1e+06).
+func (n NumberValue) MarshalYAML() (any, error) {
+	f := float64(n)
+	if f >= -(1<<63) && f < 1<<63 && float64(int64(f)) == f && !(f == 0 && math.Signbit(f)) {
+		return int64(f), nil
+	}
+	return f, nil
+}
+
+// yamlNode writes n as MarshalYAML does, through yaml.v3 nodes only yaml.v3 can write.
+type yamlNode struct{ n Node }
+
+// MarshalYAML implements yaml.Marshaler, writing a finite number as MarshalJSON does.
+func (y yamlNode) MarshalYAML() (any, error) {
+	if isGoNil(y.n) {
+		return nil, nil
+	}
+	switch tn := y.n.(type) {
+	case Any:
+		return yamlNode{tn.Node}, nil
+	case *Any:
+		return yamlNode{tn.Node}, nil
+	case *Map:
+		return yamlNode{*tn}, nil
+	case *Array:
+		return yamlNode{*tn}, nil
+	case *StringValue:
+		return yamlNode{*tn}, nil
+	case *NumberValue:
+		return yamlNode{*tn}, nil
+	case Map:
+		m := make(map[yamlString]yamlNode, len(tn))
+		for k, v := range tn {
+			m[yamlString(k)] = yamlNode{v}
+		}
+		return m, nil
+	case Array:
+		a := make([]yamlNode, len(tn))
+		for i, v := range tn {
+			a[i] = yamlNode{v}
+		}
+		return a, nil
+	case StringValue:
+		return yamlString(tn), nil
+	case NumberValue:
+		if tn == 0 && math.Signbit(float64(tn)) {
+			return &yaml.Node{Kind: yaml.ScalarNode, Value: "-0.0"}, nil // YAML reads -0 as the integer 0
+		}
+		if b, err := appendJSONNumber(nil, tn); err == nil {
+			return &yaml.Node{Kind: yaml.ScalarNode, Value: string(b)}, nil
+		}
+	}
+	return y.n, nil
+}
+
+// yamlString is a string, or a map key yaml.v3 still sorts as a string, that is double-quoted when it has U+2028 or U+2029, which yaml.v3 writes as line breaks,
+// or is multi-line and starts with a tab, which yaml.v3 cannot read back as a literal block.
+type yamlString string
+
+// MarshalYAML implements yaml.Marshaler.
+func (s yamlString) MarshalYAML() (any, error) {
+	if (strings.ContainsAny(string(s), "\u2028\u2029") || strings.HasPrefix(string(s), "\t") && strings.Contains(string(s), "\n")) && utf8.ValidString(string(s)) {
+		return &yaml.Node{Kind: yaml.ScalarNode, Style: yaml.DoubleQuotedStyle, Value: string(s)}, nil
+	}
+	return string(s), nil
 }
 
 // MarshalViaYAML returns the node encoding of v via "go.yaml.in/yaml/v3".

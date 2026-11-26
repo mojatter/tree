@@ -117,6 +117,7 @@ type EditorNode interface {
 }
 
 // Any wraps a Node and delegates every Node method to it, reading the Node it wraps as Nil when it is a Go nil or nil pointer.
+// Hold a Node that may be a nil pointer in an Any when it sits in an interface-typed struct field, map value or slice element given to yaml.v3 or MarshalViaYAML, as yaml.v3 panics on a nil *NumberValue, *NilValue or *Any there.
 type Any struct {
 	Node
 }

@@ -3,49 +3,49 @@
     [1;34mcolor[0m: [0;32mred[0m
     [1;34mprice[0m: 19.95
   [1;34mbook[0m:
-    - [1;34mauthor[0m: [0;32m"Nigel Rees"[0m
+    - [1;34mauthor[0m: [0;32mNigel Rees[0m
       [1;34mcategory[0m: [0;32mreference[0m
       [1;34mprice[0m: 8.95
       [1;34mtags[0m:
         - [1;34mname[0m: [0;32mgenre[0m
           [1;34mvalue[0m: [0;32mreference[0m
         - [1;34mname[0m: [0;32mera[0m
-          [1;34mvalue[0m: [0;32m"20th century"[0m
+          [1;34mvalue[0m: [0;32m20th century[0m
         - [1;34mname[0m: [0;32mtheme[0m
           [1;34mvalue[0m: [0;32mquotations[0m
-      [1;34mtitle[0m: [0;32m"Sayings of the Century"[0m
-    - [1;34mauthor[0m: [0;32m"Evelyn Waugh"[0m
+      [1;34mtitle[0m: [0;32mSayings of the Century[0m
+    - [1;34mauthor[0m: [0;32mEvelyn Waugh[0m
       [1;34mcategory[0m: [0;32mfiction[0m
       [1;34mprice[0m: 12.99
       [1;34mtags[0m:
         - [1;34mname[0m: [0;32mgenre[0m
           [1;34mvalue[0m: [0;32mfiction[0m
         - [1;34mname[0m: [0;32mera[0m
-          [1;34mvalue[0m: [0;32m"20th century"[0m
+          [1;34mvalue[0m: [0;32m20th century[0m
         - [1;34mname[0m: [0;32mtheme[0m
           [1;34mvalue[0m: [0;32mWWII[0m
-      [1;34mtitle[0m: [0;32m"Sword of Honour"[0m
-    - [1;34mauthor[0m: [0;32m"Herman Melville"[0m
+      [1;34mtitle[0m: [0;32mSword of Honour[0m
+    - [1;34mauthor[0m: [0;32mHerman Melville[0m
       [1;34mcategory[0m: [0;32mfiction[0m
-      [1;34misbn[0m: [0;32m"0-553-21311-3"[0m
+      [1;34misbn[0m: [0;32m0-553-21311-3[0m
       [1;34mprice[0m: 8.99
       [1;34mtags[0m:
         - [1;34mname[0m: [0;32mgenre[0m
           [1;34mvalue[0m: [0;32mfiction[0m
         - [1;34mname[0m: [0;32mera[0m
-          [1;34mvalue[0m: [0;32m"19th century"[0m
+          [1;34mvalue[0m: [0;32m19th century[0m
         - [1;34mname[0m: [0;32mtheme[0m
-          [1;34mvalue[0m: [0;32m"whale hunting"[0m
-      [1;34mtitle[0m: [0;32m"Moby Dick"[0m
-    - [1;34mauthor[0m: [0;32m"J. R. R. Tolkien"[0m
+          [1;34mvalue[0m: [0;32mwhale hunting[0m
+      [1;34mtitle[0m: [0;32mMoby Dick[0m
+    - [1;34mauthor[0m: [0;32mJ. R. R. Tolkien[0m
       [1;34mcategory[0m: [0;32mfiction[0m
-      [1;34misbn[0m: [0;32m"0-395-19395-8"[0m
+      [1;34misbn[0m: [0;32m0-395-19395-8[0m
       [1;34mprice[0m: 22.99
       [1;34mtags[0m:
         - [1;34mname[0m: [0;32mgenre[0m
           [1;34mvalue[0m: [0;32mfantasy[0m
         - [1;34mname[0m: [0;32mera[0m
-          [1;34mvalue[0m: [0;32m"20th century"[0m
+          [1;34mvalue[0m: [0;32m20th century[0m
         - [1;34mname[0m: [0;32mtheme[0m
-          [1;34mvalue[0m: [0;32m"good vs evil"[0m
-      [1;34mtitle[0m: [0;32m"The Lord of the Rings"[0m
+          [1;34mvalue[0m: [0;32mgood vs evil[0m
+      [1;34mtitle[0m: [0;32mThe Lord of the Rings[0m

@@ -2,7 +2,8 @@ package tree
 
 import (
 	"bytes"
-	"reflect"
+	"math"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -86,21 +87,70 @@ func TestEncodeJSON(t *testing.T) {
 	}
 }
 
-func TestOutputColorYAML(t *testing.T) {
-	n := Map{
-		"num":  ToValue(1),
-		"str":  ToValue("2"),
-		"bool": ToValue(true),
-		"null": Nil,
-	}
-	want := "\x1b[1;34mbool\x1b[0m: true\n\x1b[1;34mnull\x1b[0m: \x1b[0;90mnull\x1b[0m\n\x1b[1;34mnum\x1b[0m: 1\n\x1b[1;34mstr\x1b[0m: \x1b[0;32m\"2\"\x1b[0m\n"
+var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
-	out := new(bytes.Buffer)
-	if err := OutputColorYAML(out, n); err != nil {
-		t.Fatal(err)
+func TestOutputColorYAML(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		n        Node
+		want     string
+	}{
+		{
+			caseName: "keys, strings and nulls colored",
+			n: Map{
+				"num":  ToValue(1),
+				"str":  ToValue("2"),
+				"bool": ToValue(true),
+				"null": Nil,
+			},
+			want: "\x1b[1;34mbool\x1b[0m: true\n\x1b[1;34m\"null\"\x1b[0m: \x1b[0;90mnull\x1b[0m\n\x1b[1;34mnum\x1b[0m: 1\n\x1b[1;34mstr\x1b[0m: \x1b[0;32m\"2\"\x1b[0m\n",
+		}, {
+			caseName: "explicit key and literal blocks",
+			n:        Map{"a\nb": ToValue("x\ny")},
+			want:     "? \x1b[1;34m|-\n  a\n  b\x1b[0m\n: \x1b[0;32m|-\n  x\n  y\x1b[0m\n",
+		}, {
+			caseName: "map value whose first key is explicit",
+			n:        Map{"a": Map{"b\nc": ToValue(1), "d": ToValue(2)}},
+			want:     "\x1b[1;34ma\x1b[0m:\n  ? \x1b[1;34m|-\n    b\n    c\x1b[0m\n  : 1\n  \x1b[1;34md\x1b[0m: 2\n",
+		}, {
+			caseName: "nested arrays with a kept trailing newline",
+			n:        Array{Array{Array{ToValue("\n"), ToValue("a")}}},
+			want:     "- - - \x1b[0;32m|2+\n\x1b[0m\n    - \x1b[0;32ma\x1b[0m\n",
+		}, {
+			caseName: "!!binary key and value",
+			n:        Map{"\xff": StringValue("\xfe")},
+			want:     "\x1b[1;34m!!binary /w==\x1b[0m: \x1b[0;32m!!binary /g==\x1b[0m\n",
+		}, {
+			caseName: "line separator double-quoted",
+			n:        Map{"a": ToValue("b\nc\u2028")},
+			want:     "\x1b[1;34ma\x1b[0m: \x1b[0;32m\"b\\nc\\L\"\x1b[0m\n",
+		}, {
+			caseName: "empty collections, bools and numbers uncolored",
+			n:        Map{"a": Map{}, "b": Array{}, "c": ToValue(false), "d": ToValue(1.5)},
+			want:     "\x1b[1;34ma\x1b[0m: {}\n\x1b[1;34mb\x1b[0m: []\n\x1b[1;34mc\x1b[0m: false\n\x1b[1;34md\x1b[0m: 1.5\n",
+		}, {
+			caseName: "multi-line key starting with a tab double-quoted",
+			n:        Map{"\tb\nc": ToValue(1)},
+			want:     "? \x1b[1;34m\"\\tb\\nc\"\x1b[0m\n: 1\n",
+		},
 	}
-	if got := out.String(); got != want {
-		t.Errorf("got %q; want %q\n%s", got, want, want)
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			out := new(bytes.Buffer)
+			if err := OutputColorYAML(out, tc.n); err != nil {
+				t.Fatal(err)
+			}
+			if got := out.String(); got != tc.want {
+				t.Errorf("got %q; want %q\n%s", got, tc.want, tc.want)
+			}
+			plain, err := MarshalYAML(tc.n)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := ansiPattern.ReplaceAllString(out.String(), ""); got != string(plain) {
+				t.Errorf("without color %q; want MarshalYAML %q", got, plain)
+			}
+		})
 	}
 }
 
@@ -110,7 +160,6 @@ func TestEncodeYAML(t *testing.T) {
 		e        *ColorEncoder
 		n        Node
 		want     string
-		readBack bool // the output reads back as n
 	}{
 		{
 			caseName: "Map with Array, Nil and nil",
@@ -138,11 +187,10 @@ d: null
 				"\xff": StringValue("a\xfe\nb"),
 				"b":    Array{StringValue("\xff")},
 			},
-			want: `b:
+			want: `!!binary /w==: !!binary Yf4KYg==
+b:
   - !!binary /w==
-!!binary /w==: !!binary Yf4KYg==
 `,
-			readBack: true,
 		}, {
 			caseName: "trailing newline triggers literal block",
 			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
@@ -180,8 +228,7 @@ d: null
 			want: `- 1
 - a: 2
   b: true
--
-  - c
+- - c
   - null
 `,
 		}, {
@@ -192,6 +239,101 @@ d: null
 b:
   - null
 `,
+		}, {
+			caseName: "multi-line keys starting with a tab double-quoted in key order",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a10": ToValue(1), "a9": ToValue(2), "\tb\nc": ToValue("\td\ne"), "x": Array{Map{"\t\n": Nil}}},
+			want:     "? \"\\tb\\nc\"\n: \"\\td\\ne\"\na9: 2\na10: 1\nx:\n  - ? \"\\t\\n\"\n    : null\n",
+		}, {
+			caseName: "Go nil pointer children",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": (*NumberValue)(nil), "b": Array{(*StringValue)(nil), (*Any)(nil)}},
+			want:     "a: null\nb:\n  - null\n  - null\n",
+		}, {
+			caseName: "reserved scalars quoted",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": ToValue("True"), "b": ToValue("null"), "c": ToValue("yes")},
+			want:     "a: \"True\"\nb: \"null\"\nc: \"yes\"\n",
+		}, {
+			caseName: "keys differing only in case",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"true": ToValue(true), "True": ToValue(false)},
+			want:     "\"True\": false\n\"true\": true\n",
+		}, {
+			caseName: "first line starting with spaces",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": ToValue("  a\nb")},
+			want:     "a: |2-\n    a\n  b\n",
+		}, {
+			caseName: "trailing newlines kept",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": ToValue("a\n\n"), "b": ToValue("\n")},
+			want:     "a: |+\n  a\n\nb: |2+\n\n",
+		}, {
+			caseName: "multi-line strings YAML cannot hold in a block",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": ToValue("x\x01\ny"), "b": ToValue("a\r\nb"), "c": ToValue("a\u0085b\nc"), "d": ToValue(" \nb")},
+			want:     "a: \"x\\x01\\ny\"\nb: \"a\\r\\nb\"\nc: \"a\\Nb\\nc\"\nd: \" \\nb\"\n",
+		}, {
+			caseName: "key longer than 1024 characters",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{strings.Repeat("a", 1100): ToValue(1)},
+			want:     "? " + strings.Repeat("a", 1100) + "\n: 1\n",
+		}, {
+			caseName: "NaN and infinities",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": ToValue(math.NaN()), "b": ToValue(math.Inf(1)), "c": ToValue(math.Inf(-1))},
+			want:     "a: .nan\nb: .inf\nc: -.inf\n",
+		}, {
+			caseName: "numbers as JSON output writes them",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": ToValue(1000000), "b": ToValue(0.00001), "c": ToValue(1e-7), "d": ToValue(1e21)},
+			want:     "a: 1000000\nb: 0.00001\nc: 1e-7\nd: 1e+21\n",
+		}, {
+			caseName: "multi-line strings starting with a tab double-quoted",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": ToValue("\tb\nc"), "b": Array{ToValue("\t\n")}, "c": StringValue("\t\xff\nb")},
+			want:     "a: \"\\tb\\nc\"\nb:\n  - \"\\t\\n\"\nc: !!binary Cf8KYg==\n",
+		}, {
+			caseName: "empty maps and arrays",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": Map{}, "b": Array{}, "c": Array{Array{ToValue(1), Array{}}, Map{}}, "d": ToValue(1)},
+			want:     "a: {}\nb: []\nc:\n  - - 1\n    - []\n  - {}\nd: 1\n",
+		}, {
+			caseName: "negative zero",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Array{NumberValue(math.Copysign(0, -1))},
+			want:     "- -0.0\n",
+		}, {
+			caseName: "line and paragraph separators double-quoted",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{"a": ToValue("b\nc\u2028"), "b": ToValue("x\u2029y"), "c\u2028": Array{ToValue("\u2028"), StringValue("\xff\u2028")}},
+			want:     "a: \"b\\nc\\L\"\nb: \"x\\Py\"\n? \"c\\L\"\n: - \"\\L\"\n  - !!binary /+KAqA==\n",
+		}, {
+			caseName: "empty root map",
+			e:        &ColorEncoder{IndentSize: 2, NoColor: true},
+			n:        Map{},
+			want:     "{}\n",
+		}, {
+			caseName: "indent size 4 written as 2",
+			e:        &ColorEncoder{IndentSize: 4, NoColor: true},
+			n:        Map{"a": Map{"b": Array{ToValue(1)}}},
+			want:     "a:\n  b:\n    - 1\n",
+		}, {
+			caseName: "indent size 4, sequence item starting with a newline",
+			e:        &ColorEncoder{IndentSize: 4, NoColor: true},
+			n:        Array{StringValue("x"), StringValue("\n#'")},
+			want:     "- x\n- |2-\n\n  #'\n",
+		}, {
+			caseName: "indent size 4, sequence item starting with a space",
+			e:        &ColorEncoder{IndentSize: 4, NoColor: true},
+			n:        Map{"a": Array{StringValue(" x\ny")}},
+			want:     "a:\n  - |2-\n     x\n    y\n",
+		}, {
+			caseName: "indent size 0 written as 2",
+			e:        &ColorEncoder{IndentSize: 0, NoColor: true},
+			n:        Map{"a": Map{"b": Array{ToValue(1)}}},
+			want:     "a:\n  b:\n    - 1\n",
 		},
 	}
 	for _, tc := range testCases {
@@ -204,14 +346,40 @@ b:
 			if got := out.String(); got != tc.want {
 				t.Errorf("got %q; want %q\n%s", got, tc.want, tc.want)
 			}
-			if tc.readBack {
-				n, err := UnmarshalYAML(out.Bytes())
-				if err != nil {
-					t.Fatal(err)
-				}
-				if !reflect.DeepEqual(n, tc.n) {
-					t.Errorf("read back %#v; want %#v", n, tc.n)
-				}
+			// The output reads back to a node that writes the same output.
+			n, err := UnmarshalYAML(out.Bytes())
+			if err != nil {
+				t.Fatal(err)
+			}
+			again, err := MarshalYAML(n)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(again) != out.String() {
+				t.Errorf("read back writes %q; want %q", again, out.String())
+			}
+		})
+	}
+}
+
+func TestColorYAML(t *testing.T) {
+	testCases := []struct {
+		caseName string
+		data     string
+		want     string
+	}{
+		{caseName: "unreadable uncolored", data: "a: [\n", want: "a: [\n"},
+		{caseName: "flow sequence before another key uncolored", data: "a: [x, y]\nb: z\n", want: "a: [x, y]\nb: z\n"},
+		{caseName: "flow sequence at the end uncolored", data: "a: [x, y]\n", want: "a: [x, y]\n"},
+		{caseName: "flow mapping uncolored", data: "a: {b: c}\n", want: "a: {b: c}\n"},
+		{caseName: "flow root uncolored", data: "{a: b}\n", want: "{a: b}\n"},
+		{caseName: "literal block ending in a line separator", data: "a: |\n  b\n  c\u2028", want: "\x1b[1;34ma\x1b[0m: \x1b[0;32m|\n  b\n  c\x1b[0m\u2028"},
+		{caseName: "no final line break", data: "a: b", want: "\x1b[1;34ma\x1b[0m: \x1b[0;32mb\x1b[0m"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.caseName, func(t *testing.T) {
+			if got := colorYAML([]byte(tc.data)); string(got) != tc.want {
+				t.Errorf("got %q; want %q", got, tc.want)
 			}
 		})
 	}
